@@ -8,8 +8,11 @@ import { availableReplies } from '@/lib/lifecycle';
 import type { ReplyKind, Task } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
-/** One big obvious next step, then compact alternatives. Designed for one thumb while walking. */
-export function ReplyBar({ task }: { task: Task }) {
+/**
+ * One big obvious next step, then compact alternatives. Designed for one thumb while walking.
+ * A helper (backup) only gets Done; asking for help stays with the owner. Tasks from a festival-goer get Reply.
+ */
+export function ReplyBar({ task, helping = false }: { task: Task; helping?: boolean }) {
   const repo = useRepo();
   const theme = useTheme();
   const { primary, secondary } = availableReplies(task.status);
@@ -23,8 +26,10 @@ export function ReplyBar({ task }: { task: Task }) {
     r === 'need_help' ? theme.danger : r === 'done' ? theme.success : r === 'decline' ? theme.textSecondary : theme.tint;
   const hapticFor = (r: ReplyKind) => (r === 'need_help' || r === 'decline' ? 'warning' : r === 'done' ? 'success' : 'light');
 
-  // "Still on it" lives in the check-in line ("Update") and in voice, not as a permanent button.
-  const inline = secondary.filter((r) => r !== 'still_on_it');
+  // "Still on it" lives in the status line ("Send an update") and in voice, not as a permanent button.
+  const inline = helping ? [] : secondary.filter((r) => r !== 'still_on_it');
+  // Reply to the festival-goer once you've taken it (a typed or voice note into their thread).
+  const canReplyToGuest = !!task.requestId && task.status !== 'assigned';
   return (
     <View style={styles.wrap}>
       {primary && (
@@ -37,7 +42,7 @@ export function ReplyBar({ task }: { task: Task }) {
           onPress={() => send(primary)}
         />
       )}
-      {inline.length > 0 && (
+      {(inline.length > 0 || canReplyToGuest) && (
         <View style={styles.row}>
           {inline.map((r) => (
             <Button
@@ -52,6 +57,17 @@ export function ReplyBar({ task }: { task: Task }) {
               style={styles.flex}
             />
           ))}
+          {canReplyToGuest && (
+            <Button
+              variant="tinted"
+              size="small"
+              label="Reply"
+              sf="arrowshape.turn.up.left.fill"
+              color={theme.tint}
+              onPress={() => router.push({ pathname: '/reply/[id]', params: { id: task.id, kind: 'guest_reply' } })}
+              style={styles.flex}
+            />
+          )}
         </View>
       )}
     </View>

@@ -1,5 +1,7 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { Colors } from '@/constants/theme';
@@ -7,6 +9,14 @@ import { RepoProvider } from '@/data/provider';
 import { useThemeName } from '@/hooks/use-theme';
 
 SplashScreen.preventAutoHideAsync();
+
+/** Sheets over the map: most of the screen first, drag up for the rest. */
+const SHEET = {
+  presentation: 'formSheet' as const,
+  sheetAllowedDetents: [0.7, 1],
+  sheetGrabberVisible: true,
+  headerShown: false,
+};
 
 const NAV_THEME = {
   light: { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: Colors.light.background, primary: Colors.light.tint } },
@@ -16,11 +26,14 @@ const NAV_THEME = {
 export default function RootLayout() {
   const scheme = useThemeName();
   return (
+    <GestureHandlerRootView style={StyleSheet.absoluteFill}>
     <ThemeProvider value={NAV_THEME[scheme]}>
       <RepoProvider>
         <AnimatedSplashOverlay />
+        {/* Every route is registered here; (staff) and (guest) redirect to each other by role. */}
         <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="(staff)" options={{ headerShown: false }} />
+          <Stack.Screen name="(guest)" options={{ headerShown: false }} />
           <Stack.Screen name="task/[id]" options={{ title: 'Task', headerShown: false }} />
           <Stack.Screen
             name="navigate/[id]"
@@ -37,6 +50,11 @@ export default function RootLayout() {
               headerShown: false,
             }}
           />
+          <Stack.Screen name="inbox" options={{ ...SHEET, title: 'Inbox' }} />
+          <Stack.Screen name="respond/[id]" options={{ ...SHEET, title: 'Respond' }} />
+          <Stack.Screen name="person/[id]" options={{ ...SHEET, title: 'Person' }} />
+          <Stack.Screen name="assign/[id]" options={{ ...SHEET, title: 'Pick a volunteer' }} />
+          <Stack.Screen name="approve/[id]" options={{ ...SHEET, sheetAllowedDetents: [0.6, 1], title: 'Approve' }} />
           <Stack.Screen
             name="dev"
             options={{
@@ -50,5 +68,6 @@ export default function RootLayout() {
         </Stack>
       </RepoProvider>
     </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

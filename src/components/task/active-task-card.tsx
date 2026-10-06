@@ -1,15 +1,17 @@
 import * as Haptics from 'expo-haptics';
-import { Link, router } from 'expo-router';
+import { Link } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { MapPreview } from '@/components/map/map-preview';
+import { Avatar } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
+import { StatusLine } from '@/components/ui/status-line';
 import { Radius, Type } from '@/constants/theme';
-import { useLookups, useNow } from '@/data/hooks';
-import { ago, languageName, STATUS_LABEL } from '@/lib/format';
+import { useLookups, useSnapshot, useTaskStatus } from '@/data/hooks';
+import { languageName } from '@/lib/format';
 import type { Task } from '@/lib/schema';
 import { usePriorityColors, useTheme } from '@/hooks/use-theme';
 import { PriorityBadge, TeamChip } from './badges';
@@ -18,6 +20,7 @@ import { ReplyBar } from './reply-bar';
 /**
  * The hero, compact: what, where, how to get there, and the next tap. The story behind it
  * (summary, reporter's words, team) is one tap away under Details; the full history is on the task page.
+ * Status lives in one place, the top-right line (lib/status). Backing someone up, the card says whose task it is.
  */
 export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = true, defaultExpanded = false }: {
   task: Task;
@@ -27,10 +30,12 @@ export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = tr
 }) {
   const theme = useTheme();
   const accent = usePriorityColors()[task.priority];
-  const now = useNow();
+  const status = useTaskStatus(task);
+  const { meId } = useSnapshot();
   const { zones } = useLookups();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const zone = task.zoneSlug ? zones[task.zoneSlug] : undefined;
+  const helping = !!meId && task.helperIds.includes(meId);
 
   return (
     <Animated.View layout={LinearTransition.duration(220)}>
@@ -38,9 +43,11 @@ export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = tr
         <View style={styles.topRow}>
           <PriorityBadge priority={task.priority} />
           {/* No countdowns or "overdue" here: the scheduler handles timing, the volunteer just sees how long it's been. */}
-          <Text style={[styles.meta, { color: theme.textTertiary }]} numberOfLines={1}>
-            {STATUS_LABEL[task.status]} · {ago(task.assignedAt ?? task.createdAt, now)}
-          </Text>
+          {status && (
+            <View style={styles.status}>
+              <StatusLine status={status} />
+            </View>
+          )}
         </View>
 
         <Text style={[styles.title, { color: theme.text }]}>{task.title}</Text>
@@ -55,11 +62,11 @@ export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = tr
           </View>
         )}
 
+        {helping && <Owner task={task} />}
+
         <MapPreview task={task} />
 
-        <CheckIn task={task} canReply={showReplies} />
-
-        {showReplies && <ReplyBar task={task} />}
+        {showReplies && <ReplyBar task={task} helping={helping} />}
 
         <View style={styles.footer}>
           <Pressable
@@ -90,7 +97,7 @@ export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = tr
   );
 }
 
-function Details({ task }: { task: Task }) {
+export function Details({ task }: { task: Task }) {
   const theme = useTheme();
   const { teams } = useLookups();
   const translated = task.reporter.language !== 'en';
@@ -109,36 +116,29 @@ function Details({ task }: { task: Task }) {
   );
 }
 
-/**
- * One calm line when there's something to say. A nudge and a lead alert read the same to the volunteer
- * (a check-in; "Update" opens the voice/type sheet); escalation just reassures them help is coming.
- */
-function CheckIn({ task, canReply }: { task: Task; canReply: boolean }) {
+/** Backing someone up: whose task it is, and a quick call to them. */
+export function Owner({ task }: { task: Task }) {
   const theme = useTheme();
-  const escalated = task.status === 'escalated';
-  const asked = !escalated && (task.nudgeCount > 0 || task.leadAlertedAt != null);
-  if (!escalated && !asked) return null;
+  const { volunteers, teams } = useLookups();
+  const owner = task.assigneeId ? volunteers[task.assigneeId] : undefined;
+  if (!owner) return null;
+  const color = owner.teamSlug ? teams[owner.teamSlug]?.color : undefined;
   return (
-    <View style={[styles.banner, { backgroundColor: theme.backgroundElement }]}>
-      <Icon
-        sf={escalated ? 'person.2' : 'hand.wave'}
-        md={escalated ? 'groups' : 'waving_hand'}
-        size={13}
-        color={theme.textSecondary}
-      />
-      <Text style={[styles.bannerText, { color: theme.textSecondary }]} numberOfLines={2}>
-        {escalated ? 'Help is on the way. Stay with them.' : 'How’s it going?'}
-      </Text>
-      {asked && canReply && (
+    <View style={styles.owner}>
+      <Avatar name={owner.name} color={color} size={22} />
+      <Text style={[styles.ownerName, { color: theme.text }]} numberOfLines={1}>{owner.name}</Text>
+      {owner.phone && (
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={`Call ${owner.name}`}
           hitSlop={8}
           onPress={() => {
             Haptics.selectionAsync();
-            router.push({ pathname: '/reply/[id]', params: { id: task.id, kind: 'still_on_it' } });
+            Linking.openURL(`tel:${owner.phone!.replace(/\s+/g, '')}`);
           }}
-          style={({ pressed }) => [styles.bannerAction, { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.6 : 1 }]}>
-          <Text style={[styles.bannerActionText, { color: theme.text }]}>Update</Text>
+          style={({ pressed }) => [styles.footerBtn, { opacity: pressed ? 0.6 : 1 }]}>
+          <Icon sf="phone.fill" md="call" size={12} color={theme.tint} />
+          <Text style={[styles.link, { color: theme.tint }]}>Call</Text>
         </Pressable>
       )}
     </View>
@@ -147,15 +147,14 @@ function CheckIn({ task, canReply }: { task: Task; canReply: boolean }) {
 
 const styles = StyleSheet.create({
   card: { padding: 14, gap: 10 },
-  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  meta: { fontSize: Type.caption, fontWeight: '500', fontVariant: ['tabular-nums'], flexShrink: 1 },
+  // Long status lines ("Emergency services on the way · Stay with them") drop under the badge instead of truncating early.
+  topRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 10, rowGap: 6 },
+  status: { flexShrink: 1 },
   title: { fontSize: Type.title, lineHeight: 23, fontWeight: '600', letterSpacing: -0.2 },
   location: { flexDirection: 'row', gap: 5, alignItems: 'center', marginTop: -4 },
   zone: { flex: 1, fontSize: Type.footnote, fontWeight: '500' },
-  banner: { flexDirection: 'row', gap: 7, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 7, borderRadius: Radius.control - 2, borderCurve: 'continuous' },
-  bannerText: { flex: 1, fontSize: Type.footnote, fontWeight: '500' },
-  bannerAction: { paddingHorizontal: 10, height: 26, borderRadius: Radius.pill, justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth * 2 },
-  bannerActionText: { fontSize: Type.caption, fontWeight: '600' },
+  owner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  ownerName: { flex: 1, fontSize: Type.footnote, fontWeight: '500' },
   footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   footerBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 2 },
   link: { fontSize: Type.footnote, fontWeight: '500' },

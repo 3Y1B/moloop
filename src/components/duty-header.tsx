@@ -3,13 +3,15 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
+import { floating, MAP_BUTTON } from '@/components/map/map-button';
+import { Avatar } from '@/components/ui/avatar';
 import { Icon } from '@/components/ui/icon';
 import { Radius, Type } from '@/constants/theme';
 import { useLookups, useMe, useRepo } from '@/data/hooks';
-import { clockTime, initials } from '@/lib/format';
+import { clockTime } from '@/lib/format';
 import { useTheme } from '@/hooks/use-theme';
 
-export const DUTY_CHIP_HEIGHT = 40;
+export const DUTY_CHIP_HEIGHT = MAP_BUTTON;
 
 /** Collapsed identity: avatar with a duty dot and first name. Tap to open the duty panel. */
 export function DutyChip({ open, onToggle }: { open: boolean; onToggle: () => void }) {
@@ -29,11 +31,8 @@ export function DutyChip({ open, onToggle }: { open: boolean; onToggle: () => vo
         Haptics.selectionAsync();
         onToggle();
       }}
-      style={({ pressed }) => [styles.chip, { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.7 : 1 }]}>
-      <View style={[styles.avatar, { backgroundColor: team?.color ?? theme.tint }]}>
-        <Text style={styles.avatarText}>{initials(me.name)}</Text>
-        <View style={[styles.dot, { backgroundColor: onDuty ? theme.success : theme.warning, borderColor: theme.card }]} />
-      </View>
+      style={({ pressed }) => [styles.chip, { backgroundColor: theme.card, opacity: pressed ? 0.7 : 1 }]}>
+      <Avatar name={me.name} color={team?.color} dot={onDuty ? theme.success : theme.warning} />
       <View>
         <Text style={[styles.chipName, { color: theme.text }]} numberOfLines={1}>{me.name.split(' ')[0]}</Text>
         <Text style={[styles.chipSub, { color: onDuty ? theme.success : theme.warning }]}>{onDuty ? 'On duty' : 'On break'}</Text>
@@ -57,7 +56,7 @@ export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
     <Animated.View
       entering={FadeInUp.duration(180)}
       exiting={FadeOutUp.duration(140)}
-      style={[styles.panel, { backgroundColor: theme.card, borderColor: theme.border }, style]}>
+      style={[styles.panel, { backgroundColor: theme.card }, style]}>
         <View style={styles.panelRow}>
           {team && <Icon sf={team.sf} md={team.md} size={14} color={team.color} />}
           <Text style={[styles.panelText, { color: theme.text }]}>{team?.name ?? 'Coordinator'}</Text>
@@ -98,16 +97,13 @@ export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
 const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 8, height: DUTY_CHIP_HEIGHT, paddingLeft: 4, paddingRight: 12,
-    borderRadius: Radius.pill, alignSelf: 'flex-start', borderWidth: StyleSheet.hairlineWidth * 2,
+    borderRadius: Radius.pill, alignSelf: 'flex-start', ...floating,
   },
-  avatar: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontWeight: '600', fontSize: Type.caption },
-  dot: { position: 'absolute', right: -1, bottom: -1, width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
   chipName: { fontSize: Type.footnote, fontWeight: '600' },
   chipSub: { fontSize: Type.caption - 1, fontWeight: '500' },
   // Floats over the page under the chip rather than adding another card to the stack.
   panel: {
-    padding: 12, gap: 10, borderRadius: Radius.card, borderCurve: 'continuous', borderWidth: StyleSheet.hairlineWidth * 2,
+    padding: 12, gap: 10, borderRadius: Radius.card, borderCurve: 'continuous', ...floating,
   },
   panelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelText: { fontSize: Type.callout, fontWeight: '600', flexShrink: 1 },
