@@ -1,22 +1,122 @@
-# Moloop architecture
+# Moloop architecture (brief)
 
+AI coordination for Riverside volunteers. Anyone reports by voice or text, agents turn it into tasks, the right volunteer gets it, and nobody's task goes silent. Agent shape (one supervisor vs many specialists) is undecided; this doc fixes the **tools, data and rules** they work with.
+
+## System
+
+```mermaid
+flowchart LR
+    subgraph IN["Voice and text in"]
+        V["Volunteer<br/>push-to-talk or typed"]
+        F["Festival-goer<br/>text or voice"]
+        STT["Transcribe<br/>+ 'Heard: ...' echo"]
+        V --> STT
+        F --> STT
+    end
+
+    subgraph AI["Agents (shape TBD)"]
+        A(("Agents"))
+        T["Tools<br/>create_task, assign_task, reassign_task<br/>update_progress, close_task, escalate<br/>ask_followup, answer_info<br/>propose_roster_fix, send_message"]
+        A --- T
+    end
+
+    subgraph DATA["Database"]
+        DB[("Volunteers + presence<br/>Teams + shifts<br/>Tasks + assignments<br/>Task events (audit)<br/>Messages + voice clips<br/>Pending approvals")]
+    end
+
+    subgraph BG["Background"]
+        N["Nudge scheduler<br/>overdue or silent tasks"]
+    end
+
+    subgraph OUT["Voice and alerts out"]
+        X{"Volunteer busy?"}
+        TTS["Spoken message<br/>full task brief"]
+        PING["Short ping<br/>'new task, check app'"]
+    end
+
+    subgraph HUM["People"]
+        L["Team lead"]
+        M["Mo"]
+    end
+
+    STT --> A
+    T <--> DB
+    T -->|"needs approval"| L
+    L -->|"cross-team or critical"| M
+    M -->|"approve / veto"| DB
+    L -->|"approve / veto"| DB
+
+    DB --> N
+    N -->|"nudge"| X
+    N -->|"still silent"| L
+
+    T -->|"notify"| X
+    X -->|idle| TTS
+    X -->|busy| PING
+    TTS --> V
+    PING --> V
 ```
-report (text/voice, any language)
-  -> POST /api/reports                         src/app/api/reports+api.ts
-  -> route: detect lang, translate, "can AI handle?"   pipeline/route.ts
-       yes -> P3 responder -> reply to reporter -> task(handled_by=ai, resolved)
-       no  -> triage (parallel): team classifier (Jev) | priority classifier (Jev) | rewrite (LLM)   pipeline/triage.ts
-           -> assignment (deterministic rank, LLM rationale) -> task(open) + task_assignments(proposed) + agent_actions(pending)
-  -> Mo / team lead approves in app -> notify volunteers -> volunteer accepts -> en_route -> on_scene -> done
+
+## Task lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Open: issue reported
+    Open --> Queued: volunteer busy
+    Open --> Assigned: volunteer free
+    Queued --> Assigned: volunteer frees up
+    Assigned --> Accepted: "copy / on my way"
+    Assigned --> Open: declined or no ack, reassign
+    Accepted --> InProgress: arrived
+    InProgress --> Done: "done"
+    InProgress --> Escalated: "need help"
+    Escalated --> InProgress: lead responds
+
+    Accepted --> Nudged: past ETA, no update
+    InProgress --> Nudged: past ETA, no update
+    Nudged --> InProgress: volunteer replies
+    Nudged --> LeadAlerted: 2nd nudge, still silent
+    LeadAlerted --> Open: lead reassigns
+    LeadAlerted --> InProgress: lead confirms OK
+
+    Done --> [*]
+    note right of Nudged
+        Silence never closes a task.
+        Urgent tasks skip to LeadAlerted.
+    end note
 ```
 
-Rules
-- Agents propose, people approve. Only P3 info answers are closed by AI alone, and the P3 agent can bail to triage.
-- Fail closed: any pipeline error means a human sees the raw report (TODO: write a fallback P2 task on error).
-- Every stage's output is stored in `triage_runs` (audit + demo of the reasoning).
+## Tools (draft)
 
-Layout
-- `supabase/migrations/*` schema, `supabase/seed.sql` teams/skills/zones/playbooks
-- `src/lib/schema/*` zod contracts shared by client and server
-- `src/server/models/*` Jev (classifier) + Luna (LLM) seams, mocks when `USE_LIVE_MODELS!=1`
-- `src/server/pipeline/*` stages; `src/server/store.ts` persistence (memory fallback without Supabase env)
+| Tool | Does | Human approval? |
+| --- | --- | --- |
+| `create_task` | Turn a report into a task: title, summary, team, priority, location | No |
+| `assign_task` | Pick a volunteer (on shift, skills, nearest, least busy) or queue it | No, lead can veto |
+| `reassign_task` | Move a task to someone else (declined, silent, overloaded) | Lead |
+| `update_progress` | Record "copy", "on my way", "arrived", "delayed" | No |
+| `close_task` | Mark done, log outcome | No |
+| `escalate` | Push to team lead, then Mo | No (it only adds humans) |
+| `ask_followup` | Ask the reporter or volunteer a short clarifying question | No |
+| `answer_info` | Answer routine questions (toilets, times, directions) | No |
+| `propose_roster_fix` | Cover no-shows, swaps, short staffing | Lead or Mo |
+| `send_message` | Message a person, team or zone | Broadcasts need Mo |
+
+Always human-only: emergency services, stage hold or evacuation, moving whole teams.
+
+## Rules
+
+**Voice in.** Push-to-talk (or typed). Audio is transcribed server-side, the text is echoed back ("Heard: ...") before anything happens. Short reply words are understood hands-free: *copy, on my way, done, need help*.
+
+**Voice out.** Idle volunteers get the full task spoken. Busy volunteers (an Accepted or InProgress task) get a short ping: "new task, check the app". No acknowledgement means push again, then the team lead.
+
+**Assignment.** One active task per volunteer; extra tasks queue. Respects shift, skills, distance and current load.
+
+**Nudges.** A scheduler, not an LLM, checks for tasks past their ETA or silent too long: nudge, second nudge, alert lead, lead reassigns. Silence never closes a task. Urgent tasks go straight to the lead.
+
+**Audit.** Every state change and agent decision is written to task events.
+
+## Open
+
+- Agent shape: one supervisor with tools vs a router plus specialist agents.
+- Nudge timings (first nudge, gap, urgent skip).
+- Team taxonomy: Artist, Food Vendor, Technical, Security, Logistics, Medical, Audience, Misc.
