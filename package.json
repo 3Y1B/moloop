@@ -25,6 +25,7 @@
     "expo-web-browser": "~57.0.3",
     "hono": "4.13.13",
     "maplibre-gl": "^5.24.0",
+    "postgres": "^3.4.9",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",

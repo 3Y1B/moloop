@@ -1,0 +1,83 @@
+import type { IncidentCategory, Priority, ReplyKind, TeamSlug } from '@/lib/schema';
+
+/**
+ * Keyword stand-ins for the models: the reply classifier, triage and the routine-answer agent.
+ * Shared by MockRepo and the server until phase 3 puts the real models behind the same calls.
+ */
+
+// Order matters: "need help" before "help"-ish report words.
+const REPLY_PATTERNS: [ReplyKind, RegExp][] = [
+  ['need_help', /\b(need (some )?help|need backup|send (help|backup)|can'?t handle)\b/i],
+  ['done', /\b(done|all good|sorted|finished|resolved|all clear)\b/i],
+  ['still_on_it', /\b(still on it|running late|delayed|few more min(ute)?s|held up)\b/i],
+  ['decline', /\b(can'?t take|decline|not me)\b/i],
+  ['accept', /\b(accept|copy|got it|roger|on it|will do|on my way|omw|heading (there|over))\b/i],
+];
+
+// Keyword → team. First match wins.
+const TRIAGE: { team: TeamSlug; re: RegExp }[] = [
+  { team: 'first-aid', re: /(collapsed|faint|bleed|injur|hurt|dizzy|heat|unconscious|sting|vomit|asthma|breath|blister|plaster|sunscreen)/i },
+  { team: 'welfare', re: /(lost (child|kid)|can'?t find (my|their)|crying|harass|unsafe|lost property)/i },
+  { team: 'crowd', re: /(queue|crowd|crush|gate|barrier|packed)/i },
+  { team: 'security', re: /(fight|theft|stole|weapon|aggressive|drunk)/i },
+  { team: 'artist', re: /(artist|green room|backstage|rider|band)/i },
+  { team: 'vendors', re: /(vendor|stall|food|gas|bbq)/i },
+  { team: 'ops', re: /(spill|bin|power|light|toilet|cable|water station|leak)/i },
+];
+const P1 = /(unconscious|not breathing|not responding|isn'?t responding|collapsed|lost (child|kid)|weapon|crush)/i;
+/** First aid that can wait: P3 rather than P2. */
+const MINOR = /(blister|plaster|sunscreen|band-?aid|graze|ice pack)/i;
+/** Does added detail sound worse? */
+const WORSE = /(worse|not breathing|can'?t breathe|unconscious|not responding|collapsed|bleeding|seizure|passed out|chest pain|vomit)/i;
+const QUESTION = /^(where|what|when|how|is|are|can i|do|does|which)\b|\?\s*$/i;
+
+export const TEAM_CATEGORY: Record<TeamSlug, IncidentCategory> = {
+  'first-aid': 'medical', welfare: 'other', crowd: 'crowding', security: 'security',
+  info: 'info_request', artist: 'artist', vendors: 'vendor', ops: 'facilities',
+};
+
+/** Stand-in for the AI's routine answers (answer_info). First matching pattern wins. */
+export const GUEST_ANSWERS: { re: RegExp; answer: string }[] = [
+  { re: /toilet|bathroom|loo|restroom/i, answer: 'Nearest toilets to the Oval Stage are Toilets East, by the tennis courts. There are more at Toilets West, next to the Grove.' },
+  { re: /water|refill|drink/i, answer: 'Free water refills at Water Station 1 (west end of Food Alley) and Water Station 2 (east end, near the Oval Stage).' },
+  { re: /lost property|lost my|left my/i, answer: 'Lost property is at the Info Tent, open until 11pm. Bring ID to collect.' },
+  { re: /\b(times?|set|on next|playing|line-?up|schedule)\b/i, answer: 'Next up: Oval Stage at 5:30pm, Track Stage at 6:00pm. Full times are on the board at the Info Tent.' },
+  { re: /\b(map|where is|where's|how do i get)\b/i, answer: 'The Info Tent is just inside Gate B, on the left. Food Alley runs between the oval and the track.' },
+];
+
+/** Stand-in for triage: keyword → team + priority. */
+export function triage(text: string): { team: TeamSlug; priority: Priority } {
+  const team = TRIAGE.find((x) => x.re.test(text))?.team ?? 'ops';
+  const priority: Priority = P1.test(text) ? 'P1'
+    : team === 'first-aid' && MINOR.test(text) ? 'P3'
+      : team === 'first-aid' || team === 'security' || team === 'welfare' ? 'P2' : 'P3';
+  return { team, priority };
+}
+
+/** The team for "talk to a person": whatever fits, Info if nothing does. */
+export const teamForPerson = (text: string): TeamSlug => TRIAGE.find((x) => x.re.test(text))?.team ?? 'info';
+
+/** A routine question the AI can answer itself, or null if someone needs to come. */
+export function routineAnswer(text: string): string | null {
+  if (!QUESTION.test(text.trim()) || P1.test(text) || WORSE.test(text)) return null;
+  if (TRIAGE.some((x) => (x.team === 'first-aid' || x.team === 'security') && x.re.test(text))) return null;
+  return GUEST_ANSWERS.find((a) => a.re.test(text))?.answer ?? null;
+}
+
+/** Does a festival-goer's added detail mean it got worse? */
+export const soundsWorse = (text: string) => WORSE.test(text);
+
+/**
+ * Is a short utterance a reply to the task you're on? A helper can only finish; escalating is the owner's call.
+ * Long utterances are reports even if they contain "done" etc. Replies are short.
+ */
+export function replyIn(heard: string, helping: boolean): ReplyKind | null {
+  const match = REPLY_PATTERNS.find(([kind, re]) => re.test(heard) && !(helping && kind !== 'done'));
+  return match && heard.split(/\s+/).length <= 8 ? match[0] : null;
+}
+
+/** Keep the reason, drop the trigger phrase: "need help, he's getting worse" → "he's getting worse". */
+export function noteFor(reply: ReplyKind, heard: string): string | undefined {
+  if (reply !== 'need_help') return heard;
+  return heard.replace(REPLY_PATTERNS[0][1], '').replace(/^[\s,.;:-]+/, '').trim() || undefined;
+}
