@@ -2,12 +2,14 @@ import { PriorityResult, RewriteResult, TEAM_SLUGS, type ReportInput, type Route
 import { classifier, llm } from '../models';
 
 const TEAM_LABELS = [
-  { id: 'first-aid', description: 'medical injury illness collapsed bleeding seizure unconscious breathing' },
-  { id: 'water-heat', description: 'heat dehydration water station thirsty hot faint cooling shade' },
+  { id: 'first-aid', description: 'medical injury illness collapsed bleeding seizure unconscious breathing heat dehydration faint dizzy' },
   { id: 'welfare', description: 'lost child separated vulnerable harassed unsafe lost property' },
   { id: 'crowd', description: 'crowding crush queue gate barrier storm evacuation overcrowded' },
   { id: 'security', description: 'fight theft weapon trespass drunk aggressive security' },
-  { id: 'access', description: 'wheelchair accessibility toilet directions facilities information' },
+  { id: 'info', description: 'wheelchair accessibility directions information schedule audience question' },
+  { id: 'artist', description: 'artist performer band backstage green room rider stage manager' },
+  { id: 'vendors', description: 'vendor stall food drink gas cooking stallholder payment' },
+  { id: 'ops', description: 'technical power lighting sound spill bins toilets water station cables logistics' },
 ] as const satisfies readonly { id: (typeof TEAM_SLUGS)[number]; description: string }[];
 
 const PRIORITY_LABELS = [

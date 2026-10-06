@@ -16,11 +16,12 @@ create type reporter_kind as enum ('festivalgoer', 'volunteer', 'staff', 'system
 create type priority as enum ('P1', 'P2', 'P3');
 create type incident_category as enum (
   'medical', 'heat', 'lost_child', 'lost_property', 'crowding', 'security',
-  'weather', 'facilities', 'accessibility', 'info_request', 'other'
+  'weather', 'facilities', 'accessibility', 'info_request', 'artist', 'vendor', 'technical', 'other'
 );
 
 create type route_decision as enum ('ai_resolved', 'escalated_to_triage');
-create type task_status as enum ('open', 'assigned', 'in_progress', 'resolved', 'cancelled');
+-- Lifecycle in docs/ARCHITECTURE.md. Nudged / lead-alerted are overlays (tasks.nudge_count, lead_alerted_at), not statuses.
+create type task_status as enum ('open', 'queued', 'assigned', 'accepted', 'in_progress', 'escalated', 'resolved', 'cancelled');
 create type handled_by as enum ('ai', 'human');
 
 create type shift_assignment_status as enum (
@@ -58,7 +59,7 @@ create table zones (
 
 create table teams (
   id          uuid primary key default gen_random_uuid(),
-  slug        text unique not null,              -- 'first-aid', 'crowd', 'welfare', 'water-heat', 'info', 'stage'
+  slug        text unique not null,              -- see TEAM_SLUGS in src/lib/schema/enums.ts
   name        text not null,
   description text not null,                     -- fed to the team classifier as its label definition
   color       text,
@@ -188,6 +189,13 @@ create table tasks (
   team_id        uuid references teams,
   zone_id        uuid references zones,
   status         task_status not null default 'open',
+  assignee_id    uuid references profiles,                 -- current owner (also set while queued)
+  assigned_at    timestamptz,
+  eta_at         timestamptz,
+  last_activity_at timestamptz not null default now(),     -- any volunteer reply; drives the nudge scheduler
+  nudge_count    smallint not null default 0,
+  last_nudge_at  timestamptz,
+  lead_alerted_at timestamptz,
   handled_by     handled_by not null,
   ai_response    text,                                     -- what the P3 agent told the reporter
   response_lang  text,
@@ -199,6 +207,7 @@ create table tasks (
 );
 create index on tasks (status, priority, created_at desc);
 create index on tasks (team_id, status);
+create index on tasks (assignee_id, status);
 
 create table task_assignments (
   id           uuid primary key default gen_random_uuid(),

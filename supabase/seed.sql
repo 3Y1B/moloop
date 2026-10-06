@@ -1,12 +1,15 @@
 -- Reference data. Volunteers/profiles come from auth.users, so seed those via script (scripts/seed-volunteers.ts, TODO).
 
+-- Merged taxonomy: safety teams + ops teams. Mirrors TEAM_SLUGS in src/lib/schema/enums.ts.
 insert into teams (slug, name, description, handles, color) values
-  ('first-aid',  'First Aid',     'Medical incidents, injuries, collapses, intoxication needing medical attention, anything needing a trained first aider.', '{medical}', '#E5484D'),
-  ('water-heat', 'Water & Heat',  'Heat stress, dehydration, water station queues and refills, shade and cooling.', '{heat}', '#3E63DD'),
-  ('welfare',    'Welfare & Lost Children', 'Lost or separated children, vulnerable people, harassment, someone feeling unsafe, lost property.', '{lost_child,lost_property}', '#F76B15'),
-  ('crowd',      'Crowd & Gates', 'Crowding, queue management, gate flow, barrier issues, evacuations.', '{crowding,weather}', '#8E4EC6'),
-  ('security',   'Security Liaison', 'Fights, theft, weapons, trespass, anything needing the security contractor.', '{security}', '#30A46C'),
-  ('access',     'Access & Info', 'Accessibility needs, wayfinding, program questions, facilities, toilets.', '{accessibility,info_request,facilities}', '#12A594');
+  ('first-aid', 'First Aid & Heat',    'Medical incidents, injuries, collapses, heat stress, anything needing a trained first aider.', '{medical,heat}', '#FF3B30'),
+  ('welfare',   'Welfare & Lost Kids', 'Lost or separated children, vulnerable people, harassment, someone feeling unsafe, lost property.', '{lost_child,lost_property}', '#FF9500'),
+  ('crowd',     'Crowd & Gates',       'Crowding, queue management, gate flow, barrier issues, weather holds, evacuations.', '{crowding,weather}', '#AF52DE'),
+  ('security',  'Security Liaison',    'Fights, theft, weapons, trespass, anything needing the security contractor.', '{security}', '#34C759'),
+  ('info',      'Access & Info',       'Accessibility needs, wayfinding, program questions, audience help.', '{accessibility,info_request}', '#30B0C7'),
+  ('artist',    'Artist Liaison',      'Performers, backstage, green rooms, riders, stage managers.', '{artist}', '#FF2D55'),
+  ('vendors',   'Food & Vendors',      'Stallholders, food safety, gas and cooking issues, vendor logistics.', '{vendor}', '#A2845E'),
+  ('ops',       'Tech & Logistics',    'Power, sound, lighting, water stations, bins, toilets, spills, anything else.', '{technical,facilities,other}', '#5856D6');
 
 insert into skills (slug, name, requires_expiry) values
   ('first-aid-cert', 'First Aid Certificate (HLTAID011)', true),
@@ -29,7 +32,7 @@ insert into zones (slug, name, kind, is_open_air, capacity) values
 
 insert into playbooks (slug, title, trigger, steps) values
   ('heat-35c', 'Extreme heat (>=35C)', 'BoM forecast or on-site reading >= 35C',
-   '[{"step":"Open all water stations, double staffing","team_slug":"water-heat","template":"Heat plan active. Water stations fully staffed. Rotate volunteers every 45 min."},
+   '[{"step":"Open all water stations, double staffing","team_slug":"ops","template":"Heat plan active. Water stations fully staffed. Rotate volunteers every 45 min."},
      {"step":"Pre-position first aiders at stages","team_slug":"first-aid","template":"Heat plan: first aiders to Lawn + River stages now."}]'),
   ('storm-warning', 'Storm warning (open-air stages)', 'Severe thunderstorm warning within 60 min',
    '[{"step":"Safety lead decides on stage hold","team_slug":"crowd","template":"Storm warning issued. Await safety lead instruction. Do not announce on your own."},
