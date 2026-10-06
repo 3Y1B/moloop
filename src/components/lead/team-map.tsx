@@ -1,4 +1,4 @@
-import { StyleSheet, useWindowDimensions } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import { VenueMap, zoneSpot, type MapMarker } from '@/components/map/venue-map';
 import { NODES, VENUE_ZONES } from '@/data/venue';
@@ -23,7 +23,6 @@ export function TeamMap({ members, tasks, color, myZone, frame, onPerson, onTask
   onTask: (taskId: string) => void;
 }) {
   const theme = useTheme();
-  const { width, height } = useWindowDimensions();
 
   // Index 0 is the zone's centre, where I'm drawn; everyone else spreads around it.
   const used: Record<string, number> = {};
@@ -61,7 +60,6 @@ export function TeamMap({ members, tasks, color, myZone, frame, onPerson, onTask
       markers={markers}
       onMarkerPress={(m) => (m.kind === 'task' ? onTask(m.id) : onPerson(m.id))}
       fit="site"
-      aspect={width / height}
       frame={frame}
       style={StyleSheet.absoluteFill}
     />

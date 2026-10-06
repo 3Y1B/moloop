@@ -18,16 +18,19 @@ export const TEAMS: Team[] = [
 ];
 
 export const ZONES: Zone[] = [
-  { slug: 'gate-a', name: 'Gate A (Main)' },
-  { slug: 'gate-b', name: 'Gate B (Tram)' },
-  { slug: 'lawn-stage', name: 'Lawn Stage' },
-  { slug: 'river-stage', name: 'River Stage' },
+  { slug: 'gate-a', name: 'Gate A (Tunnel)' },
+  { slug: 'gate-b', name: 'Gate B (Walkway)' },
+  { slug: 'lawn-stage', name: 'Oval Stage' },
+  { slug: 'river-stage', name: 'Track Stage' },
   { slug: 'water-1', name: 'Water Station 1' },
   { slug: 'water-2', name: 'Water Station 2' },
   { slug: 'first-aid-hq', name: 'First Aid Post' },
   { slug: 'food-alley', name: 'Food Alley' },
   { slug: 'info-tent', name: 'Info Tent' },
   { slug: 'backstage', name: 'Backstage' },
+  { slug: 'toilets-west', name: 'Toilets West' },
+  { slug: 'toilets-east', name: 'Toilets East' },
+  { slug: 'the-grove', name: 'The Grove' },
 ];
 
 const vol = (
@@ -87,10 +90,10 @@ function tasks(now: number): Task[] {
     }),
     task({
       id: 't-kit', priority: 'P3', category: 'facilities', teamSlug: 'first-aid', zoneSlug: 'lawn-stage',
-      title: 'Restock first aid bag at Lawn Stage',
-      summary: 'Bag at the Lawn Stage side tent is low on gauze, saline and ice packs.',
+      title: 'Restock first aid bag at Oval Stage',
+      summary: 'Bag at the Oval Stage side tent is low on gauze, saline and ice packs.',
       locationHint: 'Side tent, stage left',
-      reporter: { kind: 'volunteer', name: 'Tom Becker', quote: 'Lawn stage kit is nearly out of gauze and ice packs', language: 'en' },
+      reporter: { kind: 'volunteer', name: 'Tom Becker', quote: 'Oval stage kit is nearly out of gauze and ice packs', language: 'en' },
       status: 'queued', assigneeId: ME_ID, createdAt: now - 6 * MIN,
     }),
     task({
@@ -127,7 +130,7 @@ function tasks(now: number): Task[] {
     // Jordan's Needs you on load: one of each kind (asked for help, went quiet, approval, unassigned).
     task({
       id: 't-faint', priority: 'P2', category: 'heat', teamSlug: 'first-aid', zoneSlug: 'river-stage',
-      title: 'Teen fainted at River Stage barrier', summary: 'Girl, about 16, fainted at the front barrier. Came round, pale and shaky.',
+      title: 'Teen fainted at Track Stage barrier', summary: 'Girl, about 16, fainted at the front barrier. Came round, pale and shaky.',
       locationHint: 'Front barrier, stage right',
       status: 'escalated', assigneeId: 'v-tom', createdAt: now - 7 * MIN, assignedAt: now - 6 * MIN, etaAt: now + 4 * MIN, lastActivityAt: now - 40_000,
       escalation: { at: now - 40_000, reason: 'She fainted again. I need a second pair of hands.', level: 'lead', ownerId: LEAD_ID, bumpedAt: null, response: null },
@@ -140,9 +143,9 @@ function tasks(now: number): Task[] {
     }),
     task({
       id: 't-asthma', priority: 'P2', category: 'medical', teamSlug: 'first-aid', zoneSlug: 'lawn-stage',
-      title: 'Asthma attack at Lawn Stage', summary: 'Young man wheezing, has his inhaler but it is not helping much. Friend is with him.',
-      locationHint: 'Back of the lawn, by the sound desk',
-      reporter: { kind: 'festivalgoer', quote: 'my mate is having an asthma attack at the back of the lawn stage', language: 'en' },
+      title: 'Asthma attack at Oval Stage', summary: 'Young man wheezing, has his inhaler but it is not helping much. Friend is with him.',
+      locationHint: 'Middle of the oval, by the sound desk',
+      reporter: { kind: 'festivalgoer', quote: 'my mate is having an asthma attack at the back of the oval stage', language: 'en' },
       handledBy: 'ai', status: 'open', createdAt: now - 10_000,
     }),
     task({
@@ -155,7 +158,7 @@ function tasks(now: number): Task[] {
     task({
       id: 't-mum', priority: 'P2', category: 'heat', teamSlug: 'first-aid', zoneSlug: 'gate-b',
       title: 'Woman feeling faint at Gate B', summary: 'Woman in her 50s feeling faint and hot. Sitting in the shade with her son.',
-      locationHint: 'Shade cloth by the tram stop', requestId: 'r-mum',
+      locationHint: 'Shade cloth by the ticket booth', requestId: 'r-mum',
       reporter: { kind: 'festivalgoer', name: 'Alex', quote: 'my mum feels really faint, we’re in the shade at gate b', language: 'en' },
       handledBy: 'ai', status: 'accepted', assigneeId: 'v-ben', createdAt: now - 3 * MIN, assignedAt: now - 2 * MIN, etaAt: now + 8 * MIN, lastActivityAt: now - 2 * MIN,
     }),
@@ -206,7 +209,7 @@ function messages(now: number): Message[] {
     },
     {
       id: 'm2', recipientId: ME_ID, at: now - 11 * MIN, kind: 'direct', fromName: 'Jordan Lee', read: false,
-      body: 'When you get a sec, grab a fresh bag from the First Aid Post. Lawn kit is running low.',
+      body: 'When you get a sec, grab a fresh bag from the First Aid Post. Oval kit is running low.',
     },
     {
       id: 'm3', recipientId: ME_ID, at: now - 34 * MIN, kind: 'broadcast', fromName: 'Mo', read: true,
@@ -218,7 +221,7 @@ function messages(now: number): Message[] {
     },
     {
       id: 'm5', recipientId: LEAD_ID, at: now - 40_000, kind: 'escalation', fromName: 'Moloop', taskId: 't-faint', read: false,
-      body: 'Tom asked for help: Teen fainted at River Stage barrier.',
+      body: 'Tom asked for help: Teen fainted at Track Stage barrier.',
     },
     {
       id: 'm6', recipientId: LEAD_ID, at: now - 2 * MIN, kind: 'escalation', fromName: 'Moloop', taskId: 't-cut', read: false,
@@ -226,7 +229,7 @@ function messages(now: number): Message[] {
     },
     {
       id: 'm7', recipientId: LEAD_ID, at: now - 10_000, kind: 'escalation', fromName: 'Moloop', taskId: 't-asthma', read: false,
-      body: 'Approve: Asthma attack at Lawn Stage.',
+      body: 'Approve: Asthma attack at Oval Stage.',
     },
   ];
 }
@@ -234,15 +237,15 @@ function messages(now: number): Message[] {
 function requests(now: number): GuestRequest[] {
   return [
     {
-      id: 'r-toilet', createdAt: now - 18 * MIN, heard: 'Where are the closest toilets to the Lawn Stage?', zoneSlug: 'lawn-stage', locationHint: null,
+      id: 'r-toilet', createdAt: now - 18 * MIN, heard: 'Where are the closest toilets to the Oval Stage?', zoneSlug: 'lawn-stage', locationHint: null,
       stage: 'answered', aiAnswer: GUEST_ANSWERS[0].answer, taskId: null, reopenedAt: null,
       thread: [
-        { from: 'guest', text: 'Where are the closest toilets to the Lawn Stage?', at: now - 18 * MIN },
+        { from: 'guest', text: 'Where are the closest toilets to the Oval Stage?', at: now - 18 * MIN },
         { from: 'ai', text: GUEST_ANSWERS[0].answer, at: now - 18 * MIN + 2_000 },
       ],
     },
     {
-      id: 'r-mum', createdAt: now - 3 * MIN, heard: 'My mum feels really faint, we’re in the shade at Gate B', zoneSlug: 'gate-b', locationHint: 'Shade cloth by the tram stop',
+      id: 'r-mum', createdAt: now - 3 * MIN, heard: 'My mum feels really faint, we’re in the shade at Gate B', zoneSlug: 'gate-b', locationHint: 'Shade cloth by the ticket booth',
       stage: 'finding', aiAnswer: null, taskId: 't-mum', reopenedAt: null,
       thread: [{ from: 'guest', text: 'My mum feels really faint, we’re in the shade at Gate B', at: now - 3 * MIN }],
     },
@@ -294,28 +297,28 @@ export type TaskDraft = Omit<
 
 /** Stand-in for the AI's routine answers (answer_info). First matching pattern wins. */
 export const GUEST_ANSWERS: { re: RegExp; answer: string }[] = [
-  { re: /toilet|bathroom|loo|restroom/i, answer: 'Nearest toilets are behind Water Station 1, two minutes from the Lawn Stage. The accessible toilet is next to the Info Tent.' },
-  { re: /water|refill|drink/i, answer: 'Free water refills at Water Station 1 (by the Lawn Stage) and Water Station 2 (on the way to the River Stage).' },
+  { re: /toilet|bathroom|loo|restroom/i, answer: 'Nearest toilets to the Oval Stage are Toilets East, by the tennis courts. There are more at Toilets West, next to the Grove.' },
+  { re: /water|refill|drink/i, answer: 'Free water refills at Water Station 1 (west end of Food Alley) and Water Station 2 (east end, near the Oval Stage).' },
   { re: /lost property|lost my|left my/i, answer: 'Lost property is at the Info Tent, open until 11pm. Bring ID to collect.' },
-  { re: /\b(times?|set|on next|playing|line-?up|schedule)\b/i, answer: 'Next up: Lawn Stage at 5:30pm, River Stage at 6:00pm. Full times are on the board at the Info Tent.' },
-  { re: /\b(map|where is|where's|how do i get)\b/i, answer: 'The Info Tent is just inside Gate A, on the right. Food Alley runs between the two stages.' },
+  { re: /\b(times?|set|on next|playing|line-?up|schedule)\b/i, answer: 'Next up: Oval Stage at 5:30pm, Track Stage at 6:00pm. Full times are on the board at the Info Tent.' },
+  { re: /\b(map|where is|where's|how do i get)\b/i, answer: 'The Info Tent is just inside Gate B, on the left. Food Alley runs between the oval and the track.' },
 ];
 
 /** Canned festival-goer lines for the dev panel scenarios. */
 export const GUEST_SCRIPTS = {
-  question: { text: 'What time is the next set on the Lawn Stage?', zoneSlug: 'lawn-stage' },
+  question: { text: 'What time is the next set on the Oval Stage?', zoneSlug: 'lawn-stage' },
   report: { text: 'Can someone bring blister plasters and sunscreen? We’re at the Info Tent', zoneSlug: 'info-tent' },
-  p1: { text: 'My friend collapsed and isn’t responding, front left of the River Stage', zoneSlug: 'river-stage' },
+  p1: { text: 'My friend collapsed and isn’t responding, front left of the Track Stage', zoneSlug: 'river-stage' },
 } as const;
 
 /** Canned reports for "simulate incoming task" in the dev panel. */
 export const INCOMING: Record<Priority, TaskDraft[]> = {
   P1: [{
     priority: 'P1', category: 'medical', teamSlug: 'first-aid', zoneSlug: 'river-stage', handledBy: 'human',
-    title: 'Woman collapsed, River Stage front-left',
+    title: 'Woman collapsed, Track Stage front-left',
     summary: 'Woman in her 20s collapsed in the crowd, not responding to her friends. Friends are with her.',
     locationHint: 'Front-left of the barrier, near the speaker stack',
-    reporter: { kind: 'festivalgoer', quote: 'my friend just collapsed and she’s not answering us, front left of river stage', language: 'en' },
+    reporter: { kind: 'festivalgoer', quote: 'my friend just collapsed and she’s not answering us, front left of pond stage', language: 'en' },
   }],
   P2: [{
     priority: 'P2', category: 'heat', teamSlug: 'first-aid', zoneSlug: 'gate-a', handledBy: 'human',

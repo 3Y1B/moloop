@@ -20,20 +20,24 @@ insert into skills (slug, name, requires_expiry) values
   ('multilingual',   'Speaks a language other than English', false);
 
 insert into zones (slug, name, kind, is_open_air, capacity) values
-  ('gate-a',        'Gate A (Main)',      'gate',      true,  3000),
-  ('gate-b',        'Gate B (Tram)',      'gate',      true,  2000),
-  ('lawn-stage',    'Lawn Stage',         'stage',     true,  6000),
-  ('river-stage',   'River Stage',        'stage',     true,  4000),
+  ('gate-a',        'Gate A (Tunnel)',    'gate',      true,  3000),
+  ('gate-b',        'Gate B (Walkway)',   'gate',      true,  2000),
+  ('lawn-stage',    'Oval Stage',         'stage',     true,  8000),
+  ('river-stage',   'Track Stage',        'stage',     true,  3000),
   ('water-1',       'Water Station 1',    'water',     true,  null),
   ('water-2',       'Water Station 2',    'water',     true,  null),
   ('first-aid-hq',  'First Aid Post',     'first_aid', false, null),
-  ('food-alley',    'Food Alley',         'food',      true,  2500),
-  ('info-tent',     'Info Tent',          'area',      false, null);
+  ('food-alley',    'Food Alley',         'food',      true,  1500),
+  ('info-tent',     'Info Tent',          'area',      false, null),
+  ('backstage',     'Backstage',          'area',      true,  null),
+  ('toilets-west',  'Toilets West',       'area',      true,  null),
+  ('toilets-east',  'Toilets East',       'area',      true,  null),
+  ('the-grove',     'The Grove',          'area',      true,  800);
 
 insert into playbooks (slug, title, trigger, steps) values
   ('heat-35c', 'Extreme heat (>=35C)', 'BoM forecast or on-site reading >= 35C',
    '[{"step":"Open all water stations, double staffing","team_slug":"ops","template":"Heat plan active. Water stations fully staffed. Rotate volunteers every 45 min."},
-     {"step":"Pre-position first aiders at stages","team_slug":"first-aid","template":"Heat plan: first aiders to Lawn + River stages now."}]'),
+     {"step":"Pre-position first aiders at stages","team_slug":"first-aid","template":"Heat plan: first aiders to Oval + Track stages now."}]'),
   ('storm-warning', 'Storm warning (open-air stages)', 'Severe thunderstorm warning within 60 min',
    '[{"step":"Safety lead decides on stage hold","team_slug":"crowd","template":"Storm warning issued. Await safety lead instruction. Do not announce on your own."},
      {"step":"Prepare shelter routes","team_slug":"crowd","template":"Open shelter routes B and C."}]'),

@@ -7,7 +7,7 @@ const DEMO_LINE: Record<string, string> = {
   assigned: 'uh yeah got it, {hitting|heading} over now',
   accepted: 'ok he’s, um, he’s {salted|sorted} now. done',
   escalated: 'all done, {paramedic|paramedics} have taken over',
-  none: 'there’s a spill near the uh river {state|stage} bar, it’s pretty {slippy|slippery}',
+  none: 'there’s a spill near the uh track {state|stage} bar, it’s pretty {slippy|slippery}',
 };
 const DEMO_MORE = 'it’s right {buy|by} the bins near the {fans|fence}';
 

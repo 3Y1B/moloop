@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { Fragment, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { DutyChip, DutyPanel } from '@/components/duty-header';
@@ -88,7 +88,6 @@ function MyMap({ task, frame }: { task: Task | undefined; frame: { top: number; 
   const me = useMe();
   const route = useRouteTo(task);
   const accent = usePriorityColors()[task?.priority ?? 'P3'];
-  const { width, height } = useWindowDimensions();
   const zone = me?.zoneSlug ? VENUE_ZONES[me.zoneSlug] : undefined;
   return (
     <VenueMap
@@ -97,7 +96,6 @@ function MyMap({ task, frame }: { task: Task | undefined; frame: { top: number; 
       target={task?.zoneSlug}
       targetColor={accent}
       fit={task ? 'route' : 'site'}
-      aspect={width / height}
       frame={frame}
       style={StyleSheet.absoluteFill}
     />

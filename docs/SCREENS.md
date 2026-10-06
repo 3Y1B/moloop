@@ -44,7 +44,7 @@ Reassigned or closed tasks leave the volunteer's card. They get an Inbox message
 
 | Member state | Line |
 | --- | --- |
-| Free, on duty | Free · Lawn Stage |
+| Free, on duty | Free · Oval Stage |
 | On break / off shift | On break |
 | On a task | Dizzy man at Water 2 · 4 min |
 | Asked for help | Asked for help · 1 min (danger) |
@@ -164,7 +164,7 @@ type GuestRequest = {
 
 Every main screen is the same shape, like a ride-hailing app: **the site map full-screen, a sheet over it, and the voice pill pinned to the bottom.** There's no tab bar.
 
-- **Map** (`components/map/venue-map.tsx`): frames what matters in the part the sheet leaves clear (`frame`). Floating round controls along the top (`map-button.tsx`, `map-screen.tsx`).
+- **Map** (`components/map/venue-map.tsx`, `.web.tsx` on web): the real site, University Oval and the athletics track at the University of Melbourne (Parkville), on MapLibre with OpenFreeMap tiles, the festival drawn into the style as an illustrated site map (`map-art.ts`: ground from OpenStreetMap in `data/venue-features.ts`, stages, tents, trucks and toilets from the zones, badges in `assets/images/map`) and people and pins as views on top (`map-markers.tsx`). Positions stay in plan metres (`data/venue.ts`), pinned to the ground by `GEO`. Frames what matters in the part the sheet leaves clear (`frame`). Floating round controls along the top (`map-button.tsx`, `map-screen.tsx`). Needs a development build (`npx expo run:ios`); Expo Go can't load MapLibre.
 - **Sheet** (`components/ui/bottom-sheet.tsx`): three stops: the headline, half the screen, and nearly full. Below the top stop the whole sheet drags; at the top its content scrolls. Pulling the sheet up replaces "Details" toggles.
 - **Voice pill** (`components/voice/voice-dock.tsx`): hold anywhere on the pill to talk, or tap the keyboard to type. What was heard comes back in a small tray above it with exactly what Send will do. No orb on screen; the orb survives only as the small mic bubble.
 
