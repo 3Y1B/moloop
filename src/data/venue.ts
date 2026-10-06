@@ -28,10 +28,12 @@ export type ZoneShape =
   /** Rows of portable toilets along the top and bottom of the box. */
   | ({ kind: 'toilets'; rows: 1 | 2 } & Box)
   | { kind: 'area'; ring: [number, number][] }
+  /** A permanent building, drawn from its real footprint. */
+  | { kind: 'building'; ring: [number, number][] }
   | { kind: 'water'; x: number; y: number }
   | { kind: 'gate'; x: number; y: number };
 
-export type ZoneIcon = 'stage' | 'gate' | 'water' | 'firstaid' | 'food' | 'info' | 'backstage' | 'toilets' | 'shade';
+export type ZoneIcon = 'stage' | 'gate' | 'water' | 'firstaid' | 'food' | 'info' | 'backstage' | 'toilets' | 'shade' | 'pavilion';
 
 export type VenueZone = {
   slug: string;
@@ -81,14 +83,18 @@ export function toPlan([lng, lat]: readonly [number, number]): Point {
 /**
  * The festival fence, clockwise from Gate B's west post. It breaks for Gate A, where the Tin Alley
  * tunnel comes up beside Nona Lee Sports Centre, and for Gate B, the walkway between Nona Lee and
- * the Beaurepaire Centre. West: the path along Trinity College. North and east: Newman Drive,
- * taking in the tennis courts. South: the two sports centres.
+ * the Beaurepaire Centre. West: the path along Trinity College. North: the Pavilion's back wall,
+ * which the fence runs into and out of. East: Newman Drive, taking in the tennis courts. South:
+ * the two sports centres.
  */
 export const FENCE: [number, number][][] = [
   [
     [141, 281], [116, 281], [80, 281], [40, 279], [27, 280], [22, 268], [21, 241], [19, 216], [18, 197], [17, 184],
-    [17, 166], [18, 156], [19, 148], [25, 120], [28, 101], [30, 88], [35, 71], [43, 57], [52, 49], [66, 44], [84, 40],
-    [95, 40], [104, 35.5], [121, 31], [130, 22], [148, 12], [166, 17], [184, 21], [204, 33], [214, 43], [219, 50],
+    [17, 166], [18, 156], [19, 148], [25, 120], [28, 101], [30, 88], [35, 71], [43, 57], [52, 49], [66, 44], [76, 38],
+    [80.5, 20],
+  ],
+  [
+    [126, 27.8], [130, 22], [148, 12], [166, 17], [184, 21], [204, 33], [214, 43], [219, 50],
     [225, 61], [231, 78], [238, 100], [246, 130], [247, 160], [247, 190], [246, 225], [243, 243], [239, 262], [237, 281],
   ],
   [[228, 281], [227, 262], [227, 243], [203, 243], [203, 277], [198, 280], [194, 282], [163, 284]],
@@ -110,6 +116,7 @@ export const NODES: Record<string, WalkNode> = Object.fromEntries(
     ['w1', 52, 174, 'Water Station 1'],
     ['grove', 39, 134, 'the Grove'],
     ['stand', 48, 108, 'the grandstand'],
+    ['pavilion', 97, 43, 'the Pavilion'],
     ['foodW', 72, 174, 'the west end of Food Alley'],
     ['food', 115, 174, 'Food Alley'],
     ['trackN', 115, 186, 'the north gate of the track'],
@@ -148,6 +155,8 @@ export const EDGES: WalkEdge[] = [
   { a: 'w1', b: 'tw' },
   { a: 'tw', b: 'grove', via: [[33, 150]] },
   { a: 'grove', b: 'stand', via: [[47, 115]] },
+  { a: 'stand', b: 'pavilion', via: [[55, 97], [58, 82], [62, 70], [68, 58], [77, 49], [87, 44]] },
+  { a: 'pavilion', b: 'foh' },
   { a: 'tw', b: 'westS', via: [[19, 184], [20, 197], [20, 216], [21, 233], [22, 241], [23, 268]] },
   { a: 'westS', b: 'fa', via: [[43, 282]] },
   { a: 'fa', b: 'trackS', via: [[76, 282], [76, 273]] },
@@ -171,6 +180,17 @@ export const VENUE_ZONES: Record<string, VenueZone> = Object.fromEntries(
     {
       slug: 'the-grove', node: 'grove', label: 'The Grove', icon: 'shade',
       shape: { kind: 'area', ring: [[24, 106], [44, 103], [50, 118], [57, 136], [52, 152], [40, 165], [27, 166], [21, 140]] },
+    },
+    {
+      // Ernie Cropley Sports Pavilion, on the oval's north edge: crew HQ for the day.
+      slug: 'pavilion', node: 'pavilion', label: 'Pavilion', icon: 'pavilion',
+      shape: {
+        kind: 'building',
+        ring: [
+          [80.2, 16.6], [91.7, 12.5], [115.6, 6.5], [126, 27.8], [122.4, 28.8], [121.4, 31.3], [103.4, 35.2], [93.9, 40.8],
+          [91.8, 37.4], [95.3, 33], [97.8, 29.6], [96.9, 26.3], [93.4, 27.5], [94.6, 31.6], [85.4, 34.8], [82.4, 31.5], [83, 28.9], [80.8, 22.6],
+        ],
+      },
     },
   ] satisfies VenueZone[]).map((z) => [z.slug, z]),
 );

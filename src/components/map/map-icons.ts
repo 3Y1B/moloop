@@ -12,6 +12,7 @@ export const MAP_ICONS = {
   backstage: require('@/assets/images/map/backstage.png'),
   toilets: require('@/assets/images/map/toilets.png'),
   shade: require('@/assets/images/map/shade.png'),
+  pavilion: require('@/assets/images/map/pavilion.png'),
   bar: require('@/assets/images/map/bar.png'),
   medic: require('@/assets/images/map/medic.png'),
 } as const;

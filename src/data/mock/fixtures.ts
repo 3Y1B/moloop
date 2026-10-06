@@ -31,6 +31,7 @@ export const ZONES: Zone[] = [
   { slug: 'toilets-west', name: 'Toilets West' },
   { slug: 'toilets-east', name: 'Toilets East' },
   { slug: 'the-grove', name: 'The Grove' },
+  { slug: 'pavilion', name: 'Pavilion (Crew HQ)' },
 ];
 
 const vol = (

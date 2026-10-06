@@ -51,10 +51,12 @@ const ROOF = {
   light: {
     stage: ['#F06C96', '#E5487A'], stage2: ['#A07CF0', '#8B5CF6'], info: ['#2BBACF', '#14A3B8'], firstaid: ['#FFFFFF', '#E6E8EC'],
     backstage: ['#8A97A8', '#64748B'], security: ['#475569', '#334155'], bar: ['#B17EEB', '#9B5DE5'], foh: ['#5B6472', '#454D59'],
+    pavilion: ['#E3A47F', '#C9774F'],
   },
   dark: {
     stage: ['#D9557F', '#B83A63'], stage2: ['#8A6AD6', '#7049D0'], info: ['#1F9AAD', '#13808F'], firstaid: ['#D9DCE1', '#B7BCC4'],
     backstage: ['#5E6B7C', '#465264'], security: ['#3B4656', '#2A3341'], bar: ['#8B5CC9', '#7442B8'], foh: ['#4B5360', '#3A414C'],
+    pavilion: ['#A86A4A', '#8A5236'],
   },
 } as const;
 const CROSS = '#E5484D';
@@ -209,6 +211,14 @@ function toilets(b: Box, rows: 1 | 2, [lit, shaded]: readonly [string, string], 
   return out;
 }
 
+/** A flat-roofed building: walls (the shaded edge), then the roof set in towards its middle. */
+function building(ring: P[], [lit, shaded]: readonly [string, string], k: Pal): Feature[] {
+  const n = ring.length;
+  const [cx, cy] = [ring.reduce((t, p) => t + p[0], 0) / n, ring.reduce((t, p) => t + p[1], 0) / n];
+  const roof = ring.map(([x, y]): P => [cx + (x - cx) * 0.9, cy + (y - cy) * 0.9]);
+  return [...standing(ring, shaded, 34, k, 1.8), fill([roof], { l: 'thing', z: 34.1, c: lit })];
+}
+
 function zoneArt(z: VenueZone, scheme: Scheme, k: Pal, stageIndex: number): Feature[] {
   const s = z.shape;
   const roof = ROOF[scheme];
@@ -233,6 +243,8 @@ function zoneArt(z: VenueZone, scheme: Scheme, k: Pal, stageIndex: number): Feat
             fill([s.ring], { l: 'ground', z: 25, c: k.area, o: k.areaOpacity }),
             stroke([...s.ring, s.ring[0]], { l: 'areaLine', z: 0, c: k.area, w: 0.3, min: 1.2 }),
           ];
+    case 'building':
+      return building(s.ring, roof.pavilion, k);
     case 'gate':
       return [];
   }
@@ -336,7 +348,7 @@ function fence(k: Pal): Feature[] {
 function iconAt(z: VenueZone): P {
   const s = z.shape;
   if (s.kind === 'water' || s.kind === 'gate') return [s.x, s.y];
-  if (s.kind === 'area') {
+  if (s.kind === 'area' || s.kind === 'building') {
     const n = s.ring.length;
     return [s.ring.reduce((t, p) => t + p[0], 0) / n, s.ring.reduce((t, p) => t + p[1], 0) / n];
   }
@@ -344,7 +356,7 @@ function iconAt(z: VenueZone): P {
 }
 
 /** Which badges are placed first when they compete for room. */
-const RANK: Record<ZoneIcon, number> = { stage: 0, gate: 1, firstaid: 2, food: 3, info: 4, water: 5, toilets: 6, shade: 7, backstage: 8 };
+const RANK: Record<ZoneIcon, number> = { stage: 0, gate: 1, firstaid: 2, food: 3, info: 4, water: 5, toilets: 6, shade: 7, backstage: 8, pavilion: 9 };
 
 type PointProps = { icon: MapIconName; label: string; rank: number; decor: boolean };
 const point = (at: P, p: PointProps): GeoJSON.Feature<GeoJSON.Point, PointProps> => ({ type: 'Feature', properties: p, geometry: { type: 'Point', coordinates: ll(at) } });
@@ -367,7 +379,7 @@ function points(): GeoJSON.FeatureCollection {
 export function zoneFootprint(slug: string | null | undefined): GeoJSON.Feature<GeoJSON.Polygon> | null {
   const s = slug ? VENUE_ZONES[slug]?.shape : undefined;
   if (!s || s.kind === 'water' || s.kind === 'gate') return null;
-  const ring = s.kind === 'area' ? s.ring : rect(s);
+  const ring = s.kind === 'area' || s.kind === 'building' ? s.ring : rect(s);
   return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [close(ring)] } };
 }
 

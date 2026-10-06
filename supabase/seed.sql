@@ -32,7 +32,8 @@ insert into zones (slug, name, kind, is_open_air, capacity) values
   ('backstage',     'Backstage',          'area',      true,  null),
   ('toilets-west',  'Toilets West',       'area',      true,  null),
   ('toilets-east',  'Toilets East',       'area',      true,  null),
-  ('the-grove',     'The Grove',          'area',      true,  800);
+  ('the-grove',     'The Grove',          'area',      true,  800),
+  ('pavilion',      'Pavilion (Crew HQ)', 'area',      false, null);
 
 insert into playbooks (slug, title, trigger, steps) values
   ('heat-35c', 'Extreme heat (>=35C)', 'BoM forecast or on-site reading >= 35C',
