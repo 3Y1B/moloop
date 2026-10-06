@@ -3,12 +3,17 @@
  * https://docs.expo.dev/guides/color-schemes/
  */
 
-import { Colors } from '@/constants/theme';
+import { Colors, PriorityColor } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
+export function useThemeName(): 'light' | 'dark' {
+  return useColorScheme() === 'dark' ? 'dark' : 'light';
+}
 
-  return Colors[theme];
+export function useTheme() {
+  return Colors[useThemeName()];
+}
+
+export function usePriorityColors() {
+  return PriorityColor[useThemeName()];
 }
