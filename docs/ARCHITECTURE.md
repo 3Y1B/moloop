@@ -62,29 +62,47 @@ flowchart LR
 ```mermaid
 stateDiagram-v2
     [*] --> Open: issue reported
+    Open --> Proposed: P1/P2 guest report
+    Proposed --> Assigned: lead or Mo approves, or top pick after 30 s
     Open --> Queued: volunteer busy
-    Open --> Assigned: volunteer free
+    Open --> Assigned: P3, volunteer free
     Queued --> Assigned: volunteer frees up
     Assigned --> Accepted: "copy / on my way"
-    Assigned --> Open: declined or no ack, reassign
-    Accepted --> InProgress: arrived
-    InProgress --> Done: "done"
-    InProgress --> Escalated: "need help"
-    Escalated --> InProgress: lead responds
+    Assigned --> Open: declined
+    Accepted --> Done: "done" (owner or helper, resolves for all)
 
     Accepted --> Nudged: past ETA, no update
-    InProgress --> Nudged: past ETA, no update
-    Nudged --> InProgress: volunteer replies
-    Nudged --> LeadAlerted: 2nd nudge, still silent
-    LeadAlerted --> Open: lead reassigns
-    LeadAlerted --> InProgress: lead confirms OK
+    Nudged --> Accepted: volunteer replies
+    Nudged --> Quiet: still silent, lead alerted
+    Quiet --> Accepted: lead says "They're fine"
+    Quiet --> Assigned: lead reassigns
+
+    Accepted --> AskedLead: "need help" (+ optional reason)
+    state Escalated {
+        AskedLead --> AskedMo: no response in 1/2/3 min (P1/P2/P3), or "Pass to Mo"
+    }
+    Escalated --> Accepted: backup (helper joins) or carry on after a call
+    Escalated --> HandingOver: hand over (medics, security, 000)
+    HandingOver --> HandedOver: lead taps "Arrived"
+    Escalated --> Assigned: reassign (original volunteer freed)
+    Escalated --> Closed: close, not needed
 
     Done --> [*]
+    HandedOver --> [*]
+    Closed --> [*]
     note right of Nudged
         Silence never closes a task.
-        Urgent tasks skip to LeadAlerted.
+        Urgent tasks skip to Quiet.
+        Quiet is an overlay (lead_alerted_at), not a status.
+    end note
+    note right of Escalated
+        Status stays escalated. escalation.level says who owns it
+        (lead, then Mo); the lead keeps seeing it after the bump.
+        A call keeps it escalated until a follow-up response.
     end note
 ```
+
+Statuses are the eight in `enums.ts`; `in_progress` is unused (there is no "arrived" reply). Proposed, Nudged, Quiet, AskedLead/AskedMo and HandingOver are overlays on a status (`proposals`, `nudge_count`, `lead_alerted_at`, `escalation`). Done, HandedOver and Closed are `resolved`/`cancelled` with `resolution` set. Status copy for every screen comes from `src/lib/status.ts`.
 
 ## Tools (draft)
 

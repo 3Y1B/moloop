@@ -7,14 +7,14 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
-// Calm, flat palette: soft grey canvas, white cards outlined by a hairline, one blue accent.
+// Calm, flat palette: white canvas, white cards outlined by a hairline, one blue accent.
 // No glass, no washes, no drop shadows. Change the look here; components only read tokens.
 export const Colors = {
   light: {
     text: '#111827',
     textSecondary: '#6B7280',
     textTertiary: '#9CA3AF',
-    background: '#F5F6F8',
+    background: '#FFFFFF',
     card: '#FFFFFF',
     backgroundElement: '#F1F3F6',
     backgroundSelected: '#E8EBF0',
@@ -114,6 +114,4 @@ export const Spacing = {
   six: 64,
 } as const;
 
-/** Height of the TabBar above the bottom safe area. */
-export const BottomTabInset = 52;
 export const MaxContentWidth = 800;

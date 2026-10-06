@@ -3,6 +3,8 @@ import type { IncidentCategory, Priority, ReplyKind, TaskStatus, TeamSlug } from
 /**
  * Client-facing domain model. Screens only ever see these shapes, whichever Repo backs them
  * (in-memory mock now, Supabase later). Times are epoch ms.
+ * The escalation, guest request and proposal shapes run on the mock only for now; the SQL
+ * migration in supabase/migrations will be updated to match them later.
  */
 
 export type Team = {
@@ -32,6 +34,8 @@ export type Volunteer = {
   zoneSlug: string | null;
   duty: Duty;
   shiftEndsAt: number | null;
+  /** For Call. Mock numbers only. */
+  phone: string | null;
 };
 
 export type Reporter = {
@@ -64,11 +68,96 @@ export type Task = {
   lastNudgeAt: number | null;
   leadAlertedAt: number | null;
   resolvedAt: number | null;
+  /** Set while someone asked for help, and kept after a response so screens can say what happened. */
+  escalation: Escalation | null;
+  /** Backup sent by a lead. Helpers are busy with this task too; `done` from anyone resolves it for all. */
+  helperIds: string[];
+  /** How it ended. Null while open. */
+  resolution: TaskResolution | null;
+  /** The festival-goer request this task came from, if any. */
+  requestId: string | null;
+};
+
+export type TaskResolution = 'done' | 'handed_over' | 'cancelled';
+
+export type EscalationResponseKind = 'backup' | 'handover' | 'reassign' | 'call' | 'close' | 'carry_on';
+export type HandoverTarget = 'medics' | 'security' | 'emergency';
+
+export type EscalationResponse = {
+  kind: EscalationResponseKind;
+  byId: string;
+  at: number;
+  /** Backup or reassign target. */
+  volunteerId?: string;
+  target?: HandoverTarget;
+  etaAt?: number;
+  note?: string;
+};
+
+/** "Need help": the lead owns it first, then Mo once it bumps (lifecycle POLICY.bumpToCoordinatorMs). */
+export type Escalation = {
+  at: number;
+  /** What the volunteer said. */
+  reason: string | null;
+  /** Who owns it now. */
+  level: 'lead' | 'coordinator';
+  /** Lead id, or Mo. */
+  ownerId: string | null;
+  bumpedAt: number | null;
+  response: EscalationResponse | null;
+};
+
+export type GuestRequestStage = 'understanding' | 'answered' | 'finding' | 'coming' | 'with_you' | 'sorted' | 'cancelled';
+
+export type GuestThreadEntry = { from: 'guest' | 'ai' | 'staff'; name?: string; text: string; at: number };
+
+/**
+ * A festival-goer's question or report. No owner field: the backend only ever returns the
+ * requester's own rows (RLS on the device session), so every request in a snapshot is theirs.
+ */
+export type GuestRequest = {
+  id: string;
+  createdAt: number;
+  heard: string;
+  zoneSlug: string | null;
+  locationHint: string | null;
+  /** Stored for the steps before a task exists; once there is one, read `guestStage()` instead. */
+  stage: GuestRequestStage;
+  aiAnswer: string | null;
+  taskId: string | null;
+  thread: GuestThreadEntry[];
+  /** "Still need help?" after Sorted. */
+  reopenedAt: number | null;
+};
+
+export type ProposalCandidate = {
+  volunteerId: string;
+  /** Why, short: "free · 120 m · first aid cert". */
+  rationale: string;
+  distanceM: number | null;
+};
+
+export type ProposalStatus = 'pending' | 'approved' | 'auto_assigned' | 'cancelled';
+
+/** The AI's pick for a P1/P2 guest report. A lead or Mo approves or changes it; nobody acting by `autoAssignAt` assigns the top pick. */
+export type Proposal = {
+  id: string;
+  taskId: string;
+  /** Best first. */
+  candidates: ProposalCandidate[];
+  createdAt: number;
+  autoAssignAt: number;
+  status: ProposalStatus;
+  /** Who got it, once decided. */
+  volunteerId: string | null;
+  decidedById: string | null;
+  decidedAt: number | null;
 };
 
 export type TaskEventKind =
   | 'created' | 'assigned' | 'queued' | 'reply' | 'nudged' | 'lead_alerted'
-  | 'escalated' | 'reassigned' | 'resolved' | 'note';
+  | 'escalated' | 'reassigned' | 'resolved' | 'note'
+  | 'responded' | 'bumped' | 'proposed';
 
 export type TaskEvent = {
   id: string;
@@ -82,7 +171,20 @@ export type TaskEvent = {
   note?: string;
 };
 
-export type MessageKind = 'task' | 'nudge' | 'broadcast' | 'direct' | 'system';
+export type MessageKind =
+  | 'task' | 'nudge' | 'broadcast' | 'direct' | 'system'
+  /** Your task went to someone else ("Moved to Kai"). */
+  | 'moved'
+  /** Your task was closed by a lead ("Closed by Jordan"). */
+  | 'closed'
+  /** Handover arrived; you're free. */
+  | 'arrived'
+  /** You've been sent as backup. */
+  | 'backup'
+  /** Something needs a lead or Mo: help asked, bumped, approval waiting. */
+  | 'escalation'
+  /** A festival-goer replied or added detail. */
+  | 'guest_reply';
 
 export type Message = {
   id: string;

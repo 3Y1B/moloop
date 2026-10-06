@@ -17,16 +17,40 @@ const KIND_SF: Record<TaskEvent['kind'], string> = {
   reassigned: 'arrow.triangle.2.circlepath',
   resolved: 'checkmark.circle.fill',
   note: 'note.text',
+  responded: 'person.crop.circle.badge.exclamationmark',
+  bumped: 'arrow.up.circle.fill',
+  proposed: 'sparkles',
 };
 
-/** Append-only task history: what replaces radio replay. */
+/** Android (Material Symbols) fallbacks for the same events. */
+const KIND_MD: Record<TaskEvent['kind'], string> = {
+  created: 'edit_square',
+  assigned: 'person_check',
+  queued: 'inbox',
+  reply: 'chat_bubble',
+  nudged: 'notifications',
+  lead_alerted: 'warning',
+  escalated: 'priority_high',
+  reassigned: 'sync_alt',
+  resolved: 'check_circle',
+  note: 'notes',
+  responded: 'support_agent',
+  bumped: 'arrow_circle_up',
+  proposed: 'auto_awesome',
+};
+
+/**
+ * Append-only task history: what replaces radio replay. Escalation reads in order: asked for help (red),
+ * passed up to Mo (orange), then the response (blue): backup sent, handed over, called.
+ */
 export function Timeline({ events }: { events: TaskEvent[] }) {
   const theme = useTheme();
   const colorFor = (e: TaskEvent) =>
     e.kind === 'resolved' ? theme.success
       : e.kind === 'lead_alerted' || e.kind === 'escalated' ? theme.danger
-        : e.kind === 'nudged' ? theme.warning
-          : e.actor.kind === 'human' ? theme.tint : theme.textTertiary;
+        : e.kind === 'nudged' || e.kind === 'bumped' ? theme.warning
+          : e.kind === 'responded' ? theme.tint
+            : e.actor.kind === 'human' ? theme.tint : theme.textTertiary;
 
   return (
     <View style={styles.list}>
@@ -37,7 +61,7 @@ export function Timeline({ events }: { events: TaskEvent[] }) {
           <View key={e.id} style={styles.item}>
             <View style={styles.rail}>
               <View style={[styles.dot, { backgroundColor: `${color}14` }]}>
-                <Icon sf={e.reply ? REPLY_SF[e.reply] : KIND_SF[e.kind]} md="circle" size={12} color={color} weight="medium" />
+                <Icon sf={e.reply ? REPLY_SF[e.reply] : KIND_SF[e.kind]} md={e.reply ? 'chat_bubble' : KIND_MD[e.kind]} size={12} color={color} weight="medium" />
               </View>
               {!last && <View style={[styles.line, { backgroundColor: theme.separator }]} />}
             </View>

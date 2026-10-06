@@ -3,8 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/ui/icon';
 import { Type } from '@/constants/theme';
-import { useLookups, useNow } from '@/data/hooks';
-import { ago, STATUS_LABEL } from '@/lib/format';
+import { useLookups, useNow, useTaskStatus } from '@/data/hooks';
+import { ago } from '@/lib/format';
 import type { Task } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 import { PrioritySignal } from './badges';
@@ -14,8 +14,11 @@ export function TaskRow({ task }: { task: Task }) {
   const theme = useTheme();
   const now = useNow();
   const { zones } = useLookups();
+  const status = useTaskStatus(task);
   const zone = task.zoneSlug ? zones[task.zoneSlug]?.name : null;
-  const when = task.status === 'resolved' && task.resolvedAt ? `Done ${ago(task.resolvedAt, now)}` : task.status === 'queued' ? null : STATUS_LABEL[task.status];
+  // Queued rows sit under "Up next" already; finished ones say how it ended and when ("Handed to medics 5 min ago").
+  const ended = (task.status === 'resolved' || task.status === 'cancelled') && task.resolvedAt;
+  const when = task.status === 'queued' ? null : ended ? `${status?.label} ${ago(task.resolvedAt!, now)}` : status?.label;
 
   return (
     <Pressable

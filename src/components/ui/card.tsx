@@ -14,8 +14,8 @@ export function Section({ title, trailing, children, style, ...rest }: ViewProps
   return (
     <View style={[styles.section, style]} {...rest}>
       <View style={styles.headerRow}>
-        <Text style={[styles.header, { color: theme.textSecondary }]}>{title}</Text>
-        {trailing && <Text style={[styles.header, { color: theme.textTertiary }]}>{trailing}</Text>}
+        <Text style={[styles.header, { color: theme.text }]}>{title}</Text>
+        {trailing && <Text style={[styles.header, { color: theme.textTertiary, fontWeight: '500' }]}>{trailing}</Text>}
       </View>
       {children}
     </View>
@@ -29,7 +29,7 @@ export function Separator({ inset = 16 }: { inset?: number }) {
 
 const styles = StyleSheet.create({
   card: { borderRadius: Radius.card, borderCurve: 'continuous', overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth * 2 },
-  section: { gap: 6 },
+  section: { gap: 8 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
-  header: { fontSize: Type.footnote, fontWeight: '600' },
+  header: { fontSize: Type.title - 1, fontWeight: '600', letterSpacing: -0.2 },
 });
