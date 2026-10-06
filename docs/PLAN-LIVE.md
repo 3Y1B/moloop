@@ -28,7 +28,7 @@ flowchart LR
         MO["Mo: web app on a laptop"]
     end
 
-    subgraph BRAIN["Brain: one long-running server"]
+    subgraph SERVER["Server: one long-running process"]
         API["/api/* commands"]
         PIPE["Pipeline + re-triage"]
         SCHED["Scheduler: nudges, bumps, auto-assign"]
@@ -49,9 +49,9 @@ flowchart LR
     NOTIFY -->|"push"| PH
 ```
 
-**Rule: phones read straight from Supabase and every write goes through the brain.** All transitions pass through `lifecycle.ts` in one place. So there are no races between phones, there is one scheduler, and the model keys never reach a phone. GPS is the one exception: phones write their own presence row directly, because it's high-volume and has no logic.
+**Rule: phones read straight from Supabase and every write goes through the server.** All transitions pass through `lifecycle.ts` in one place. So there are no races between phones, there is one scheduler, and the model keys never reach a phone. GPS is the one exception: phones write their own presence row directly, because it's high-volume and has no logic.
 
-**Recommendation: run the brain as one long-running Node process on the Spark box.** Serverless hosting can't run a scheduler that ticks every few seconds. The models live on the Spark box, and its Tailscale URL is already reachable from anywhere, so phones on mobile data can get to it. The brain serves the existing Expo API routes (`src/app/api`) as a server build, with the scheduler loop running beside them. Before building this, check against the SDK 57 docs how to run Expo API routes as a standalone server (`AGENTS.md`). If that's awkward, a small standalone Bun server that imports `src/server` is fine.
+**The server is one long-running Hono app on Bun, run on the Spark box** (`src/server/main.ts`, `npm run server`). Serverless hosting can't run a scheduler that ticks every few seconds. The models live on the Spark box, and its Tailscale URL is already reachable from anywhere, so phones on mobile data can get to it. Hono serves `/api/*` (`src/server/http/app.ts`), imports `src/server` directly, and the scheduler loop runs in the same process. Every `/api/*` call needs a Supabase session: `requireCaller` verifies the JWT and takes the role from `profiles`, never from the request body.
 
 ## Phases
 
@@ -59,7 +59,8 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 
 ### 1. Supabase as the shared world
 
-- Create the Supabase project and fill in `.env`.
+- Local: `supabase start`, then `.env.local` from `supabase status -o env` (see `.env.example`). Hosted: create the project, `supabase link`, `supabase db push`, and `bun scripts/seed.ts` with the hosted keys.
+- Local Supabase runs on Docker. Apple `container` needs the socktainer Docker-API shim, which can't yet bring up a full Supabase stack reliably, so stay on Docker (or OrbStack) for now.
 - Migration 2, adding what the domain types already have but the schema lacks:
   - `tasks`: `escalation jsonb`, `helper_ids uuid[]`, `resolution`, `request_id`
   - `guest_requests`: the `GuestRequest` type, with `thread jsonb` and stage
@@ -71,24 +72,26 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
   - Festival-goers: anonymous sign-in.
   - Tighten RLS so it matches what each screen reads.
 
-**Done when:** `supabase db reset` gives a working festival world, and a signed-in volunteer can read their own tasks.
+**Done when:** `supabase db reset && npm run db:seed` gives a working festival world, and `npm run db:check` passes (a signed-in volunteer reads their own tasks, a festival-goer only their own request and who is coming).
 
-### 2. `SupabaseRepo` and the brain
+**Status:** done locally. Migration `…_shared_world.sql`, `scripts/seed.ts` (zone coordinates from the site plan, crew from `supabase/crew.json`), `scripts/check-rls.ts`. The real cast goes in `supabase/crew.json` (gitignored; copy `crew.example.json`). Phone numbers and push tokens live in `profile_private`, which crew can read and festival-goers can't.
+
+### 2. `SupabaseRepo` and the server
 
 - `src/data/supabase-repo.ts` implements `Repo`:
   - hydrate a `Snapshot` from queries, then apply realtime changes to it
   - every command POSTs to `/api/*`
   - optimistic updates only where the UI already shows them
-- **Brain, command routes:** one route per `Repo` command (`reply`, `respond`, `assign`, `approve`, `guestAsk`, …). Each one loads the task, runs the matching `lifecycle.ts` function, and writes the task plus its `task_events` in one transaction.
-- Port `MockRepo`'s behaviour, not its code. It's the spec for what each command does. Anything it does outside `lifecycle.ts` moves into shared functions, so the brain and the demo-day simulator both use them.
-- **Brain, scheduler:** every 5 s, run `tick()` over active tasks and `proposalDue()` over pending proposals, and write any changes.
+- **Server, command routes:** one route per `Repo` command (`reply`, `respond`, `assign`, `approve`, `guestAsk`, …). Each one loads the task, runs the matching `lifecycle.ts` function, and writes the task plus its `task_events` in one transaction.
+- Port `MockRepo`'s behaviour, not its code. It's the spec for what each command does. Anything it does outside `lifecycle.ts` moves into shared functions, so the server and the demo-day simulator both use them.
+- **Server, scheduler:** every 5 s, run `tick()` over active tasks and `proposalDue()` over pending proposals, and write any changes.
 - Make `createRepo()` in `src/data/provider.tsx` pick `SupabaseRepo` when `EXPO_PUBLIC_SUPABASE_URL` is set. The dev panel keeps working against the mock only.
 
 **Done when:** two phones signed in as a volunteer and a lead see the same task change state within a second, and a silent task nudges once, not once per phone.
 
 ### 3. Real models on Spark
 
-- One OpenAI-compatible client against the Spark base URL, with the key in the brain's env only.
+- One OpenAI-compatible client against the Spark base URL, with the key in the server's env only.
 - `LunaLlm.generate`:
   - chat completions with JSON-schema output
   - one repair retry on a zod failure
@@ -104,11 +107,11 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 
 - **In:**
   - record with `expo-audio` while the pill is held
-  - POST the clip to the brain's `/api/transcribe`, which forwards it to Spark ASR
+  - POST the clip to the server's `/api/transcribe`, which forwards it to Spark ASR
   - the result replaces `useSimulatedTranscript`
   - store the clip in Supabase Storage as `reports.media_url`
 - **Out:**
-  - the brain renders the spoken brief through Spark TTS and stores it
+  - the server renders the spoken brief through Spark TTS and stores it
   - the phone plays it with `expo-audio` when the app is open
   - the lock-screen push carries the short text
 - Give the "Heard: …" check the same treatment for festival-goers.
@@ -133,7 +136,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 
 ### 6. Re-triage: the part that should look smartest on camera
 
-When a new report or volunteer note comes in, the brain checks it against open tasks in the same or adjacent zones from the last 20 minutes before creating anything:
+When a new report or volunteer note comes in, the server checks it against open tasks in the same or adjacent zones from the last 20 minutes before creating anything:
 
 1. The LLM gets the new text plus 1 to 5 candidate tasks, and answers whether it's a new incident or an update to one of them.
 2. If it's an update:
@@ -158,7 +161,7 @@ The mock's `guestAddDetail` is the single-request version of this. It generalise
   - `eas build --profile development` (ad hoc)
   - set a real bundle id in `app.json` (it's `com.anonymous.moloop` now)
 - **Android:** a development APK, sideloaded.
-- **Push:** `expo-notifications`, with an APNs key through EAS credentials. Save the push token to `profiles.push_token` at sign-in.
+- **Push:** `expo-notifications`, with an APNs key through EAS credentials. Save the push token to `profile_private.push_token` at sign-in.
 - **Mo's console:** the web build on a laptop. Check that the lead and Mo screens work at laptop width, and on whatever connection the shed has.
 - **Before the shoot:** an EAS Update channel, so fixes on the day don't need a rebuild.
 
@@ -166,7 +169,7 @@ The mock's `guestAddDetail` is the single-request version of this. It generalise
 
 ### 8. Demo-day simulator (after the video)
 
-A script that drives the real brain with simulated people:
+A script that drives the real server with simulated people:
 
 - Fake volunteers walk the walk graph and post presence via `toLngLat`.
 - Recorded voice clips from the field test are replayed as reports on a timeline.
@@ -190,7 +193,7 @@ The hall demo then runs the real pipeline, real triage and the real scheduler, w
   4. A volunteer asks for help, and it escalates to the lead, then to Mo.
   5. A volunteer goes quiet and gets nudged.
 - **On the day:**
-  - The brain logs every model call (`triage_runs`), so a weird take can be explained or re-shot.
+  - The server logs every model call (`triage_runs`), so a weird take can be explained or re-shot.
   - Screen-record every phone, and start each take with a clap for sync.
   - Bring battery packs. GPS, the screen and audio drain a phone in two to three hours.
 
@@ -199,4 +202,4 @@ The hall demo then runs the real pipeline, real triage and the real scheduler, w
 - Which phones are in the shoot, and how many are iPhones? This decides the Apple account timeline.
 - The shoot date. That sets how much of phases 4–6 is in scope.
 - A Supabase project and a Spark API key.
-- Whether the brain runs on the Spark box (recommended) or on a laptop on the day.
+- Whether the server runs on the Spark box (recommended) or on a laptop on the day.

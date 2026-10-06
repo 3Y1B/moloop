@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import type { PipelineOutcome, PriorityResult, ReportInput, RewriteResult, RouteResult, TeamResult, AssignmentProposal } from '@/lib/schema';
+import { db } from './db';
 
 export type Candidate = {
   volunteerId: string;
@@ -45,7 +45,7 @@ class MemoryStore implements Store {
 }
 
 class SupabaseStore implements Store {
-  private db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+  private db = db();
 
   private async one(q: PromiseLike<{ data: { id: string } | null; error: { message: string } | null }>) {
     const { data, error } = await q;
