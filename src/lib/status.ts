@@ -131,7 +131,7 @@ export function memberStatus(volunteer: Volunteer, tasks: Task[], now: number, {
 
 export type GuestStatus = Status & {
   stage: GuestRequestStage;
-  /** Who is coming, once someone has accepted. */
+  /** Who is coming, or who they're matched with while still `finding`. */
   volunteerId?: string;
   /** When they should be with the festival-goer (walking time from where they were when assigned). */
   arriveAt?: number;
@@ -148,12 +148,22 @@ export function guestStage(request: GuestRequest, task: Task | undefined, { volu
 
   if (task.status === 'cancelled') return { stage: 'cancelled', label: 'Closed', tone: 'neutral' };
   if (task.status === 'resolved') return { stage: 'sorted', label: 'Sorted', tone: 'success' };
+  const v = task.assigneeId ? volunteers[task.assigneeId] : undefined;
+  // Matched but not moving yet: queued behind their current task, or sent and waiting for them to accept.
+  if ((task.status === 'queued' || task.status === 'assigned') && v) {
+    return {
+      stage: 'finding',
+      label: `Matched with ${first(v)}`,
+      detail: task.status === 'queued' ? 'Finishing a task' : undefined,
+      tone: 'tint',
+      volunteerId: v.id,
+    };
+  }
   if (task.status === 'open' || task.status === 'queued' || task.status === 'assigned') {
     return { stage: 'finding', label: 'Finding someone', tone: 'tint' };
   }
 
   const r = task.escalation?.response;
-  const v = task.assigneeId ? volunteers[task.assigneeId] : undefined;
   if (r?.kind === 'handover' && r.target) return { stage: 'coming', label: ON_THE_WAY[r.target], tone: 'tint', volunteerId: v?.id };
 
   const walk = routeBetween(v?.zoneSlug ?? null, task.zoneSlug);

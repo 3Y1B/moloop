@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Field-test cast: real names, emails and phones
+supabase/crew.json

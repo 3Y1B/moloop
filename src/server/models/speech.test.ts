@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fakeHttp, type FakeReply } from './fake-http';
-import { SpeechToText, TextToSpeech } from './speech';
+import { SpeechToText, TextToSpeech } from './speech-clients';
 
 const clip = new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/webm' });
 

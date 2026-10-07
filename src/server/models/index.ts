@@ -4,7 +4,7 @@ import { JevClassifier } from './jev';
 import { LunaLlm } from './luna';
 import { MockClassifier, MockLlm } from './mock';
 import { OpenAiDecisionsClassifier } from './openai-decisions';
-import { SpeechToText, TextToSpeech } from './speech';
+import { SpeechToText, TextToSpeech } from './speech-clients';
 
 /**
  * Live models run on the Spark (open-source, self-hosted). If the Spark errors or passes its time limit (the request

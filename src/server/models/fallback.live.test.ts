@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { RouteResult } from '@/lib/schema';
+import { z } from 'zod';
 import { FallbackClassifier, FallbackLlm, FallbackSpeaker, FallbackTranscriber } from './fallback';
 import { JevClassifier } from './jev';
 import { LunaLlm } from './luna';
 import { OpenAiDecisionsClassifier } from './openai-decisions';
-import { SpeechToText, TextToSpeech } from './speech';
+import { SpeechToText, TextToSpeech } from './speech-clients';
+
+const RouteResult = z.object({ decision: z.enum(['ai_resolved', 'escalated_to_triage']), reason: z.string() });
 
 // Opt-in: with the Spark unreachable, every model call should be answered by real OpenAI. Run with
 //   OPENAI_API_KEY=... npm test -- fallback.live

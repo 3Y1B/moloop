@@ -1,6 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { RewriteResult, RouteResult } from '@/lib/schema';
+import { z } from 'zod';
 import { LunaLlm } from './luna';
+
+// The report pipeline's output shapes (main removed them with the old /api/reports pipeline); kept here to exercise
+// enums, nullable fields and bounds against the live model.
+const RouteResult = z.object({
+  decision: z.enum(['ai_resolved', 'escalated_to_triage']),
+  reason: z.string(),
+  confidence: z.number().min(0).max(1),
+  detectedLanguage: z.string(),
+  textEn: z.string(),
+});
+const RewriteResult = z.object({
+  title: z.string().max(60),
+  summary: z.string().max(280),
+  category: z.enum(['medical', 'heat', 'lost_child', 'security', 'crowd', 'facilities', 'info_request', 'other']),
+  zoneSlug: z.string().nullable(),
+  locationHint: z.string().nullable(),
+  requiredSkills: z.array(z.string()),
+  peopleInvolved: z.number().int().nullable(),
+});
 
 // Opt-in: hits the real Spark gateway. Run with SPARK_API_KEY set, e.g.
 //   SPARK_API_KEY=... npm test -- luna.live

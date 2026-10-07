@@ -196,5 +196,7 @@ export type Message = {
   taskId?: string;
   /** How it reached the volunteer: read aloud (idle) or a short ping (busy). */
   delivery?: 'spoken' | 'ping';
+  /** The spoken version, once rendered: a path in the `speech` bucket. */
+  audio?: string;
   read: boolean;
 };

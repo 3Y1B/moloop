@@ -8,7 +8,8 @@
     "scheme": "moloop",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.anonymous.moloop"
     },
     "android": {
       "adaptiveIcon": {
@@ -31,6 +32,17 @@
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      "@maplibre/maplibre-react-native",
+      "expo-asset",
+      "expo-sqlite",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Moloop listens while you hold the talk button.",
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false
         }
       ]
     ],

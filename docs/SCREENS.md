@@ -44,7 +44,7 @@ Reassigned or closed tasks leave the volunteer's card. They get an Inbox message
 
 | Member state | Line |
 | --- | --- |
-| Free, on duty | Free · Lawn Stage |
+| Free, on duty | Free · Oval Stage |
 | On break / off shift | On break |
 | On a task | Dizzy man at Water 2 · 4 min |
 | Asked for help | Asked for help · 1 min (danger) |
@@ -130,7 +130,7 @@ phone: string | null;               // for Call; mock numbers only
 2. **Understanding.** The request moves through visible steps: Heard → Understanding → Sorted. The steps are real pipeline stages (`route` → `triage` → `assign`), not decoration.
 3. **Then one of two outcomes:**
    - **AI answer** (routine question: toilets, set times, lost property hours). The answer is shown right away, with a **Talk to a person** button. Tapping it sends the request to triage as a P3 task for the right team. That's the "request human" path.
-   - **Dispatched** (someone needs to come). Shows "Finding someone…", then **"Priya is coming · 3 min"**: a map with both dots, the volunteer's first name and initial, and the team. Two buttons: **Add detail** and **Cancel**.
+   - **Dispatched** (someone needs to come). Shows "Finding someone…", then **"Matched with Priya"** (with "Finishing a task" if she's busy, and her dot where she is), then **"Priya is coming · 3 min"**: a map with both dots, the volunteer's first name and initial, and the team. Two buttons: **Add detail** and **Cancel**.
 4. **Add detail** is the voice pill on the request screen (hold or type): "What's changed?" The person describes the update in their own words. The AI decides what it means: a note on the task for the volunteer, or a priority bump that alerts the lead if it sounds worse. There is no separate "It's getting worse" button.
 5. **Arrived.** After the ETA the screen shows "Priya should be with you" (real GPS proximity later).
 6. **Sorted.** When the volunteer replies Done, the person sees "Sorted" with one question: **Still need help?** Tapping it reopens the request and goes back to step 4. This is not a rating or review: no stars, no feedback loop. It only catches tasks that were closed too early.
@@ -164,7 +164,7 @@ type GuestRequest = {
 
 Every main screen is the same shape, like a ride-hailing app: **the site map full-screen, a sheet over it, and the voice pill pinned to the bottom.** There's no tab bar.
 
-- **Map** (`components/map/venue-map.tsx`): frames what matters in the part the sheet leaves clear (`frame`). Floating round controls along the top (`map-button.tsx`, `map-screen.tsx`).
+- **Map** (`components/map/venue-map.tsx`, `.web.tsx` on web): the real site, University Oval and the athletics track at the University of Melbourne (Parkville), on MapLibre with OpenFreeMap tiles, the festival drawn into the style as an illustrated site map (`map-art.ts`: ground from OpenStreetMap in `data/venue-features.ts`, stages, tents, trucks and toilets from the zones, badges in `assets/images/map`) and people and pins as views on top (`map-markers.tsx`). Positions stay in plan metres (`data/venue.ts`), pinned to the ground by `GEO`. Frames what matters in the part the sheet leaves clear (`frame`). Floating round controls along the top (`map-button.tsx`, `map-screen.tsx`). Needs a development build (`npx expo run:ios`); Expo Go can't load MapLibre.
 - **Sheet** (`components/ui/bottom-sheet.tsx`): three stops: the headline, half the screen, and nearly full. Below the top stop the whole sheet drags; at the top its content scrolls. Pulling the sheet up replaces "Details" toggles.
 - **Voice pill** (`components/voice/voice-dock.tsx`): hold anywhere on the pill to talk, or tap the keyboard to type. What was heard comes back in a small tray above it with exactly what Send will do. No orb on screen; the orb survives only as the small mic bubble.
 

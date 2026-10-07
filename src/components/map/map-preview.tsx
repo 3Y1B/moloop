@@ -1,5 +1,4 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/ui/icon';
@@ -20,7 +19,6 @@ export function MapPreview({ task }: { task: Task }) {
   const me = useMe();
   const route = useRouteTo(task);
   const accent = usePriorityColors()[task.priority];
-  const [width, setWidth] = useState(330);
   if (!task.zoneSlug || !VENUE_ZONES[task.zoneSlug]) return null;
   const myZone = me?.zoneSlug ? VENUE_ZONES[me.zoneSlug] : undefined;
   const height = route?.here ? HEIGHT.here : HEIGHT.route;
@@ -30,15 +28,13 @@ export function MapPreview({ task }: { task: Task }) {
       accessibilityRole="button"
       accessibilityLabel={route?.here ? 'You are here. Open map' : `Directions, ${route?.minutes ?? ''} minute walk`}
       onPress={() => router.push({ pathname: '/navigate/[id]', params: { id: task.id } })}
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       style={({ pressed }) => [styles.wrap, { height, opacity: pressed ? 0.85 : 1 }]}>
       <VenueMap
         route={route}
         me={myZone ? NODES[myZone.node] : null}
         target={task.zoneSlug}
         targetColor={accent}
-        aspect={width / height}
-        labels
+        interactive={false}
         style={styles.map}
       />
       <View style={styles.overlay}>

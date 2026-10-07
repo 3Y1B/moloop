@@ -32,8 +32,16 @@ export type BroadcastScope = { teamSlug?: TeamSlug; zoneSlug?: string };
 /** What a push-to-talk utterance means, decided before anything happens ("Heard: ..."). */
 export type Interpretation = {
   heard: string;
+  /** The voice clips it was said in (from `transcribe`), kept with the report it becomes. */
+  clips?: string[];
   intent: { kind: 'reply'; taskId: string; reply: ReplyKind } | { kind: 'report' };
 };
+
+/** One hold of the pill, recorded on the phone. `name` carries the format (`clip.m4a`). */
+export type Recording = { audio: Blob; name: string; durationMs: number };
+
+/** What a hold said. `clip` is where the server keeps it, to send along with what it becomes. */
+export type Heard = { text: string; clip: string | null };
 
 export interface Repo {
   getSnapshot(): Snapshot;
@@ -42,6 +50,10 @@ export interface Repo {
   /** `note` is what they said or typed alongside it ("gave him water, he's fine now"). */
   reply(taskId: string, reply: ReplyKind, note?: string): Promise<void>;
   setDuty(duty: Duty): Promise<void>;
+  /** Speech → text, for the "Heard" check. Nothing happens until it's sent. */
+  transcribe(recording: Recording): Promise<Heard>;
+  /** A playable URL for a spoken message (`Message.audio`). Only the live backend renders speech. */
+  speechUrl?(path: string): Promise<string>;
   /** Speech/text → intent. Server-side classifier later; nothing is executed here. */
   interpret(text: string): Promise<Interpretation>;
   /** Commit an interpretation the volunteer confirmed. */
@@ -65,8 +77,8 @@ export interface Repo {
 
   // ── Festival-goer (acting as guestId) ──
 
-  /** Ask or report. Resolves with the new request id straight away; the pipeline runs after. */
-  guestAsk(text: string, zoneSlug: string | null, locationHint?: string | null): Promise<string>;
+  /** Ask or report. Resolves with the new request id straight away; the pipeline runs after. `clips`: what it was said in. */
+  guestAsk(text: string, zoneSlug: string | null, locationHint?: string | null, clips?: string[]): Promise<string>;
   /** "Talk to a person" on an AI answer: becomes a P3 task for the right team. */
   guestRequestHuman(requestId: string): Promise<void>;
   /** "What's changed?" The AI decides: a note for the volunteer, or a priority bump that alerts the lead. */

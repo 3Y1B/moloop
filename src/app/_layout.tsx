@@ -30,10 +30,11 @@ export default function RootLayout() {
     <ThemeProvider value={NAV_THEME[scheme]}>
       <RepoProvider>
         <AnimatedSplashOverlay />
-        {/* Every route is registered here; (staff) and (guest) redirect to each other by role. */}
+        {/* Every route is registered here; (staff) and (guest) redirect to each other by role, and to sign-in when nobody is. */}
         <Stack>
           <Stack.Screen name="(staff)" options={{ headerShown: false }} />
           <Stack.Screen name="(guest)" options={{ headerShown: false }} />
+          <Stack.Screen name="sign-in" options={{ headerShown: false, animation: 'fade' }} />
           <Stack.Screen name="task/[id]" options={{ title: 'Task', headerShown: false }} />
           <Stack.Screen
             name="navigate/[id]"

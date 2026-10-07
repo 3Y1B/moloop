@@ -8,16 +8,22 @@ import { CircleButton } from '@/components/ui/circle-button';
 import { Icon } from '@/components/ui/icon';
 import { Radius, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { LiveTranscript, useSimulatedTranscript } from './live-transcript';
+import { useHoldToTalk } from './use-hold-to-talk';
 import { PILL_HEIGHT, VoicePill } from './voice-pill';
 
+/** `clips` are the holds it was said in, sent along with it. */
+type Held = { before?: string; clips: string[] };
+type Said = { text: string; clips: string[] };
+type Flash = { message: string };
 type Phase =
   | { kind: 'idle' }
-  /** `before` is what an earlier hold heard; new words append to it. */
-  | { kind: 'listening'; script: string; before?: string }
-  | { kind: 'review'; text: string }
-  | { kind: 'sending'; text: string }
-  | { kind: 'sent'; message: string };
+  /** Recording, then transcribing. `before` is what an earlier hold heard; new words append to it. */
+  | ({ kind: 'listening' } & Held)
+  | ({ kind: 'hearing' } & Held)
+  | ({ kind: 'review' } & Said)
+  | ({ kind: 'sending' } & Said)
+  | ({ kind: 'sent' } & Flash)
+  | ({ kind: 'missed' } & Flash);
 
 const PAD_TOP = 10;
 
@@ -28,47 +34,72 @@ export function useDockHeight() {
 
 /**
  * The assistant, pinned to the bottom of the screen: hold the pill to talk, or tap the keyboard to type.
- * What was heard comes back in a small tray above it to check before it goes. Sending hands the words
- * to the AI, which triages and acts; what it did comes back as the confirmation.
- * `script` stands in for STT until audio lands: what a hold "says", given what's been heard so far.
+ * Letting go sends the recording to be transcribed, and what was heard comes back in a small tray above
+ * the pill to check before it goes. Sending hands the words to the AI, which triages and acts; what it
+ * did comes back as the confirmation.
  */
-export function VoiceDock({ placeholder, script, onSend }: {
+export function VoiceDock({ placeholder, onSend }: {
   placeholder: string;
-  script: (before?: string) => string;
-  /** Send what was said. A returned string is shown briefly as the confirmation. */
-  onSend: (text: string) => Promise<string | void>;
+  /** Send what was said, with the clips it was said in. A returned string is shown briefly as the confirmation. */
+  onSend: (text: string, clips: string[]) => Promise<string | void>;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const hold = useHoldToTalk();
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [typing, setTyping] = useState(false);
   const [typed, setTyped] = useState('');
-  const sentAt = useRef(0);
+  const flashedAt = useRef(0);
 
   const listening = phase.kind === 'listening';
-  const before = listening ? phase.before : undefined;
-  const stream = useSimulatedTranscript(listening ? phase.script : null);
 
   const keyboard = useAnimatedKeyboard();
   const lift = useAnimatedStyle(() => ({
     transform: [{ translateY: -Math.max(0, keyboard.height.get() - insets.bottom) }],
   }));
 
-  const heard = (text: string) => {
+  const heard = (text: string, clips: string[] = []) => {
     const t = text.trim();
-    setPhase(t ? { kind: 'review', text: t } : { kind: 'idle' });
+    setPhase(t ? { kind: 'review', text: t, clips } : { kind: 'idle' });
   };
 
-  const send = async (text: string) => {
-    setPhase({ kind: 'sending', text });
+  /** A line that shows for a moment, then gets out of the way. */
+  const flash = (kind: 'sent' | 'missed', message: string) => {
+    const at = (flashedAt.current = Date.now());
+    setPhase({ kind, message });
+    setTimeout(() => setPhase((p) => (p.kind === kind && flashedAt.current === at ? { kind: 'idle' } : p)), 2500);
+  };
+
+  const send = async (text: string, clips: string[]) => {
+    setPhase({ kind: 'sending', text, clips });
     try {
-      const message = await onSend(text);
+      const message = await onSend(text, clips);
       if (!message) return setPhase({ kind: 'idle' });
-      const at = (sentAt.current = Date.now());
-      setPhase({ kind: 'sent', message });
-      setTimeout(() => setPhase((p) => (p.kind === 'sent' && sentAt.current === at ? { kind: 'idle' } : p)), 2500);
+      flash('sent', message);
     } catch {
-      setPhase({ kind: 'review', text });
+      setPhase({ kind: 'review', text, clips });
+    }
+  };
+
+  const startHold = () => {
+    hold.start();
+    setPhase((p) => (p.kind === 'review' ? { kind: 'listening', before: p.text, clips: p.clips } : { kind: 'listening', clips: [] }));
+  };
+
+  const endHold = async () => {
+    if (phase.kind !== 'listening') return;
+    const { before, clips } = phase;
+    setPhase({ kind: 'hearing', before, clips });
+    const back = () => (before ? heard(before, clips) : setPhase({ kind: 'idle' }));
+    try {
+      const said = await hold.stop();
+      if (said) heard([before, said.text].filter(Boolean).join(' '), said.clip ? [...clips, said.clip] : clips);
+      else if (before) back();
+      else flash('missed', 'Didn’t catch that');
+    } catch (e) {
+      console.warn('[voice] transcribe failed', e);
+      if (before) back();
+      else flash('missed', 'Voice is down. Type instead.');
     }
   };
 
@@ -85,23 +116,26 @@ export function VoiceDock({ placeholder, script, onSend }: {
 
       {phase.kind !== 'idle' && (
         <Animated.View
-          key={phase.kind === 'listening' ? 'live' : phase.kind === 'sent' ? 'sent' : 'heard'}
+          key={phase.kind === 'listening' ? 'live' : phase.kind === 'sent' || phase.kind === 'missed' ? phase.kind : 'heard'}
           entering={FadeInDown.duration(200)}
           style={[styles.tray, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          {phase.kind === 'sent' ? (
+          {phase.kind === 'sent' || phase.kind === 'missed' ? (
             <View style={styles.sent}>
-              <Icon sf="checkmark.circle.fill" md="check_circle" size={18} color={theme.success} />
+              {phase.kind === 'sent' ? (
+                <Icon sf="checkmark.circle.fill" md="check_circle" size={18} color={theme.success} />
+              ) : (
+                <Icon sf="exclamationmark.circle.fill" md="error" size={18} color={theme.warning} />
+              )}
               <Text style={[styles.sentText, { color: theme.text }]}>{phase.message}</Text>
             </View>
-          ) : phase.kind === 'listening' ? (
+          ) : phase.kind === 'listening' || phase.kind === 'hearing' ? (
             <>
-              <Text style={[styles.label, { color: theme.tint }]}>Listening</Text>
+              <Text style={[styles.label, { color: listening ? theme.tint : theme.textTertiary }]}>{listening ? 'Listening' : 'Heard'}</Text>
               <Caption>
-                {stream.tokens.length || before ? (
-                  <LiveTranscript tokens={stream.tokens} before={before} style={styles.text} />
-                ) : (
-                  <Text style={[styles.text, { color: theme.textTertiary }]}>Go ahead…</Text>
-                )}
+                <Text style={styles.text}>
+                  {!!phase.before && <Text style={{ color: theme.text }}>{phase.before} </Text>}
+                  <Text style={{ color: theme.textTertiary }}>{listening ? (phase.before ? '' : 'Go ahead…') : '…'}</Text>
+                </Text>
               </Caption>
             </>
           ) : (
@@ -124,7 +158,7 @@ export function VoiceDock({ placeholder, script, onSend }: {
                   label="Send"
                   haptic="success"
                   disabled={phase.kind === 'sending'}
-                  onPress={() => send(phase.text)}
+                  onPress={() => send(phase.text, phase.clips)}
                   style={styles.flex}
                 />
               </View>
@@ -155,17 +189,11 @@ export function VoiceDock({ placeholder, script, onSend }: {
         ) : (
           <VoicePill
             listening={listening}
+            level={hold.level}
             placeholder={reviewing ? 'Hold to add more' : placeholder}
-            disabled={phase.kind === 'sending'}
-            onHoldStart={() => {
-              const keep = reviewing ? phase.text : undefined;
-              setPhase({ kind: 'listening', script: script(keep), before: keep });
-            }}
-            onHoldEnd={() => {
-              // Whatever was heard by the time they let go is what we read back; nothing new → back to the review.
-              const text = [before, stream.text].filter(Boolean).join(' ');
-              heard(text);
-            }}
+            disabled={phase.kind === 'sending' || phase.kind === 'hearing'}
+            onHoldStart={startHold}
+            onHoldEnd={endHold}
           />
         )}
         <CircleButton size={PILL_HEIGHT} label={typing ? 'Talk instead' : 'Type instead'} onPress={() => setTyping((t) => !t)}>

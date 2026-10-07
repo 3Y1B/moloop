@@ -15,8 +15,10 @@ const BUBBLE = 40;
  * Hold anywhere on the pill to talk. At rest it reads like a text field; while held the
  * level meter fills it and the mic bubble swirls. Big target on purpose: one thumb, walking.
  */
-export function VoicePill({ listening, placeholder, disabled, onHoldStart, onHoldEnd, style }: {
+export function VoicePill({ listening, level, placeholder, disabled, onHoldStart, onHoldEnd, style }: {
   listening: boolean;
+  /** Microphone level, 0–1, while listening. */
+  level?: number;
   placeholder: string;
   disabled?: boolean;
   onHoldStart: () => void;
@@ -50,7 +52,7 @@ export function VoicePill({ listening, placeholder, disabled, onHoldStart, onHol
       <View style={styles.middle}>
         {listening ? (
           <Animated.View key="wave" entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={styles.fill}>
-            <Waveform active bars={22} height={22} />
+            <Waveform active level={level} bars={22} height={22} />
           </Animated.View>
         ) : (
           <Animated.Text

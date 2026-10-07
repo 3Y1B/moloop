@@ -1,4 +1,4 @@
-import { StyleSheet, useWindowDimensions } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import { VenueMap, zoneSpot, type MapMarker } from '@/components/map/venue-map';
 import type { Point } from '@/data/venue';
@@ -23,19 +23,18 @@ function along(points: Point[], t: number): { at: Point; next: number } {
 }
 
 /**
- * Both dots: the festival-goer, and whoever is coming, walking the route toward them.
+ * Both dots: the festival-goer, and whoever is coming, walking the route toward them (or where they are, while matched).
  * Full-bleed behind the sheet. Until GPS lands, the volunteer's dot is placed by time: how far into their walk they should be.
  */
 export function RequestMap({ view, frame }: { view: RequestView; frame: { top: number; bottom: number } }) {
   const theme = useTheme();
   const now = useNow();
   const { teams } = useLookups();
-  const { width, height } = useWindowDimensions();
   const { request, task, status, volunteer } = view;
 
   const zone = request.zoneSlug ?? task?.zoneSlug ?? null;
   const here = zoneSpot(zone);
-  if (!here) return <VenueMap route={null} me={null} fit="site" aspect={width / height} frame={frame} style={StyleSheet.absoluteFill} />;
+  if (!here) return <VenueMap route={null} me={null} fit="site" frame={frame} style={StyleSheet.absoluteFill} />;
 
   const markers: MapMarker[] = [];
   let route: Route | null = null;
@@ -43,7 +42,8 @@ export function RequestMap({ view, frame }: { view: RequestView; frame: { top: n
   if (volunteer) {
     const color = (volunteer.teamSlug && teams[volunteer.teamSlug]?.color) || theme.tint;
     const walk = status.stage === 'coming' && status.arriveAt ? routeBetween(volunteer.zoneSlug, zone) : null;
-    let at = zoneSpot(zone, 1) ?? here;
+    // Matched but not walking over yet (finishing a task): wherever they are now. Otherwise, with the festival-goer.
+    let at = (status.stage === 'finding' ? zoneSpot(volunteer.zoneSlug, 1) : null) ?? zoneSpot(zone, 1) ?? here;
     if (walk && walk.points.length > 1) {
       const start = task?.assignedAt ?? task?.createdAt ?? now;
       const span = (status.arriveAt ?? now) - start;
@@ -56,6 +56,6 @@ export function RequestMap({ view, frame }: { view: RequestView; frame: { top: n
   markers.push({ kind: 'person', id: 'me', at: here, color: theme.tint });
 
   return (
-    <VenueMap route={route} me={null} markers={markers} fit="route" aspect={width / height} frame={frame} style={StyleSheet.absoluteFill} />
+    <VenueMap route={route} me={null} markers={markers} fit="route" frame={frame} style={StyleSheet.absoluteFill} />
   );
 }

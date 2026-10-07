@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -20,13 +20,6 @@ import { VENUE_ZONES } from '@/data/venue';
 import { useLookups, useNow, useRepo, useRequest, type RequestView } from '@/data/hooks';
 import { useTheme } from '@/hooks/use-theme';
 
-// Demo lines until real STT: one plain update, one that sounds worse (the AI alerts the lead).
-const LINES = [
-  'we’ve moved into the shade, um, right by the {fins|bins}',
-  'she’s, uh, she’s getting worse, she just {vomited|vomited}',
-];
-const MORE = 'and she’s {drinking|drinking} some water now';
-
 /**
  * The "Uber" view: who's coming on the map, the status and steps on the sheet, and the assistant
  * at the bottom for anything that's changed. The AI decides whether a detail is a note or alerts the lead.
@@ -36,7 +29,6 @@ export default function RequestScreen() {
   const repo = useRepo();
   const { id } = useLocalSearchParams<{ id: string }>();
   const view = useRequest(id);
-  const turn = useRef(0);
   const stage = view?.status.stage;
   const open = stage === 'finding' || stage === 'coming' || stage === 'with_you';
   const layout = useMapLayout(open ? 190 : 150, { dock: open });
@@ -84,7 +76,6 @@ export default function RequestScreen() {
       {open && (
         <VoiceDock
           placeholder="Add detail"
-          script={(before) => (before ? MORE : LINES[turn.current++ % LINES.length])}
           onSend={async (text) => ((await repo.guestAddDetail(request.id, text)).escalated ? 'Lead alerted.' : 'Note added.')}
         />
       )}
@@ -97,7 +88,8 @@ function Hero({ view }: { view: RequestView }) {
   const theme = useTheme();
   const now = useNow();
   const { status, request } = view;
-  const waiting = status.stage === 'understanding' || status.stage === 'finding';
+  const matched = status.stage === 'finding' && !!status.volunteerId;
+  const waiting = status.stage === 'understanding' || (status.stage === 'finding' && !matched);
   const mins = status.stage === 'coming' && status.arriveAt ? Math.max(1, Math.ceil((status.arriveAt - now) / 60_000)) : null;
   // lib/status writes "Ben is coming · 3 min"; the minutes move into the box.
   const title = mins != null ? status.label.split(' · ')[0] : `${status.label}${waiting ? '…' : ''}`;
@@ -114,7 +106,8 @@ function Hero({ view }: { view: RequestView }) {
           </View>
         )}
       </View>
-      <StepTracker stage={status.stage} reached={request.taskId || request.aiAnswer ? 2 : 1} />
+      {!!status.detail && <Text style={[styles.detail, { color: theme.textSecondary }]}>{status.detail}</Text>}
+      <StepTracker stage={status.stage} reached={request.taskId || request.aiAnswer ? 2 : 1} matched={matched} />
     </View>
   );
 }
@@ -149,8 +142,11 @@ function Answer({ view }: { view: RequestView }) {
 function Help({ view }: { view: RequestView }) {
   const theme = useTheme();
   const { teams } = useLookups();
-  const { request, task, volunteer } = view;
+  const { request, task, status, volunteer } = view;
   const team = volunteer?.teamSlug ? teams[volunteer.teamSlug] : undefined;
+  // Matched but not walking over yet: say where they are, as their dot on the map does.
+  const at = status.stage === 'finding' && volunteer?.zoneSlug ? VENUE_ZONES[volunteer.zoneSlug]?.label : null;
+  const about = [team?.name, at].filter(Boolean).join(' · ');
   const zone = request.zoneSlug ?? task?.zoneSlug;
   const where = [zone ? VENUE_ZONES[zone]?.label : null, request.locationHint].filter(Boolean).join(' · ');
 
@@ -161,7 +157,7 @@ function Help({ view }: { view: RequestView }) {
           <Avatar name={volunteer.name} color={team?.color} size={44} />
           <View style={styles.flex}>
             <Text style={[styles.name, { color: theme.text }]}>{volunteer.name.split(' ')[0]}</Text>
-            {team && <Text style={[styles.sub, { color: theme.textSecondary }]}>{team.name}</Text>}
+            {!!about && <Text style={[styles.sub, { color: theme.textSecondary }]}>{about}</Text>}
           </View>
         </View>
       )}
@@ -211,6 +207,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, overflow: 'hidden' },
   missing: { fontSize: Type.body, textAlign: 'center', marginTop: 160 },
   hero: { gap: 18 },
+  detail: { fontSize: Type.body, marginTop: -12 },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   status: { flex: 1, fontSize: Type.hero + 2, lineHeight: 30, fontWeight: '700', letterSpacing: -0.5 },
   mins: { width: 60, height: 60, borderRadius: Radius.control, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' },

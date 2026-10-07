@@ -1,0 +1,89 @@
+import { useEffect, type ReactElement } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import Svg, { Circle, Path } from 'react-native-svg';
+
+import { NODES, VENUE_ZONES, type Point } from '@/data/venue';
+import { usePriorityColors, useTheme } from '@/hooks/use-theme';
+import { DOT, PIN, spread, type MapMarker, type VenueMapProps } from './map-model';
+
+/** One thing pinned to the map: where, which part of the view sits on that spot, and what to draw. */
+export type Overlay = { key: string; at: Point; anchor: 'center' | 'bottom'; view: ReactElement; onPress?: () => void };
+
+/** Everything that floats over the map, in draw order (later on top). */
+export function useOverlays(p: VenueMapProps, metresPerPoint: number): Overlay[] {
+  const theme = useTheme();
+  const priorityColor = usePriorityColors();
+  const accent = p.targetColor ?? theme.danger;
+  const dest = p.target ? VENUE_ZONES[p.target] : undefined;
+  const out: Overlay[] = [];
+
+  for (const person of p.people ?? []) {
+    out.push({ key: `p-${person.id}`, at: person.at, anchor: 'center', view: <Dot color={person.color} initials={person.initials} /> });
+  }
+  for (const m of spread(p.markers ?? [], metresPerPoint)) {
+    const onPress = p.onMarkerPress ? () => p.onMarkerPress!(m) : undefined;
+    out.push({ key: `m-${m.kind}-${m.id}`, at: m.at, onPress, ...markerView(m, theme.danger, priorityColor) });
+  }
+  if (dest && !p.route?.here) out.push({ key: 'dest', at: NODES[dest.node], anchor: 'bottom', view: <Pin color={accent} size={1.15} /> });
+  if (p.me) out.push({ key: 'me', at: p.me, anchor: 'center', view: <Me color={theme.tint} /> });
+  return out;
+}
+
+function markerView(m: MapMarker, danger: string, priorityColor: Record<string, string>): Pick<Overlay, 'anchor' | 'view'> {
+  if (m.kind === 'task') return { anchor: 'bottom', view: <Pin color={priorityColor[m.priority]} /> };
+  const help = m.kind === 'volunteer' && m.needsHelp;
+  const ring = m.kind === 'volunteer' && (m.onTask || m.needsHelp);
+  return { anchor: 'center', view: <Dot color={help ? danger : m.color} initials={m.initials} ring={ring} /> };
+}
+
+/** A person: a dot in their colour with initials, ringed when busy. */
+function Dot({ color, initials, ring }: { color: string; initials?: string; ring?: boolean }) {
+  return (
+    <View style={[styles.ringBox, ring && { borderColor: color }]}>
+      <View style={[styles.dot, { backgroundColor: color }]}>
+        {!!initials && <Text style={styles.initials}>{initials}</Text>}
+      </View>
+    </View>
+  );
+}
+
+/** A teardrop pin whose tip marks the spot. */
+function Pin({ color, size = 1 }: { color: string; size?: number }) {
+  const w = PIN.w * size, h = PIN.h * size;
+  return (
+    <Svg width={w} height={h} viewBox="-14 -36 28 37">
+      <Path d="M0 0 C -4 -8, -12 -12, -12 -22 A 12 12 0 1 1 12 -22 C 12 -12, 4 -8, 0 0 Z" fill={color} stroke="#fff" strokeWidth={2} />
+      <Circle cy={-22} r={4.5} fill="#fff" />
+    </Svg>
+  );
+}
+
+/** Me: a blue dot with a slow pulse. */
+function Me({ color }: { color: string }) {
+  const pulse = useSharedValue(0);
+  useEffect(() => {
+    pulse.set(withRepeat(withTiming(1, { duration: 1800, easing: Easing.out(Easing.quad) }), -1, false));
+    return () => cancelAnimation(pulse);
+  }, [pulse]);
+  const ring = useAnimatedStyle(() => ({ opacity: 0.45 * (1 - pulse.get()), transform: [{ scale: 0.4 + pulse.get() * 1.1 }] }));
+  return (
+    <View style={styles.meBox}>
+      <Animated.View style={[styles.mePulse, { backgroundColor: color }, ring]} />
+      <View style={styles.meOuter}>
+        <View style={[styles.meInner, { backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
+
+const ME = 44;
+const styles = StyleSheet.create({
+  ringBox: { width: DOT + 8, height: DOT + 8, borderRadius: (DOT + 8) / 2, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  dot: { width: DOT, height: DOT, borderRadius: DOT / 2, borderWidth: 1.5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  initials: { color: '#fff', fontSize: 9, fontWeight: '700' },
+  meBox: { width: ME, height: ME, alignItems: 'center', justifyContent: 'center' },
+  mePulse: { position: 'absolute', width: ME, height: ME, borderRadius: ME / 2 },
+  meOuter: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' },
+  meInner: { width: 12, height: 12, borderRadius: 6 },
+});
