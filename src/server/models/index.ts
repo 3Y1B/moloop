@@ -1,44 +1,66 @@
-import type { Classifier, Llm, Speaker, Transcriber } from './types';
-import { FallbackClassifier, FallbackLlm, FallbackSpeaker, FallbackTranscriber } from './fallback';
-import { JevClassifier } from './jev';
+import { choice, noul, type EntryType, type Questions } from '@typesafe-ai/sdk';
+import type { z } from 'zod';
+
+import type { Answers } from './decisions';
+import { withFallback, type Attempt } from './fallback';
+import { Jev } from './jev';
 import { LunaLlm } from './luna';
-import { MockClassifier, MockLlm } from './mock';
-import { OpenAiDecisionsClassifier } from './openai-decisions';
-import { SpeechToText, TextToSpeech } from './speech-clients';
+import { OpenAiDecisions } from './openai-decisions';
+import { hasOpenAi, onSpark, openai, spark, sparkLimiter } from './providers';
 
 /**
- * Live models run on the Spark (open-source, self-hosted). If the Spark errors or passes its time limit (the request
- * is then cancelled), each call falls back to the closest OpenAI model; if that fails too, the error reaches the
- * pipeline, which fails closed to a human.
+ * The two seams the interpreter decides with, on OpenAI or the Spark (providers.ts):
  *
- *   chat + JSON     qwen3.5:4b        -> gpt-6-luna (reasoning off)
- *   Jev decisions   /v1/systemone     -> /v1/decisions, gpt-6-luna
- *   speech to text  qwen3-asr-1.7b    -> gpt-4o-mini-transcribe
- *   text to speech  qwen3-tts         -> gpt-4o-mini-tts, voice "marin" + the description as instructions
+ *  - `generate`: chat completions with JSON-schema output, validated with zod, one repair round.
+ *  - `decide`: typed questions answered with probabilities. Narrow questions, one thing each.
+ *
+ * If both the Spark and OpenAI fail, the error reaches the caller, which fails closed to a person.
  */
-const live = process.env.USE_LIVE_MODELS === '1';
 
-const SPARK = { baseUrl: process.env.SPARK_BASE_URL ?? 'https://spark-2053.taild1460f.ts.net/v1', apiKey: process.env.SPARK_API_KEY };
-const OPENAI = { baseUrl: 'https://api.openai.com/v1', apiKey: process.env.OPENAI_API_KEY };
+/** `urgent` jumps the Spark's queue; `signal` bounds the whole call, fallback included. */
+export type CallOptions = { urgent?: boolean; signal?: AbortSignal };
 
-export const classifier: Classifier = live
-  ? new FallbackClassifier(new JevClassifier(SPARK), new OpenAiDecisionsClassifier(OPENAI), { timeoutMs: 4_000 })
-  : new MockClassifier();
+// How long the Spark gets before OpenAI takes over, and how long the last resort gets.
+const LIMITS = { chat: { primaryMs: 5_000, lastMs: 15_000 }, decide: { primaryMs: 4_000, lastMs: 10_000 } };
 
-export const llm: Llm = live
-  ? new FallbackLlm(new LunaLlm(SPARK), new LunaLlm({ ...OPENAI, model: 'gpt-6-luna' }), { timeoutMs: 5_000 })
-  : new MockLlm();
+let clients: { sparkChat: LunaLlm; openaiChat: LunaLlm; jev: Jev; decisions: OpenAiDecisions } | undefined;
+const models = () => (clients ??= {
+  sparkChat: new LunaLlm({ ...spark(), model: process.env.LLM_MODEL ?? 'qwen3.5:4b' }),
+  openaiChat: new LunaLlm({ ...openai(), model: 'gpt-6-luna' }),
+  jev: new Jev(spark()),
+  decisions: new OpenAiDecisions(openai()),
+});
 
-// No offline mock for audio: these are only used once voice is wired (phase 4).
-export const transcriber: Transcriber = new FallbackTranscriber(
-  new SpeechToText({ ...SPARK, model: 'qwen3-asr-1.7b' }),
-  new SpeechToText({ ...OPENAI, model: 'gpt-4o-mini-transcribe' }),
-  { timeoutMs: 8_000 },
-);
+/** A Spark call waits its turn in the shared queue; giving up while waiting frees the slot. */
+const queued = <R>(id: string, urgent: boolean | undefined, call: (signal: AbortSignal) => Promise<R>): Attempt<R> | null =>
+  onSpark() ? { id, call: (signal) => sparkLimiter().run(!!urgent, () => call(signal), signal) } : null;
+const cloud = <R>(id: string, call: (signal: AbortSignal) => Promise<R>): Attempt<R> | null => (hasOpenAi() ? { id, call } : null);
 
-// Spoken briefs can run several sentences; qwen3-tts renders at ~1.4x realtime.
-export const speaker: Speaker = new FallbackSpeaker(
-  new TextToSpeech({ ...SPARK, model: 'qwen3-tts' }),
-  new TextToSpeech({ ...OPENAI, model: 'gpt-4o-mini-tts', namedVoice: 'marin' }),
-  { timeoutMs: 12_000 },
-);
+/** The models answering first, for triage_runs. */
+export const chatModelId = () => (onSpark() ? models().sparkChat : models().openaiChat).id;
+export const decideModelId = () => (onSpark() ? models().jev : models().decisions).id;
+
+/** Structured output validated against `schema`. */
+export function generate<T extends z.ZodType>(
+  args: { system: string; prompt: string; schema: T },
+  o: CallOptions = {},
+): Promise<z.infer<T>> {
+  const m = models();
+  return withFallback(
+    queued(m.sparkChat.id, o.urgent, (signal) => m.sparkChat.generate({ ...args, signal })),
+    cloud(m.openaiChat.id, (signal) => m.openaiChat.generate({ ...args, signal })),
+    { ...LIMITS.chat, signal: o.signal },
+  );
+}
+
+/** Questions about some content, answered with probabilities. */
+export function decide<const Q extends Questions>(state: EntryType, questions: Q, o: CallOptions = {}): Promise<Answers<Q>> {
+  const m = models();
+  return withFallback(
+    queued(m.jev.id, o.urgent, (signal) => m.jev.decide(state, questions, signal)),
+    cloud(m.decisions.id, (signal) => m.decisions.decide(state, questions, signal)),
+    { ...LIMITS.decide, signal: o.signal },
+  );
+}
+
+export { choice, noul };

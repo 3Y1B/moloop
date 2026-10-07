@@ -1,20 +1,17 @@
 import { z } from 'zod';
 import { httpOptions, postWithRetry, type HttpOptions } from './http';
-import type { Llm } from './types';
+import { spark } from './providers';
 
 type LunaOptions = { baseUrl?: string; apiKey?: string; model?: string; fetch?: typeof fetch; retryDelayMs?: number };
 
 /** OpenAI-compatible chat completions with JSON-schema output: the Spark's qwen3.5:4b by default, or OpenAI's gpt-6-luna. */
-export class LunaLlm implements Llm {
+export class LunaLlm {
   readonly id: string;
   private readonly http: HttpOptions;
 
   constructor(opts: LunaOptions = {}) {
     this.id = opts.model ?? process.env.LLM_MODEL ?? 'qwen3.5:4b';
-    this.http = httpOptions(opts, {
-      baseUrl: process.env.SPARK_BASE_URL ?? 'https://spark-2053.taild1460f.ts.net/v1',
-      apiKey: process.env.SPARK_API_KEY,
-    });
+    this.http = httpOptions(opts, spark());
   }
 
   async generate<T extends z.ZodTypeAny>({ system, prompt, schema, signal }: { system: string; prompt: string; schema: T; signal?: AbortSignal }): Promise<z.infer<T>> {
@@ -34,13 +31,14 @@ export class LunaLlm implements Llm {
   }
 
   private async complete(messages: Message[], schema: z.ZodTypeAny, signal?: AbortSignal): Promise<string> {
+    const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema) as Record<string, unknown>;
     const res = await postWithRetry(
       this.http,
       '/chat/completions',
       JSON.stringify({
         model: this.id,
         reasoning_effort: 'none',
-        response_format: { type: 'json_schema', json_schema: { name: 'output', strict: true, schema: z.toJSONSchema(schema) } },
+        response_format: { type: 'json_schema', json_schema: { name: 'output', strict: true, schema: jsonSchema } },
         messages,
       }),
       signal,

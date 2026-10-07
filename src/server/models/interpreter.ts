@@ -7,7 +7,7 @@ import {
 import { activeTaskOf, interpretHeuristic } from '@/lib/commands';
 import { IncidentCategory, ReplyKind, TEAM_SLUGS, type Priority, type Task } from '@/lib/schema';
 import type { Interpretation } from '@/data/repo';
-import { choice, chatModelId, decide, decideModelId, generate, noul, type CallOptions } from './spark';
+import { choice, chatModelId, decide, decideModelId, generate, noul, type CallOptions } from '.';
 import { venueFacts, zones, type Zone } from './venue';
 
 /**
@@ -199,7 +199,7 @@ async function assess(i: Heard, { canAnswer = false, answered = false }, o: Call
   return { triage, answer: answerable ? w!.answer!.trim() : null, run: log };
 }
 
-const OPTS: CallOptions = { timeoutMs: 12_000 };
+const OPTS: CallOptions = {};
 
 export class SparkInterpreter implements Interpreter {
   async understand(i: Heard) {
@@ -258,7 +258,7 @@ export class SparkInterpreter implements Interpreter {
       const { kind } = await decide({
         utterance: heard,
         current_task: { title: active.title, summary: active.summary, volunteer_is: helping ? 'a helper' : 'the owner' },
-      }, { kind: choice('What is the volunteer doing with this message?', REPLIES) }, { urgent: true, timeoutMs: ms, signal: AbortSignal.timeout(ms) });
+      }, { kind: choice('What is the volunteer doing with this message?', REPLIES) }, { urgent: true, signal: AbortSignal.timeout(ms) });
       console.log(`interpret ${kind.choice} (${kind.confidence.toFixed(2)}) ${Date.now() - t0} ms`);
       if (kind.confidence < 0.6) return interpretHeuristic(tasks, meId, text);
       const reply = ReplyKind.safeParse(kind.choice);
@@ -273,7 +273,7 @@ export class SparkInterpreter implements Interpreter {
 }
 
 /**
- * USE_LIVE_MODELS=1 puts the models behind every decision (needs TYPESAFE_BASE_URL and TYPESAFE_API_KEY).
+ * USE_LIVE_MODELS=1 puts the models behind every decision (needs OPENAI_API_KEY, or SPARK_API_KEY with MODEL_PROVIDER=spark).
  * Anything else keeps the keyword stand-ins, so the server runs with no keys.
  */
 export const live = process.env.USE_LIVE_MODELS === '1';

@@ -11,7 +11,7 @@ Everything below is the gap between today and that video. The site plan is alrea
 | State | `MockRepo`: each phone keeps its own in-memory world and runs its own scheduler | One shared world in Supabase, pushed to every phone over realtime |
 | Lifecycle | Pure functions in `src/lib/lifecycle.ts`, driven by `MockRepo` | The same functions, driven by one server |
 | Pipeline | `src/server/pipeline`: route → triage → assign, each report handled once | The same pipeline plus re-triage of follow-ups, writing to Supabase |
-| Models | Keyword stand-ins by default; with `USE_LIVE_MODELS=1`, Spark (typed decisions) and GPT-6 Luna (chat) decide everything the server decides | Add Spark `qwen3-asr` for speech-to-text and `qwen3-tts` for text-to-speech (phase 4) |
+| Models | Keyword stand-ins by default; with `USE_LIVE_MODELS=1`, OpenAI (GPT-6 Luna for typed decisions and chat) decides everything the server decides, or the Spark first with `MODEL_PROVIDER=spark` | Add Spark `qwen3-asr` for speech-to-text and `qwen3-tts` for text-to-speech (phase 4) |
 | Voice | Hold the pill → `expo-audio` → `/api/transcribe` → Qwen3-ASR → "Heard: …"; spoken briefs through Qwen3-TTS (phase 4) | Spark reachable on the day |
 | Location | Volunteers sit at their zone's node | GPS stream → presence → map, routes and assignment distance |
 | Alerts | In-app messages only | Push notification when the phone is locked; spoken brief when the app is open |
@@ -128,8 +128,9 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 **Status:** done locally, on typed text. `USE_LIVE_MODELS=1` turns it on; keys are in the server's env only (`.env.example`).
 
 - **Two models, one seam.** `src/server/models/interpreter.ts` is the only thing the server asks. `SparkInterpreter` and `KeywordInterpreter` both implement it, so the server runs with no keys and the same commands run either way.
-  - **Typed decisions** (Spark `/v1/systemone` through `@typesafe-ai/sdk`): team, priority, "is this only a routine question", "did the detail make it worse", and "is this utterance a reply to my task". About 0.2 s each.
-  - **Chat** (JSON-schema output, validated with zod, one repair retry): the English title and summary, category, zone, language, and the answer to a routine question in the asker's language, from the venue facts only. GPT-6 Luna on OpenRouter when `OPENROUTER_API_KEY` is set (`openai/gpt-6-luna`, reasoning off), else `qwen3.5:4b` on Spark. About 1 to 1.5 s.
+  - **Typed decisions** (OpenAI `/v1/decisions` on `gpt-6-luna`, or Spark `/v1/systemone` with `MODEL_PROVIDER=spark`): team, priority, "is this only a routine question", "did the detail make it worse", and "is this utterance a reply to my task". About 0.2 s each on the Spark.
+  - **Chat** (JSON-schema output, validated with zod, one repair retry): the English title and summary, category, zone, language, and the answer to a routine question in the asker's language, from the venue facts only. GPT-6 Luna on OpenAI (`gpt-6-luna`, reasoning off), or `qwen3.5:4b` on the Spark with `MODEL_PROVIDER=spark`. About 1 to 1.5 s.
+  - **Fallback.** With `MODEL_PROVIDER=spark`, a Spark call that fails or runs late (5 s chat, 4 s decisions, 8 s ASR, 12 s TTS) is cancelled and OpenAI answers instead (`src/server/models/fallback.ts`). If both fail, the request goes to a person.
   - Chat and typed decisions run in parallel, and a model call never happens inside the world lock: the server asks first, then hands the answer to the pure command (`src/lib/ai.ts` is the shape).
 - **Safety rules in code, not prompts.**
   - The AI answers only when the chat model and the classifier both say routine, the priority reads P3, and no red-flag word is in the text.
@@ -139,7 +140,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - **`Repo.interpret` is server-side.** "Heard: on my way" becomes `accept` on the current task when the classifier is at least 0.6 sure, the utterance is 12 words or fewer, and a helper only ever gets `done`. Typically 0.2 to 0.25 s. If the classifier is less sure, or takes over `AI_INTERPRET_MS` (1.5 s, queue wait included), keywords answer instead.
 - **Localised, in part.** The AI's answer comes back in the language written, and `reporter.language` is what the model detected, so assignment can prefer a volunteer who speaks it. Everything else a festival-goer reads is still in English.
 - **Logged.** Every decision that makes or changes a task or a request writes a `triage_runs` row (model ids, team and priority with confidences, the rewrite, latency, error) on the task's report, or on the request when the AI answered. Migration `…_triage_runs_for_requests.sql`. `interpret` comes before any report exists, so it logs to the server console only.
-- **Rate limits.** Spark allows 4 calls at once and 30 a minute per key. One queue in front of it (`SPARK_CONCURRENCY`, `SPARK_RPM`) lets a volunteer's utterance or report jump ahead of a festival-goer's request. A call that gives up while waiting leaves the queue without using a slot. A typed report costs two calls, so about 14 a minute is the ceiling on Spark. Luna on OpenRouter has no such cap.
+- **Rate limits.** Spark allows 4 calls at once and 100 a minute per key. One queue in front of it (`SPARK_CONCURRENCY`, `SPARK_RPM`) lets a volunteer's utterance or report jump ahead of a festival-goer's request. A call that gives up while waiting leaves the queue without using a slot. A typed report costs two calls, so about 47 a minute is the ceiling on Spark. OpenAI has no such cap that we reach.
 - **Stuck requests.** The scheduler picks up any request left at "Understanding" (a restart, a dead call). The sweep runs beside the scheduler passes, so a slow or dead model never holds up a nudge.
 - **Checks.** `npm run models:check` runs 18 real utterances against the live models and prints latencies. `npm run commands:check` passes against both the keyword server and a `USE_LIVE_MODELS=1` server.
 - **Not done:**
@@ -180,8 +181,8 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
   - Holding the pill cuts a brief off; it starts again after "Heard". Only the recipient can read their own audio (storage RLS).
   - Briefs are on with `USE_LIVE_MODELS=1`.
 - **Speech server.**
-  - Spark by default, sharing its queue.
-  - `SPEECH_BASE_URL` moves ASR and TTS to any OpenAI-shaped server, such as `mlx_audio.server` on a Mac with the same Qwen3-ASR 1.7B and Qwen3-TTS 1.7B weights (`.env.example`). Typed decisions stay on Spark.
+  - OpenAI by default (`gpt-4o-mini-transcribe`, `gpt-4o-mini-tts` with voice `marin`). With `MODEL_PROVIDER=spark`, Spark first, sharing its queue, then OpenAI.
+  - `SPEECH_BASE_URL` puts any OpenAI-shaped server first, such as `mlx_audio.server` on a Mac with the same Qwen3-ASR 1.7B and Qwen3-TTS 1.7B weights (`.env.example`), with OpenAI behind it.
   - A local server loads the models at boot.
 - **Measured** (M5 Max, local models, warm):
 
