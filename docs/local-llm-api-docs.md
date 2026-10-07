@@ -299,7 +299,7 @@ Optional fields:
 
 | Limit | Value |
 |---|---|
-| Requests per key | 30 per minute |
+| Requests per key | 100 per minute |
 | Concurrent requests (whole server) | 4 at a time |
 | Chat output | max 2,048 tokens per reply |
 | Audio upload | 25 MB, 1 hour |
