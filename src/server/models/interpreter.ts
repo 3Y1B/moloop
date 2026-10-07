@@ -8,7 +8,7 @@ import { activeTaskOf, interpretHeuristic } from '@/lib/commands';
 import { namedIn, readRespondWords, soundsEmergency, type Named, type RespondCommand } from '@/lib/respond-words';
 import { ReplyKind, type EscalationResponseKind, type Priority, type Task, type TeamSlug } from '@/lib/schema';
 import type { Interpretation } from '@/data/repo';
-import { callTool, choice, decide, decideModelId, noul, toolModelId, type CallOptions } from '.';
+import { callTool, choice, decide, decideModelId, generate, noul, toolModelId, type CallOptions } from '.';
 import { CreateTaskArgs, EscalateArgs, INTAKE_SYSTEM, intakeTools, TEAMS, type AnswerArgs } from './intake-tools';
 import { venueFacts, zones, type Zone } from './venue';
 
@@ -63,6 +63,27 @@ export type Teammate = Named & { free: boolean; minutes?: number };
 export type RespondHeard = { task: Task; text: string; available: EscalationResponseKind[]; canPass: boolean; people: Teammate[]; quiet?: boolean };
 
 const URGENCY: Priority[] = ['P1', 'P2', 'P3'];
+
+/** "Tell her I'm two minutes away" → "I'm two minutes away": the volunteer speaking to the festival-goer. */
+const TELL = /^\s*(please\s+)?(tell|let)\s+(her|him|them|the (guest|festival-goer|person))\s+(know\s+)?(that\s+)?/i;
+const plainToGuest = (text: string) => {
+  const t = text.replace(TELL, '').trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : text;
+};
+async function toGuest(text: string): Promise<string> {
+  try {
+    const { message } = await generate({
+      system: 'A festival volunteer said this for the festival-goer they are on their way to help. Rewrite it as the '
+        + 'volunteer speaking to them directly: drop "tell her/them", keep every fact, same language, one or two short sentences.',
+      prompt: text,
+      schema: z.object({ message: z.string().min(1).max(300) }),
+    }, { signal: AbortSignal.timeout(Number(process.env.AI_TELL_MS ?? 2_000)) });
+    return message.trim();
+  } catch (e) {
+    console.warn(`toGuest fell back to keywords: ${(e as Error).message}`);
+    return plainToGuest(text);
+  }
+}
 const moreUrgent = (a: Priority, b: Priority) => (URGENCY.indexOf(a) <= URGENCY.indexOf(b) ? a : b);
 
 // ── keywords: only when a model call fails ──
@@ -92,6 +113,11 @@ const REPLIES = {
   still_on_it: 'Says they are still working on it, delayed or running late',
   new_report: 'Reports something new, or says anything that is not a reply to the task',
 } satisfies Record<ReplyKind | 'new_report', string>;
+
+/** Only on a festival-goer's request: words meant for them. */
+const TELL_GUEST = {
+  tell_guest: 'A message for the festival-goer who asked for help: where to wait, what the volunteer looks like, how long they will be ("tell her I\'m two minutes away", "I\'m in the yellow vest")',
+};
 
 /** The responses a lead can pick, as the model is offered them. Only those that fit right now are offered. */
 const ACTIONS = {
@@ -323,10 +349,17 @@ export class SparkInterpreter implements Interpreter {
       // The signal bounds the whole call, queue wait and retries included, and frees its Spark slot when it fires.
       const { kind } = await decide({
         utterance: heard,
-        current_task: { title: active.title, summary: active.summary, volunteer_is: helping ? 'a helper' : 'the owner' },
-      }, { kind: choice('What is the volunteer doing with this message?', REPLIES) }, { urgent: true, signal: AbortSignal.timeout(ms) });
+        current_task: {
+          title: active.title, summary: active.summary, volunteer_is: helping ? 'a helper' : 'the owner',
+          asked_by: active.requestId ? 'a festival-goer, who can read messages' : 'staff',
+        },
+      }, { kind: choice('What is the volunteer doing with this message?', active.requestId ? { ...REPLIES, ...TELL_GUEST } : REPLIES) }, { urgent: true, signal: AbortSignal.timeout(ms) });
       console.log(`interpret ${kind.choice} (${kind.confidence.toFixed(2)}) ${Date.now() - t0} ms`);
       if (kind.confidence < 0.6) return interpretHeuristic(tasks, meId, text);
+      // Any length: it goes to them as said.
+      if ((kind.choice as string) === 'tell_guest' && active.requestId) {
+        return { heard, intent: { kind: 'tell_guest', taskId: active.id, text: await toGuest(heard) } };
+      }
       const reply = ReplyKind.safeParse(kind.choice);
       const short = heard.split(/\s+/).length <= 12;
       if (!reply.success || !short || (helping && reply.data !== 'done')) return { heard, intent: { kind: 'report' } };

@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 
@@ -53,31 +53,36 @@ export function LogSheet({ head, onHeadLayout, minHeight, children }: {
   );
 }
 
-/** A title and the line under it. */
-export function Head({ title, children }: { title: string; children?: ReactNode }) {
+/** A title, with `lead` in front of it (the priority), and the line under it. */
+export function Head({ title, lead, children }: { title: string; lead?: ReactNode; children?: ReactNode }) {
   const theme = useTheme();
   return (
     <>
-      <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>{title}</Text>
+      <View style={styles.titleRow}>
+        {lead && <View style={styles.lead}>{lead}</View>}
+        <Text style={[styles.title, styles.flex, { color: theme.text }]} numberOfLines={2}>{title}</Text>
+      </View>
       {children}
     </>
   );
 }
 
-/** The last few lines, with the rest one tap away. Resets when `id` (the task) changes. */
-export function LogLines({ id, entries }: { id: string; entries: LogEntry[] }) {
+/**
+ * Lower down, the last few lines so the newest sits at the thumb; "Show earlier" opens the sheet, which shows them
+ * all and starts at the end, so earlier lines are a scroll up.
+ */
+export function LogLines({ id, entries, expanded, onExpand }: {
+  id: string;
+  entries: LogEntry[];
+  expanded?: boolean;
+  onExpand?: () => void;
+}) {
   const theme = useTheme();
-  const [all, setAll] = useState(false);
-  const [allFor, setAllFor] = useState(id);
-  if (allFor !== id) {
-    setAllFor(id);
-    setAll(false);
-  }
-  const hidden = all ? 0 : Math.max(0, entries.length - RECENT);
+  const hidden = expanded ? 0 : Math.max(0, entries.length - RECENT);
   return (
     <>
       {hidden > 0 && (
-        <Pressable accessibilityRole="button" onPress={() => setAll(true)} hitSlop={8} style={({ pressed }) => [styles.earlier, { opacity: pressed ? 0.6 : 1 }]}>
+        <Pressable accessibilityRole="button" onPress={onExpand} hitSlop={8} style={({ pressed }) => [styles.earlier, { opacity: pressed ? 0.6 : 1 }]}>
           <Text style={[styles.small, styles.strong, { color: theme.tint }]}>Show earlier</Text>
         </Pressable>
       )}
@@ -163,6 +168,9 @@ const styles = StyleSheet.create({
   rule: { height: StyleSheet.hairlineWidth, marginHorizontal: -20 },
   // Grows to fill the resting stop and keeps its lines at the bottom.
   log: { flexGrow: 1, justifyContent: 'flex-end', paddingTop: 16, gap: 14 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  // As tall as the title's first line, so the priority sits beside it when the title wraps.
+  lead: { height: 24, justifyContent: 'center' },
   title: { fontSize: Type.title, lineHeight: 24, fontWeight: '600', letterSpacing: -0.2 },
   text: { fontSize: Type.body, lineHeight: 21 },
   small: { fontSize: Type.footnote, lineHeight: 18 },

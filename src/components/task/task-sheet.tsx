@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
+import { Icon } from '@/components/ui/icon';
 import { Type } from '@/constants/theme';
 import { useLookups, useMe, useRouteTo, useSnapshot, useTaskEvents, useTaskStatus } from '@/data/hooks';
 import { clockTime, languageName } from '@/lib/format';
@@ -11,6 +12,7 @@ import type { Task } from '@/lib/schema';
 import { taskStatusFor } from '@/lib/status';
 import { useTheme } from '@/hooks/use-theme';
 import { Owner } from './active-task-card';
+import { PrioritySignal } from './badges';
 import { Head, LogLines, LogSheet, NowLine, type LogEntry } from './task-log';
 
 type SheetProps = {
@@ -18,6 +20,10 @@ type SheetProps = {
   onHeadLayout?: (height: number) => void;
   /** What's visible at the resting stop; the log fills it from the bottom. */
   minHeight?: number;
+  /** The sheet is open all the way: the whole log. */
+  expanded?: boolean;
+  /** "Show earlier": open the sheet. */
+  onExpand?: () => void;
 };
 
 /**
@@ -25,7 +31,7 @@ type SheetProps = {
  * words, Moloop's read, then every change, oldest first; the status is the last line, set large. The replies are
  * pinned under the sheet (TaskActions), the voice field under them.
  */
-export function TaskSheet({ task, onHeadLayout, minHeight }: { task: Task } & SheetProps) {
+export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }: { task: Task } & SheetProps) {
   const theme = useTheme();
   const status = useTaskStatus(task);
   const route = useRouteTo(task);
@@ -64,13 +70,21 @@ export function TaskSheet({ task, onHeadLayout, minHeight }: { task: Task } & Sh
         minHeight={minHeight}
         head={
           <>
-            <Head title={task.title}>
+            <Head title={task.title} lead={<PrioritySignal priority={task.priority} size={14} />}>
               <View style={styles.where}>
                 <Text style={[styles.text, styles.flex, { color: theme.textSecondary }]} numberOfLines={1}>{place}</Text>
                 {route && (
-                  <Text style={[styles.text, styles.minutes, { color: theme.textSecondary }]}>
-                    {route.here ? 'You’re here' : `${route.minutes} min`}
-                  </Text>
+                  <View style={styles.walk}>
+                    <Icon
+                      sf={route.here ? 'location.fill' : 'figure.walk'}
+                      md={route.here ? 'my_location' : 'directions_walk'}
+                      size={14}
+                      color={theme.tint}
+                    />
+                    <Text style={[styles.text, styles.minutes, { color: theme.textSecondary }]}>
+                      {route.here ? 'You’re here' : `${route.minutes} min`}
+                    </Text>
+                  </View>
                 )}
                 {route && !route.here && (
                   <Pressable
@@ -94,7 +108,7 @@ export function TaskSheet({ task, onHeadLayout, minHeight }: { task: Task } & Sh
             )}
           </>
         }>
-        <LogLines id={task.id} entries={entries} />
+        <LogLines id={task.id} entries={entries} expanded={expanded} onExpand={onExpand} />
         {status && <NowLine status={status} />}
       </LogSheet>
     </Animated.View>
@@ -105,7 +119,7 @@ export function TaskSheet({ task, onHeadLayout, minHeight }: { task: Task } & Sh
  * No task: the head says so; the log is the shift so far, each finished task one line (tap for its page).
  * Done tasks come newest first; the log reads oldest first.
  */
-export function FreeSheet({ done, onHeadLayout, minHeight }: { done: Task[] } & SheetProps) {
+export function FreeSheet({ done, onHeadLayout, minHeight, expanded, onExpand }: { done: Task[] } & SheetProps) {
   const theme = useTheme();
   const me = useMe();
   const { teams } = useLookups();
@@ -130,7 +144,7 @@ export function FreeSheet({ done, onHeadLayout, minHeight }: { done: Task[] } & 
           {!!sub && <Text style={[styles.text, { color: theme.textSecondary }]} numberOfLines={1}>{sub}</Text>}
         </Head>
       }>
-      <LogLines id="shift" entries={entries} />
+      <LogLines id="shift" entries={entries} expanded={expanded} onExpand={onExpand} />
     </LogSheet>
   );
 }
@@ -140,6 +154,7 @@ const styles = StyleSheet.create({
   where: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   text: { fontSize: Type.body, lineHeight: 21 },
   strong: { fontWeight: '600' },
+  walk: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   minutes: { fontVariant: ['tabular-nums'] },
   owner: { marginTop: 10 },
 });

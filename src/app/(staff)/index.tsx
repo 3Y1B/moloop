@@ -44,6 +44,9 @@ export default function HomeScreen() {
   const [headerHeight, setHeaderHeight] = useState(0);
   const [headHeight, setHeadHeight] = useState(56);
   const [barHeight, setBarHeight] = useState(80);
+  // Open all the way, the log shows everything from the end; "Show earlier" opens it.
+  const [sheetAt, setSheetAt] = useState(0);
+  const [opened, setOpened] = useState(0);
   const hasBar = !!active || (!!me && me.duty !== 'on_duty');
   const myInset = layout.bottomInset + (hasBar ? barHeight : 0);
   const above = GRABBER + (lead ? headerHeight : 0);
@@ -76,6 +79,9 @@ export default function HomeScreen() {
       <BottomSheet
         detents={detents}
         stop={stop}
+        raise={opened}
+        stickToEnd={!team}
+        onStopChange={setSheetAt}
         bottomInset={team ? layout.bottomInset : myInset}
         header={
           lead ? (
@@ -88,7 +94,14 @@ export default function HomeScreen() {
             </View>
           ) : undefined
         }>
-        {team ? <TeamSheet /> : <MyWork onHeadLayout={setHeadHeight} minHeight={Math.max(0, mid - myInset - above - 12)} />}
+        {team ? <TeamSheet /> : (
+          <MyWork
+            onHeadLayout={setHeadHeight}
+            minHeight={Math.max(0, myMid - myInset - above - 12)}
+            expanded={sheetAt === detents.length - 1}
+            onExpand={() => setOpened((n) => n + 1)}
+          />
+        )}
       </BottomSheet>
 
       {!team && <TaskActions onHeight={setBarHeight} />}
@@ -154,7 +167,7 @@ function HomeMap({ team, task, frame }: { team: boolean; task: Task | undefined;
 }
 
 /** My task as a log, or (free) my shift so far. */
-function MyWork(props: { onHeadLayout: (height: number) => void; minHeight: number }) {
+function MyWork(props: { onHeadLayout: (height: number) => void; minHeight: number; expanded: boolean; onExpand: () => void }) {
   const { active, done } = useMyWork();
   return active ? <TaskSheet task={active} {...props} /> : <FreeSheet done={done} {...props} />;
 }

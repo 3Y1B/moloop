@@ -1,5 +1,4 @@
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
@@ -11,11 +10,11 @@ import { REPLY_LABEL } from '@/lib/format';
 import { availableReplies } from '@/lib/lifecycle';
 import type { ReplyKind, Task } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
-import { openGuestReply, useSendReply } from './reply-bar';
+import { useSendReply } from './reply-bar';
 
 /**
  * The next tap, pinned between the sheet and the voice field so it stays under the thumb at every stop:
- * one filled button, the alternative as text. A festival-goer's task adds Find them and Reply under it.
+ * one filled button, the alternative as text.
  * Free, it's only there on a break (Back on duty). `onHeight` lets the sheet keep its content clear of it.
  */
 export function TaskActions({ onHeight }: { onHeight: (height: number) => void }) {
@@ -42,54 +41,24 @@ function Surface({ children }: { children: React.ReactNode }) {
 }
 
 function Replies({ task, helping }: { task: Task; helping: boolean }) {
-  const theme = useTheme();
   const send = useSendReply(task);
   const { primary, secondary } = availableReplies(task.status);
   // "Still on it" lives in the status line ("Send an update") and in voice. A helper only gets Done.
   const alt = helping ? undefined : secondary.find((r) => r !== 'still_on_it');
-  const guest = !!task.requestId;
-  const canReply = guest && task.status !== 'assigned';
-  if (!primary && !guest) return null;
+  // Words for a festival-goer go through the assistant ("Update your task"), so there's no Reply button here.
+  if (!primary) return null;
 
   return (
-    <>
-      {primary && (
-        <View style={styles.row}>
-          <Button
-            size="large"
-            label={REPLY_LABEL[primary]}
-            haptic={primary === 'done' ? 'success' : 'light'}
-            onPress={() => send(primary)}
-            style={styles.flex}
-          />
-          {alt && <TextAction kind={alt} onPress={() => send(alt)} />}
-        </View>
-      )}
-      {guest && (
-        <View style={styles.row}>
-          <Button
-            size="small"
-            variant="tinted"
-            label="Find them"
-            sf="dot.radiowaves.left.and.right"
-            color={theme.text}
-            onPress={() => router.push({ pathname: '/find/[id]', params: { id: task.id, name: task.reporter.name ?? 'Festival-goer' } })}
-            style={[styles.flex, { backgroundColor: theme.backgroundElement }]}
-          />
-          {canReply && (
-            <Button
-              size="small"
-              variant="tinted"
-              label="Reply"
-              sf="arrowshape.turn.up.left.fill"
-              color={theme.text}
-              onPress={() => openGuestReply(task)}
-              style={[styles.flex, { backgroundColor: theme.backgroundElement }]}
-            />
-          )}
-        </View>
-      )}
-    </>
+    <View style={styles.row}>
+      <Button
+        size="large"
+        label={REPLY_LABEL[primary]}
+        haptic={primary === 'done' ? 'success' : 'light'}
+        onPress={() => send(primary)}
+        style={styles.flex}
+      />
+      {alt && <TextAction kind={alt} onPress={() => send(alt)} />}
+    </View>
   );
 }
 

@@ -18,7 +18,7 @@ export const SHEET_RADIUS = 22;
  * from the top of the content drags the sheet back down. `bottomInset` keeps content clear of
  * whatever is pinned over the sheet's bottom edge (the voice dock).
  */
-export function BottomSheet({ detents, stop = 1, raise, header, bottomInset = 0, children }: {
+export function BottomSheet({ detents, stop = 1, raise, header, bottomInset = 0, stickToEnd, onStopChange, children }: {
   detents: number[];
   /** Where the sheet rests. Changing it moves the sheet there (a new task arriving raises it). */
   stop?: number;
@@ -27,6 +27,10 @@ export function BottomSheet({ detents, stop = 1, raise, header, bottomInset = 0,
   /** Stays put above the scrolling content. */
   header?: ReactNode;
   bottomInset?: number;
+  /** Open all the way, it starts at the end and stays there as content grows (a log, newest last). */
+  stickToEnd?: boolean;
+  /** The stop it's resting at, after a drag, a tap on the grabber, or a raise. */
+  onStopChange?: (index: number) => void;
   children: ReactNode;
 }) {
   const theme = useTheme();
@@ -63,6 +67,14 @@ export function BottomSheet({ detents, stop = 1, raise, header, bottomInset = 0,
     y.set(withSpring(offsets[Math.min(stop, top)], SPRING));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stop]);
+
+  useEffect(() => {
+    onStopChange?.(at);
+    if (!stickToEnd || at !== top) return;
+    const t = setTimeout(() => scroll.current?.scrollToEnd({ animated: false }), 50);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [at]);
 
   // Not on mount: only when it changes. Waits for the new content to lay out and the sheet to settle before scrolling.
   const raisedFor = useRef(raise);
@@ -146,6 +158,9 @@ export function BottomSheet({ detents, stop = 1, raise, header, bottomInset = 0,
               onScroll={onScroll}
               scrollEventThrottle={16}
               scrollEnabled={at === top}
+              onContentSizeChange={() => {
+                if (stickToEnd && at === top) scroll.current?.scrollToEnd({ animated: false });
+              }}
               bounces={false}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"

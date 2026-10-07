@@ -21,7 +21,8 @@ import type { Duty, GuestRequest, Priority, Proposal, ReplyKind, Task, TeamSlug,
 export type Scope = { teamSlug?: TeamSlug; zoneSlug?: string };
 
 /** What a push-to-talk utterance means (repo.ts Interpretation). */
-export type Intent = { kind: 'reply'; taskId: string; reply: ReplyKind } | { kind: 'report' };
+/** `tell_guest`: words for the festival-goer on a request's task, `text` as the volunteer speaking to them. */
+export type Intent = { kind: 'reply'; taskId: string; reply: ReplyKind } | { kind: 'tell_guest'; taskId: string; text: string } | { kind: 'report' };
 
 const MIN = 60_000;
 const BUMP: Record<Priority, Priority> = { P3: 'P2', P2: 'P1', P1: 'P1' };
@@ -95,6 +96,10 @@ export function commit(
   if (i.intent.kind === 'reply') {
     reply(b, actorId, i.intent.taskId, i.intent.reply, noteFor(i.intent.reply, i.heard));
     return { confirmation: `Sent “${REPLY_LABEL[i.intent.reply]}”` };
+  }
+  if (i.intent.kind === 'tell_guest') {
+    guestReply(b, actorId, i.intent.taskId, i.intent.text);
+    return { confirmation: 'Sent to the festival-goer' };
   }
   const open = openMatch(b, match);
   if (open) {
@@ -187,6 +192,8 @@ export function guestReply(b: Batch, staffId: string, taskId: string, text: stri
   const request = task.requestId ? b.requests[task.requestId] : undefined;
   if (!me || !request) throw new CommandError('conflict', `Task ${taskId} has no festival-goer to reply to`);
   b.request({ ...request, thread: [...request.thread, { from: 'staff', name: shortName(me), text, at: b.now }] });
+  // Talking to them is an update: nudges start over, same as a reply on the task.
+  b.task({ ...task, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null });
   b.ev(taskId, 'note', 'Replied to the festival-goer', b.actor(me.id), { note: text });
 }
 

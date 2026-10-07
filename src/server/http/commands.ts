@@ -42,6 +42,7 @@ const Interpretation = z.object({
   clips: Clips,
   intent: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('reply'), taskId: Id, reply: ReplyKind }),
+    z.object({ kind: z.literal('tell_guest'), taskId: Id, text: Text }),
     z.object({ kind: z.literal('report') }),
   ]),
 });
@@ -108,14 +109,14 @@ route('interpret', 'crew', z.object({ text: Text }), async (a, caller) =>
   interpreter.interpret({ tasks: Object.values((await read({}, ({ world }) => world)).tasks), meId: caller.id, text: a.text }));
 
 route('commit', 'crew', z.object({ interpretation: Interpretation }), async ({ interpretation: i }, caller) => {
-  const taskIds = i.intent.kind === 'reply' ? [i.intent.taskId] : [];
+  const taskIds = i.intent.kind === 'report' ? [] : [i.intent.taskId];
   const clips = ownClips(i.clips, caller);
   // A new report is judged before the lock is taken: the models take seconds.
   const { judged, matched } = i.intent.kind === 'report'
     ? await judgeReport(caller.id, caller.kind === 'crew' ? caller.role : 'volunteer', i.heard)
     : { judged: undefined, matched: undefined };
   return transact({ taskIds: matched?.value ? [...taskIds, matched.value.taskId] : taskIds }, (b) => {
-    if (i.intent.kind === 'reply') mustBeOn(taskOf(b, i.intent.taskId), caller);
+    if (i.intent.kind !== 'report') mustBeOn(taskOf(b, i.intent.taskId), caller);
     const { confirmation, later } = C.commit(b, caller.id, i, judged?.value, matched?.value);
     // Triage has already run.
     if (later) b.send(later.recipientId, 'system', later.body, { taskId: later.taskId });

@@ -37,7 +37,7 @@ export type Interpretation = {
   heard: string;
   /** The voice clips it was said in (from `transcribe`), kept with the report it becomes. */
   clips?: string[];
-  intent: { kind: 'reply'; taskId: string; reply: ReplyKind } | { kind: 'report' };
+  intent: { kind: 'reply'; taskId: string; reply: ReplyKind } | { kind: 'tell_guest'; taskId: string; text: string } | { kind: 'report' };
 };
 
 /**
