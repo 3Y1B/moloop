@@ -11,6 +11,7 @@ import { NODES, toPlan, VENUE_ZONES, type Point } from './venue';
 import { getLatest, getPinned, subscribe as onFix } from './location';
 import { guestStage, memberStatus, taskStatusFor, type GuestStatus, type Status } from '@/lib/status';
 import { chosenTeam, onTeamChange } from '@/lib/team-pill';
+import { taskLog, type LogFilter } from '@/lib/task-log';
 import { useSnapshot } from './provider';
 
 export { useRepo, useSnapshot } from './provider';
@@ -192,6 +193,12 @@ export function useChosenTeam(): TeamSlug | null {
   const chosen = useSyncExternalStore(onTeamChange, chosenTeam);
   const stats = useTeamStats();
   return chosen && stats.some((t) => t.slug === chosen) ? chosen : null;
+}
+
+/** Every task this shift with its newest event, filtered, most recent activity first, and the counts: Mo's Tasks tab. */
+export function useTaskLog(filter: LogFilter) {
+  const s = useSnapshot();
+  return useMemo(() => taskLog(s, filter), [s.tasks, s.events, filter.status, filter.team]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** The whole event, for Mo and the map: every active task, every unassigned one, everyone on duty. */
