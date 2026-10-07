@@ -127,7 +127,8 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 export function watch(): Promise<Location.LocationSubscription> {
   return Location.watchPositionAsync(
-    { accuracy: Location.Accuracy.High, distanceInterval: 2, timeInterval: PRESENCE.everyMs },
+    // Navigation accuracy fuses the motion sensors in: steadier fixes, every second, while the app is open.
+    { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 1, timeInterval: PRESENCE.everyMs },
     fromGps,
     (reason) => console.warn('[location] watch', reason),
   );

@@ -198,7 +198,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 ### 5. Live location
 
 - Add `expo-location` with `npx expo install`, plus the permission strings in `app.json`. It needs a rebuild.
-- **Foreground:** `watchPositionAsync`, sending an upsert at most every 3 s, or after 5 m of movement.
+- **Foreground:** `watchPositionAsync`, sending an upsert at most every second, after 2 m of movement.
 - **Background:** volunteers walk with the phone in a pocket, so add `expo-task-manager` and "Always" permission on iOS. If that fights us, the fallback is to keep the app open with the screen awake while on task.
 - **Using the position:**
   - `toPlan()` converts it to plan metres
@@ -214,7 +214,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 
 - **Who shares.** Crew while on duty; a festival-goer only while a request is open. Everyone sees their own dot while the app is open. Nothing is shared from the web build (Mo's laptop).
 - **Sending** (`src/data/location.ts`, `src/components/location-sharing.tsx`).
-  - The phone upserts its own `presence` row straight from supabase-js: at most every 3 s while moving, after 5 m, and a heartbeat every 20 s standing still. Fixes vaguer than 75 m are dropped.
+  - The phone upserts its own `presence` row straight from supabase-js: at most every second while moving, after 2 m, and a heartbeat every 20 s standing still. Fixes vaguer than 75 m are dropped.
   - Foreground it's `watchPositionAsync`. Crew on duty are asked once for "Always"; with it, a background task (`startLocationUpdatesAsync`) replaces the watch and keeps going with the phone in a pocket.
   - Without "Always", the screen stays on while they're on a task (`expo-keep-awake`).
 - **Reading.** `Snapshot.positions`, hydrated and kept live over realtime (about 0.5 s from a phone moving to Mo's map). Someone who becomes visible (a volunteer put on your request, the festival-goer behind your task) is fetched straight away, not on their next move.
@@ -225,7 +225,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - **Routes start anywhere.** `routeBetween` takes a zone or a plan point at either end, on the open-ground router, at about 0.3 ms a route, so it recomputes on every fix.
   - A volunteer's route runs from their phone to the festival-goer's phone, when the festival-goer is within 60 m of what they reported. Otherwise it ends at the zone.
 - **Assignment** ranks by walking distance from presence: `rankCandidates` on the phone, and on the server through `World.positions`. Backup ETAs use it too.
-- **Maps.**
+- **Maps.** Every dot glides to its new spot over about the time since its last update, so a second apart reads as walking; a jump of more than 60 m snaps.
   - Leads see their team where they really are; Mo sees the whole crew.
   - The task map and teammates on Directions follow presence.
   - The festival-goer sees their helper's real dot, the walk they have left, "Priya is coming · N min" counting down, and "Priya is here" within 12 m.

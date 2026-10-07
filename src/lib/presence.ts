@@ -9,9 +9,9 @@ import type { Position } from '@/lib/schema';
 
 export const PRESENCE = {
   /** Send at most this often while moving... */
-  everyMs: 3_000,
-  /** ...and only after moving this far. */
-  afterM: 5,
+  everyMs: 1_000,
+  /** ...and only after moving this far. Maps glide between updates, so a second apart reads as walking. */
+  afterM: 2,
   /** Standing still: send anyway this often, so the dot doesn't go grey. */
   heartbeatMs: 20_000,
   /** No update for this long: the dot greys and nobody routes from it as if it were live. */

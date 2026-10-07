@@ -13,6 +13,7 @@ import { MAP_ICON_SIZE, STYLE_ICONS } from './map-icons';
 import { useOverlays } from './map-markers';
 import { cameraFor, frameBox, liveData, liveLayers, type VenueMapProps } from './map-model';
 import { useMapStyle } from './map-style';
+import { useGlide } from './use-glide';
 
 export { zoneSpot, type MapMarker, type MapPerson } from './map-model';
 
@@ -159,7 +160,7 @@ function WebMarker({ gl, at, anchor, onPress, children }: { gl: { lib: GL; map: 
     return div;
   }, [pressable]);
   const marker = useRef<GLMarker | null>(null);
-  const [lng, lat] = toLngLat(at);
+  const [lng, lat] = toLngLat(useGlide(at));
   useEffect(() => {
     const m = new gl.lib.Marker({ element: el, anchor }).setLngLat([lng, lat]).addTo(gl.map);
     marker.current = m;
