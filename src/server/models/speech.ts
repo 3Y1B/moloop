@@ -1,21 +1,25 @@
+import { withFallback, type Attempt } from './fallback';
 import { Limiter } from './limiter';
-import { sparkLimiter } from './spark';
+import { hasOpenAi, onSpark, openai, spark, sparkLimiter } from './providers';
+import { SpeechToText, TextToSpeech } from './speech-clients';
 
 /**
  * The speech models, OpenAI-shaped (docs/local-llm-api-docs.md):
  *
- *  - `transcribe`: `/v1/audio/transcriptions` with Qwen3-ASR 1.7B. A 5 s clip takes about 0.2–0.6 s. No keyword
- *    stand-in: without a speech server, voice is off and typing still works.
- *  - `speak`: `/v1/audio/speech` with Qwen3-TTS 1.7B, about 1 s for a brief. Whole file at once, mp3.
+ *  - `transcribe`: `/v1/audio/transcriptions`. No keyword stand-in: without a speech model, voice is off and typing
+ *    still works.
+ *  - `speak`: `/v1/audio/speech`. Whole file at once, mp3.
  *
- * On Spark by default, sharing its queue with the typed decisions and chat: one key, 4 at once, 30 a minute.
- * SPEECH_BASE_URL moves both to another server, such as mlx-audio on this machine (`mlx_audio.server`), with the
- * same models under their Hugging Face names: decisions stay on Spark, speech has no rate limit.
+ * On OpenAI by default (gpt-4o-mini-transcribe, gpt-4o-mini-tts). With MODEL_PROVIDER=spark, Qwen3-ASR 1.7B and
+ * Qwen3-TTS 1.7B on the Spark first, sharing its queue with chat and decisions, then OpenAI. SPEECH_BASE_URL puts a
+ * server of our own first instead, such as mlx-audio on this machine (`mlx_audio.server`) with the same Qwen3 models
+ * under their Hugging Face names; it has no rate limit.
  */
 
 const local = () => !!process.env.SPEECH_BASE_URL;
 
-const config = () => local()
+/** The server tried first, if any: our own, else the Spark when it's the provider. */
+const primary = () => local()
   ? {
     base: process.env.SPEECH_BASE_URL!.replace(/\/+$/, ''),
     key: process.env.SPEECH_API_KEY ?? '',
@@ -28,41 +32,61 @@ const config = () => local()
     // mlx-audio decodes any format by its content, then rewrites it to a temp file named like the upload, which it
     // can't do for m4a (the phone's format). Calling every clip .wav sidesteps that.
     rename: 'clip.wav',
+    limiter: (localLimiter ??= new Limiter(2, 600)),
   }
-  : {
-    base: `${(process.env.TYPESAFE_BASE_URL ?? '').replace(/\/+$/, '')}/v1`,
-    key: process.env.TYPESAFE_API_KEY ?? '',
-    asr: process.env.ASR_MODEL ?? 'qwen3-asr-1.7b',
-    tts: process.env.TTS_MODEL ?? 'qwen3-tts',
-    // Same description, same voice: Spark seeds from it, so every brief sounds like the same person.
-    voice: process.env.TTS_VOICE ?? 'jarvis',
-    hint: 'prompt',
-    rename: null,
-  };
+  : onSpark()
+    ? {
+      base: spark().baseUrl,
+      key: spark().apiKey ?? '',
+      asr: process.env.ASR_MODEL ?? 'qwen3-asr-1.7b',
+      tts: process.env.TTS_MODEL ?? 'qwen3-tts',
+      // Same description, same voice: Spark seeds from it, so every brief sounds like the same person.
+      voice: process.env.TTS_VOICE ?? 'jarvis',
+      hint: 'prompt',
+      rename: null,
+      limiter: sparkLimiter(),
+    }
+    : null;
 
 let localLimiter: Limiter | undefined;
-const limiter = () => (local() ? (localLimiter ??= new Limiter(2, 600)) : sparkLimiter());
 
-/** Speech needs a speech server whatever USE_LIVE_MODELS says: there's nothing to fall back to. */
-export const speechAvailable = () => local() || (!!process.env.TYPESAFE_BASE_URL && !!process.env.TYPESAFE_API_KEY);
+// gpt-4o-mini-tts takes a named voice, and how to say things as instructions.
+const MANNER = 'Calm, clear and unhurried, like a steady festival radio dispatcher.';
+const OPENAI_ASR = 'gpt-4o-mini-transcribe';
+const OPENAI_TTS = 'gpt-4o-mini-tts';
+let cloud: { asr: SpeechToText; tts: TextToSpeech } | undefined;
+const openAi = () => (hasOpenAi()
+  ? (cloud ??= {
+    asr: new SpeechToText({ ...openai(), model: OPENAI_ASR }),
+    tts: new TextToSpeech({ ...openai(), model: OPENAI_TTS, namedVoice: 'marin' }),
+  })
+  : null);
 
-/** Spoken briefs cost a speech call per message (on Spark, against its rate limit), so they come on with the rest of the live models. */
+// How long the first server gets before OpenAI takes over, and how long the last resort gets.
+const LIMITS = { transcribe: { primaryMs: 8_000, lastMs: 15_000 }, speak: { primaryMs: 12_000, lastMs: 30_000 } };
+
+export const speechAvailable = () => local() || onSpark() || hasOpenAi();
+
+/** Spoken briefs cost a speech call per message, so they come on with the rest of the live models. */
 export const briefsEnabled = () => speechAvailable() && process.env.USE_LIVE_MODELS === '1';
 
-export const speechModels = () => ({ asr: config().asr, tts: config().tts });
+/** The models answering first, for the logs. */
+export const speechModels = () => {
+  const p = primary();
+  return p ? { asr: p.asr, tts: p.tts } : { asr: OPENAI_ASR, tts: OPENAI_TTS };
+};
 
 const auth = (key: string): Record<string, string> => (key ? { authorization: `Bearer ${key}` } : {});
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const RETRY = new Set([408, 429, 500, 502, 503, 504]);
 
-/** One speech call through the queue, retried on a busy server or a dropped connection like chat is. */
-async function call(path: string, init: () => RequestInit, { timeoutMs, urgent }: { timeoutMs: number; urgent: boolean }) {
-  const { base } = config();
+/** One call to the first server through its queue, retried on a busy server or a dropped connection. */
+async function call(path: string, init: () => RequestInit, signal: AbortSignal) {
+  const p = primary()!;
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await limiter().run(urgent, () =>
-        fetch(`${base}${path}`, { ...init(), signal: AbortSignal.timeout(timeoutMs) }));
+      const res = await p.limiter.run(true, () => fetch(`${p.base}${path}`, { ...init(), signal }), signal);
       if (RETRY.has(res.status) && attempt < 2) {
         await sleep(Math.min(Number(res.headers.get('retry-after') ?? 0) * 1000 || 300 * 2 ** attempt, 3_000));
         continue;
@@ -70,7 +94,7 @@ async function call(path: string, init: () => RequestInit, { timeoutMs, urgent }
       if (!res.ok) throw new Error(`${path} ${res.status}: ${(await res.text()).slice(0, 200)}`);
       return res;
     } catch (e) {
-      if (attempt < 2 && e instanceof TypeError) {
+      if (attempt < 2 && e instanceof TypeError && !signal.aborted) {
         await sleep(250 * 2 ** attempt);
         continue;
       }
@@ -85,33 +109,53 @@ async function call(path: string, init: () => RequestInit, { timeoutMs, urgent }
  */
 export async function transcribe(audio: Blob, filename: string, vocabulary?: string): Promise<{ text: string; latencyMs: number }> {
   const t0 = Date.now();
-  const c = config();
-  const res = await call('/audio/transcriptions', () => {
-    const form = new FormData();
-    form.append('file', audio, c.rename ?? filename);
-    form.append('model', c.asr);
-    form.append('response_format', 'json');
-    if (vocabulary) form.append(c.hint, vocabulary);
-    return { method: 'POST', headers: auth(c.key), body: form };
-  }, { timeoutMs: 15_000, urgent: true });
-  const json = (await res.json()) as { text?: string };
-  return { text: (json.text ?? '').trim(), latencyMs: Date.now() - t0 };
+  const p = primary();
+  const first: Attempt<{ text: string }> | null = p && {
+    id: p.asr,
+    call: async (signal) => {
+      const res = await call('/audio/transcriptions', () => {
+        const form = new FormData();
+        form.append('file', audio, p.rename ?? filename);
+        form.append('model', p.asr);
+        form.append('response_format', 'json');
+        if (vocabulary) form.append(p.hint, vocabulary);
+        return { method: 'POST', headers: auth(p.key), body: form };
+      }, signal);
+      const json = (await res.json()) as { text?: string };
+      return { text: json.text ?? '' };
+    },
+  };
+  const o = openAi();
+  const { text } = await withFallback(
+    first,
+    o && { id: o.asr.id, call: (signal) => o.asr.transcribe(audio, { filename, prompt: vocabulary, signal }) },
+    LIMITS.transcribe,
+  );
+  return { text: text.trim(), latencyMs: Date.now() - t0 };
 }
 
 /** A spoken message, as mp3. Up to 2,000 characters. */
 export async function speak(text: string): Promise<ArrayBuffer> {
-  const c = config();
-  const res = await call('/audio/speech', () => ({
-    method: 'POST',
-    headers: { ...auth(c.key), 'content-type': 'application/json' },
-    body: JSON.stringify({ model: c.tts, voice: c.voice, input: text.slice(0, 2000), response_format: 'mp3' }),
-  }), { timeoutMs: 30_000, urgent: true });
-  return res.arrayBuffer();
+  const input = text.slice(0, 2000);
+  const p = primary();
+  const o = openAi();
+  return withFallback(
+    p && {
+      id: p.tts,
+      call: async (signal) => (await call('/audio/speech', () => ({
+        method: 'POST',
+        headers: { ...auth(p.key), 'content-type': 'application/json' },
+        body: JSON.stringify({ model: p.tts, voice: p.voice, input, response_format: 'mp3' }),
+      }), signal)).arrayBuffer(),
+    },
+    o && { id: o.tts.id, call: (signal) => o.tts.speak(input, { voice: MANNER, signal }) },
+    LIMITS.speak,
+  );
 }
 
 /**
  * A local speech server loads each model on its first call, which takes seconds (20 s or more for TTS). Load both at
- * boot so the first "Heard" and the first brief are as quick as the rest. Spark keeps its models loaded: nothing to do.
+ * boot so the first "Heard" and the first brief are as quick as the rest. Spark and OpenAI keep theirs loaded.
  */
 export async function warmSpeech() {
   if (!local()) return;

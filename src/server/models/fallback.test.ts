@@ -1,82 +1,59 @@
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
-import { FallbackClassifier, FallbackLlm, FallbackSpeaker, FallbackTranscriber } from './fallback';
-import type { Classifier, Llm, Speaker, Transcriber } from './types';
+import { withFallback, type Attempt } from './fallback';
 
-const Out = z.object({ title: z.string() });
-const ask = { system: 's', prompt: 'p', schema: Out };
-
-const llm = (id: string, behaviour: (args: { signal?: AbortSignal }) => Promise<unknown>): Llm => ({ id, generate: behaviour as Llm['generate'] });
 const hangs = () => new Promise<never>(() => {});
+const model = <R>(id: string, call: (signal: AbortSignal) => Promise<R>): Attempt<R> => ({ id, call });
+const limits = { primaryMs: 10, lastMs: 50 };
 
-describe('FallbackLlm.generate', () => {
+describe('withFallback', () => {
   it('cancels the primary request when it times out, so a struggling Spark is not left doing the work', async () => {
     let seen: AbortSignal | undefined;
-    const spark = llm('spark', (args) => {
-      seen = args.signal;
+    const spark = model('spark', (signal) => {
+      seen = signal;
       return hangs();
     });
-    const both = new FallbackLlm(spark, llm('openai', async () => ({ title: 'from openai' })), { timeoutMs: 10 });
 
-    await both.generate(ask);
+    await withFallback(spark, model('openai', async () => 'from openai'), limits);
 
     expect(seen?.aborted).toBe(true);
   });
 
   it("returns the primary's answer when it works", async () => {
-    const both = new FallbackLlm(llm('spark', async () => ({ title: 'from spark' })), llm('mock', async () => ({ title: 'from mock' })));
-
-    await expect(both.generate(ask)).resolves.toEqual({ title: 'from spark' });
+    await expect(withFallback(model('spark', async () => 'from spark'), model('openai', async () => 'from openai'), limits)).resolves.toBe('from spark');
   });
 
   it('uses the fallback when the primary fails', async () => {
-    const both = new FallbackLlm(llm('spark', async () => { throw new Error('spark 502'); }), llm('mock', async () => ({ title: 'from mock' })));
+    const spark = model('spark', async () => {
+      throw new Error('spark 502');
+    });
 
-    await expect(both.generate(ask)).resolves.toEqual({ title: 'from mock' });
+    await expect(withFallback(spark, model('openai', async () => 'from openai'), limits)).resolves.toBe('from openai');
   });
 
-  it('uses the fallback when the primary hangs past the timeout', async () => {
-    const both = new FallbackLlm(llm('spark', hangs), llm('mock', async () => ({ title: 'from mock' })), { timeoutMs: 10 });
-
-    await expect(both.generate(ask)).resolves.toEqual({ title: 'from mock' });
-  });
-});
-
-const LABELS = [{ id: 'P1', description: 'urgent' }, { id: 'P3', description: 'routine' }] as const;
-const answer = (label: 'P1' | 'P3') => async () => ({ label, confidence: 0.9, scores: { [label]: 0.9 } });
-const classifier = (id: string, behaviour: () => Promise<unknown>): Classifier => ({ id, classify: behaviour as Classifier['classify'] });
-
-describe('FallbackClassifier.classify', () => {
-  it("returns the primary's answer when it works", async () => {
-    const both = new FallbackClassifier(classifier('jev', answer('P1')), classifier('mock', answer('P3')));
-
-    await expect(both.classify({ text: 't', labels: LABELS })).resolves.toMatchObject({ label: 'P1' });
+  it('uses the fallback when the primary hangs past its time limit', async () => {
+    await expect(withFallback(model('spark', hangs), model('openai', async () => 'from openai'), limits)).resolves.toBe('from openai');
   });
 
-  it('uses the fallback when the primary hangs past the timeout', async () => {
-    const both = new FallbackClassifier(classifier('jev', hangs), classifier('mock', answer('P3')), { timeoutMs: 10 });
-
-    await expect(both.classify({ text: 't', labels: LABELS })).resolves.toMatchObject({ label: 'P3' });
+  it('goes straight to the fallback when there is no primary (OpenAI only)', async () => {
+    await expect(withFallback(null, model('openai', async () => 'from openai'), limits)).resolves.toBe('from openai');
   });
-});
 
-const transcriber = (id: string, behaviour: () => Promise<{ text: string }>): Transcriber => ({ id, transcribe: behaviour });
-const speaker = (id: string, behaviour: () => Promise<ArrayBuffer>): Speaker => ({ id, speak: behaviour });
-const clip = new Blob([new Uint8Array([1])]);
+  it("throws the primary's error when there is no fallback, after the longer limit", async () => {
+    const slow = model('spark', () => new Promise<string>((r) => setTimeout(() => r('late but in time'), 25)));
 
-describe('FallbackTranscriber.transcribe', () => {
-  it('uses the fallback when the primary fails', async () => {
-    const both = new FallbackTranscriber(transcriber('qwen3-asr', async () => { throw new Error('spark 502'); }), transcriber('openai', async () => ({ text: 'from openai' })));
-
-    await expect(both.transcribe(clip)).resolves.toEqual({ text: 'from openai' });
+    await expect(withFallback(slow, null, limits)).resolves.toBe('late but in time');
+    await expect(withFallback(model('spark', async () => { throw new Error('spark 502'); }), null, limits)).rejects.toThrow('spark 502');
   });
-});
 
-describe('FallbackSpeaker.speak', () => {
-  it('uses the fallback when the primary hangs past the timeout', async () => {
-    const audio = new Uint8Array([9]).buffer;
-    const both = new FallbackSpeaker(speaker('qwen3-tts', hangs), speaker('openai', async () => audio), { timeoutMs: 10 });
+  it("tries nothing more once the caller's signal fires", async () => {
+    let asked = false;
+    const signal = AbortSignal.timeout(5);
 
-    await expect(both.speak('hi', { voice: 'calm' })).resolves.toBe(audio);
+    await expect(withFallback(model('spark', hangs), model('openai', async () => { asked = true; return 'x'; }), { primaryMs: 1_000, lastMs: 1_000, signal })).rejects.toThrow();
+    expect(asked).toBe(false);
+  });
+
+  it('times out the last resort too', async () => {
+    await expect(withFallback(model('spark', hangs), model('openai', hangs), limits)).rejects.toThrow(/openai timed out after 50 ms/);
   });
 });

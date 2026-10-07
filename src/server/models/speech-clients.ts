@@ -1,5 +1,4 @@
 import { httpOptions, postWithRetry, type HttpOptions } from './http';
-import type { Speaker, Transcriber } from './types';
 
 // Servers infer the audio format from the filename, and MIME subtypes aren't always the extension (audio/mpeg is mp3).
 const EXTENSION: Record<string, string> = { 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a' };
@@ -8,7 +7,7 @@ const filename = (type: string) => `clip.${EXTENSION[type] ?? (type.split('/')[1
 type Options = { baseUrl: string; apiKey: string | undefined; model: string; fetch?: typeof fetch; retryDelayMs?: number };
 
 /** OpenAI-compatible POST /audio/transcriptions: the Spark's qwen3-asr and OpenAI's transcribe models share this shape. */
-export class SpeechToText implements Transcriber {
+export class SpeechToText {
   readonly id: string;
   private readonly http: HttpOptions;
 
@@ -17,10 +16,10 @@ export class SpeechToText implements Transcriber {
     this.http = httpOptions(opts, opts);
   }
 
-  async transcribe(audio: Blob, opts: { prompt?: string; signal?: AbortSignal } = {}) {
+  async transcribe(audio: Blob, opts: { prompt?: string; filename?: string; signal?: AbortSignal } = {}) {
     const form = new FormData();
     form.append('model', this.id);
-    form.append('file', audio, filename(audio.type));
+    form.append('file', audio, opts.filename ?? filename(audio.type));
     if (opts.prompt) form.append('prompt', opts.prompt);
     const res = await postWithRetry(this.http, '/audio/transcriptions', form, opts.signal);
     const { text } = (await res.json()) as { text: string };
@@ -32,7 +31,7 @@ export class SpeechToText implements Transcriber {
  * OpenAI-compatible POST /audio/speech. The Spark's qwen3-tts takes a voice description in `voice`;
  * OpenAI's gpt-4o-mini-tts needs a named voice, so pass `namedVoice` and the description goes in `instructions`.
  */
-export class TextToSpeech implements Speaker {
+export class TextToSpeech {
   readonly id: string;
   private readonly http: HttpOptions;
   private readonly namedVoice: string | undefined;

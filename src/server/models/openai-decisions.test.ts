@@ -1,17 +1,18 @@
+import { choice, noul } from '@typesafe-ai/sdk';
 import { describe, expect, it } from 'vitest';
 import { fakeHttp, type FakeReply } from './fake-http';
-import { OpenAiDecisionsClassifier } from './openai-decisions';
+import { OpenAiDecisions } from './openai-decisions';
 
-const PRIORITY = [
-  { id: 'P1', description: 'life threatening' },
-  { id: 'P2', description: 'urgent, needs help within minutes' },
-  { id: 'P3', description: 'routine' },
-] as const;
+const PRIORITY = { P1: 'life threatening', P2: 'urgent, needs help within minutes', P3: 'routine' };
+const questions = {
+  priority: choice('How urgent is this message?', PRIORITY),
+  routine: noul('Is this only a routine question?'),
+};
 
 const openai = (...replies: FakeReply[]) => {
   const http = fakeHttp(...replies);
-  const classifier = new OpenAiDecisionsClassifier({ baseUrl: 'https://openai.test/v1', apiKey: 'sk-test', fetch: http.fetch, retryDelayMs: 0 });
-  return { classifier, requests: http.requests };
+  const decisions = new OpenAiDecisions({ baseUrl: 'https://openai.test/v1', apiKey: 'sk-test', fetch: http.fetch, retryDelayMs: 0 });
+  return { decisions, requests: http.requests };
 };
 
 // Shape copied from a real /v1/decisions response.
@@ -21,7 +22,7 @@ const decided = (choice: string) => ({
     answers: [
       {
         type: 'choice',
-        name: 'label',
+        name: 'priority',
         choice,
         probabilities: [
           { value: 'P1', probability: 0.55 },
@@ -30,68 +31,69 @@ const decided = (choice: string) => ({
         ],
         confidence: 0.33,
       },
+      { type: 'choice', name: 'routine', choice: 'no', probabilities: [{ value: 'yes', probability: 0.04 }, { value: 'no', probability: 0.96 }], confidence: 0.9 },
     ],
   },
 });
 
-const ask = { text: 'a guy collapsed by the food stalls', labels: PRIORITY };
+const state = 'a guy collapsed by the food stalls';
 
-describe('OpenAiDecisionsClassifier.classify', () => {
-  it("returns the chosen label, every label's probability and the API's confidence", async () => {
-    const { classifier } = openai(decided('P1'));
+describe('OpenAiDecisions.decide', () => {
+  it('answers in the Spark\'s shape: the chosen label with probabilities, and the chance of yes', async () => {
+    const { decisions } = openai(decided('P1'));
 
-    await expect(classifier.classify(ask)).resolves.toEqual({
-      label: 'P1',
-      scores: { P1: 0.55, P2: 0.42, P3: 0.03 },
-      confidence: 0.33,
+    await expect(decisions.decide(state, questions)).resolves.toEqual({
+      priority: { type: 'choice', choice: 'P1', probabilities: { P1: 0.55, P2: 0.42, P3: 0.03 }, confidence: 0.33 },
+      routine: { type: 'noul', noul: 0.04 },
     });
   });
 
-  it('asks gpt-6-luna one choice question, with each label as a described choice', async () => {
-    const { classifier, requests } = openai(decided('P1'));
+  it('asks gpt-6-luna each question as a described choice, a yes/no one as yes or no', async () => {
+    const { decisions, requests } = openai(decided('P1'));
 
-    await classifier.classify(ask);
+    await decisions.decide({ message: state, location: 'Gate A' }, questions);
 
     expect(requests).toHaveLength(1);
     expect(requests[0].url).toBe('https://openai.test/v1/decisions');
     expect(requests[0].headers.authorization).toBe('Bearer sk-test');
     expect(requests[0].json).toEqual({
       model: 'gpt-6-luna',
-      input: 'a guy collapsed by the food stalls',
+      input: JSON.stringify({ message: state, location: 'Gate A' }),
       questions: [
         {
           type: 'choice',
-          name: 'label',
-          instructions: expect.stringMatching(/\S/),
+          name: 'priority',
+          instructions: 'How urgent is this message?',
           choices: [
             { value: 'P1', description: 'life threatening' },
             { value: 'P2', description: 'urgent, needs help within minutes' },
             { value: 'P3', description: 'routine' },
           ],
         },
+        { type: 'choice', name: 'routine', instructions: 'Is this only a routine question?', choices: [{ value: 'yes' }, { value: 'no' }] },
       ],
     });
   });
 
   it('throws when the model refuses', async () => {
-    const { classifier } = openai({ json: { model: 'gpt-6-luna', answers: [{ type: 'refusal', name: 'label' }] } });
+    const { decisions } = openai({ json: { model: 'gpt-6-luna', answers: [{ type: 'refusal', name: 'priority' }, { type: 'refusal', name: 'routine' }] } });
 
-    await expect(classifier.classify(ask)).rejects.toThrow(/refus/);
+    await expect(decisions.decide(state, questions)).rejects.toThrow(/refused/);
   });
 
   it('throws on a label that was not offered', async () => {
-    const { classifier } = openai(decided('P0'));
+    const { decisions } = openai(decided('P0'));
 
-    await expect(classifier.classify(ask)).rejects.toThrow(/P0/);
+    await expect(decisions.decide(state, questions)).rejects.toThrow(/P0/);
   });
 
   it('passes the cancel signal to the request, and does not retry once cancelled', async () => {
     const cancel = new AbortController();
     const http = fakeHttp({ status: 429 }, decided('P1'));
-    const classifier = new OpenAiDecisionsClassifier({ baseUrl: 'https://openai.test/v1', apiKey: 'sk-test', fetch: http.fetch, retryDelayMs: 0 });
+    const decisions = new OpenAiDecisions({ baseUrl: 'https://openai.test/v1', apiKey: 'sk-test', fetch: http.fetch, retryDelayMs: 0 });
     cancel.abort();
 
-    await expect(classifier.classify({ ...ask, signal: cancel.signal })).rejects.toThrow();
+    await expect(decisions.decide(state, questions, cancel.signal)).rejects.toThrow();
     expect(http.requests).toHaveLength(1);
     expect(http.requests[0].signal).toBe(cancel.signal);
   });

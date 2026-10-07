@@ -1,47 +1,51 @@
+import type { EntryType, Questions } from '@typesafe-ai/sdk';
+
+import { checkAnswers, type Answers } from './decisions';
 import { httpOptions, postWithRetry, type HttpOptions } from './http';
-import type { Classifier } from './types';
+import { openai } from './providers';
 
 type Options = { baseUrl?: string; apiKey?: string; model?: string; fetch?: typeof fetch; retryDelayMs?: number };
 
-type ChoiceAnswer = { type: 'choice'; choice: string; probabilities: { value: string; probability: number }[]; confidence: number };
+type Wire = { type: 'choice'; name: string; instructions?: string; choices: { value: string; description?: string }[] };
+type Reply =
+  | { type: 'choice'; name?: string; choice: string; probabilities: { value: string; probability: number }[]; confidence: number }
+  | { type: 'refusal'; name?: string };
 
-/** OpenAI's Decisions API (POST /v1/decisions): the cloud stand-in for the Spark's Jev-style /v1/systemone. */
-export class OpenAiDecisionsClassifier implements Classifier {
+const text = (e: EntryType) => (typeof e === 'string' ? e : JSON.stringify(e));
+const described = (value: string, d: EntryType | undefined) => (d == null ? { value } : { value, description: text(d) });
+
+/**
+ * OpenAI's Decisions API (POST /v1/decisions), answering the same typed questions as the Spark's /v1/systemone.
+ * It only takes choices, so a yes/no (`noul`) question goes as a yes/no choice and comes back as the chance of yes.
+ */
+export class OpenAiDecisions {
   readonly id: string;
   private readonly http: HttpOptions;
 
   constructor(opts: Options = {}) {
     this.id = opts.model ?? 'gpt-6-luna';
-    this.http = httpOptions(opts, { baseUrl: 'https://api.openai.com/v1', apiKey: process.env.OPENAI_API_KEY });
+    this.http = httpOptions(opts, openai());
   }
 
-  async classify<L extends string>({ text, labels, signal }: { text: string; labels: readonly { id: L; description: string }[]; signal?: AbortSignal }) {
-    const res = await postWithRetry(
-      this.http,
-      '/decisions',
-      JSON.stringify({
-        model: this.id,
-        input: text,
-        questions: [
-          {
-            type: 'choice',
-            name: 'label',
-            instructions: 'Which option best describes this festival report?',
-            choices: labels.map((l) => ({ value: l.id, description: l.description })),
-          },
-        ],
-      }),
-      signal,
-    );
-    const { answers } = (await res.json()) as { answers: (ChoiceAnswer | { type: 'refusal' })[] };
-    const answer = answers[0];
-    if (answer.type !== 'choice') throw new Error(`${this.id} refused to classify`);
-    const label = labels.find((l) => l.id === answer.choice);
-    if (!label) throw new Error(`${this.id} chose "${answer.choice}", which is not one of ${labels.map((l) => l.id).join(', ')}`);
-    return {
-      label: label.id,
-      scores: Object.fromEntries(answer.probabilities.map((p) => [p.value, p.probability])),
-      confidence: answer.confidence,
-    };
+  async decide<const Q extends Questions>(state: EntryType, questions: Q, signal?: AbortSignal): Promise<Answers<Q>> {
+    const wire: Wire[] = Object.entries(questions).map(([name, q]) => {
+      const instructions = q.instructions == null ? {} : { instructions: text(q.instructions) };
+      if (q.type === 'choice') return { type: 'choice', name, ...instructions, choices: Object.entries(q.criteria).map(([v, d]) => described(v, d)) };
+      if (q.type === 'noul') return { type: 'choice', name, ...instructions, choices: [described('yes', q.criteria?.true), described('no', q.criteria?.false)] };
+      throw new Error(`${this.id}: ${q.type} questions aren't supported`);
+    });
+    const res = await postWithRetry(this.http, '/decisions', JSON.stringify({ model: this.id, input: text(state), questions: wire }), signal);
+    const { answers } = (await res.json()) as { answers: Reply[] };
+
+    const out: Record<string, unknown> = {};
+    wire.forEach(({ name }, i) => {
+      const a = answers.find((x) => x.name === name) ?? answers[i];
+      if (!a || a.type !== 'choice') throw new Error(`${this.id} refused to answer "${name}"`);
+      const probabilities = Object.fromEntries(a.probabilities.map((p) => [p.value, p.probability]));
+      out[name] = questions[name].type === 'noul'
+        ? { type: 'noul', noul: probabilities.yes ?? (a.choice === 'yes' ? 1 : 0) }
+        : { type: 'choice', choice: a.choice, probabilities, confidence: a.confidence };
+    });
+    return checkAnswers(this.id, questions, out as Answers<Q>);
   }
 }

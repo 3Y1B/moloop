@@ -1,6 +1,6 @@
 /**
  * Runs the live models over a fixed set of what people actually say, and prints what each decided and how long it
- * took. Needs TYPESAFE_* (and OPENROUTER_API_KEY for Luna) in .env.local and the local Supabase up (zones).
+ * took. Needs OPENAI_API_KEY (or SPARK_API_KEY with MODEL_PROVIDER=spark) in .env.local and the local Supabase up (zones).
  *
  *   npm run models:check
  *
@@ -10,7 +10,7 @@
 process.env.USE_LIVE_MODELS = '1';
 
 const { SparkInterpreter } = await import('../src/server/models/interpreter');
-const { chatModelId } = await import('../src/server/models/spark');
+const { chatModelId } = await import('../src/server/models');
 const { sql } = await import('../src/server/world');
 import type { Task } from '../src/lib/schema';
 
