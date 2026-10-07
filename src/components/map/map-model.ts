@@ -128,21 +128,11 @@ export function panLimit(zoom: number, size: { width: number; height: number }, 
   const seen = h - top - bottom;
   const shift = h / 2 - top - seen / 2;
   let [cy0, cy1] = range(y0 + seen / 2 + shift, y1 - seen / 2 + shift);
-  // Native maps clamp with the last settled zoom, so the screen's own framing must get through at any zoom.
+  // The screen's own framing must get through at any zoom.
   if (c) {
     [cx0, cx1, cy0, cy1] = [Math.min(cx0, c.x), Math.max(cx1, c.x), Math.min(cy0, c.y), Math.max(cy1, c.y)];
   }
   return { x: cx0, y: cy0, w: cx1 - cx0, h: cy1 - cy0 };
-}
-
-/** The limit as [west, south, east, north], for maps that only take a lng/lat box. The plan sits 8° off north, so it's a touch looser. */
-export function panBounds(limit: Box): [number, number, number, number] {
-  const corners = [
-    { x: limit.x, y: limit.y }, { x: limit.x + limit.w, y: limit.y },
-    { x: limit.x, y: limit.y + limit.h }, { x: limit.x + limit.w, y: limit.y + limit.h },
-  ].map(toLngLat);
-  const lngs = corners.map((c) => c[0]), lats = corners.map((c) => c[1]);
-  return [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
 }
 
 /** A lng/lat pulled back inside the limit, square to the plan. */

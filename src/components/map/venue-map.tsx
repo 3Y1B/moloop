@@ -8,7 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { MapButton } from './map-button';
 import { STYLE_ICONS } from './map-icons';
 import { useOverlays, type Overlay } from './map-markers';
-import { frameBox, liveData, liveLayers, minZoomFor, panBounds, panLimit, type VenueMapProps } from './map-model';
+import { frameBox, liveData, liveLayers, minZoomFor, type VenueMapProps } from './map-model';
 import { useFollow } from './use-follow';
 import { useMapStyle } from './map-style';
 import { useGlide } from './use-glide';
@@ -38,9 +38,6 @@ export function VenueMap(props: VenueMapProps) {
   // The library stringifies an object style on every render, and the site art makes it ~330 KB; do it once.
   const styleJSON = useMemo(() => (mapStyle ? JSON.stringify(mapStyle) : null), [mapStyle]);
   const cameraRef = useRef<CameraRef>(null);
-  // Where the map can go depends on how far in it is; settles after each move, which is close enough to hold the edge.
-  const [zoom, setZoom] = useState<number | null>(null);
-  const shownZoom = zoom ?? camera?.zoom;
 
   return (
     <View
@@ -64,14 +61,12 @@ export function VenueMap(props: VenueMapProps) {
           doubleTapZoom={interactive}
           touchRotate={false}
           touchPitch={false}
-          onRegionWillChange={(e) => e.nativeEvent.userInteraction && onUserMove()}
-          onRegionDidChange={(e) => setZoom(Math.round(e.nativeEvent.zoom * 8) / 8)}>
+          onRegionWillChange={(e) => e.nativeEvent.userInteraction && onUserMove()}>
           <Camera
             ref={cameraRef}
             {...camera}
             initialViewState={initial}
             minZoom={minZoomFor(size, frame, camera)}
-            maxBounds={shownZoom != null ? panBounds(panLimit(shownZoom, size, frame, camera)) : undefined}
             duration={500}
             easing="ease"
           />
