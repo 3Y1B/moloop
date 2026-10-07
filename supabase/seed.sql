@@ -45,6 +45,20 @@ insert into zones (slug, name, kind, is_open_air, capacity) values
   ('bar',             'Bar',             'food',      true,  600)
 on conflict (slug) do nothing;
 
+-- The stage timetable. Migration 20261008110300 adds the same rows on databases that already have zones.
+insert into event_timetable(stage_id, act, starts_at, ends_at, expected_people)
+select z.id, e.act, e.starts_at, e.ends_at, e.expected_people
+from (values
+  ('lawn-stage','Opening set','2026-10-08T14:00:00+11:00'::timestamptz,'2026-10-08T15:00:00+11:00'::timestamptz,3000),
+  ('river-stage','Afternoon set','2026-10-08T14:30:00+11:00'::timestamptz,'2026-10-08T15:30:00+11:00'::timestamptz,1800),
+  ('lawn-stage','Evening headliner','2026-10-09T19:00:00+11:00'::timestamptz,'2026-10-09T20:15:00+11:00'::timestamptz,7500),
+  ('river-stage','Evening support','2026-10-09T18:30:00+11:00'::timestamptz,'2026-10-09T19:30:00+11:00'::timestamptz,2600),
+  ('lawn-stage','Closing set','2026-10-10T18:00:00+11:00'::timestamptz,'2026-10-10T19:15:00+11:00'::timestamptz,7000),
+  ('river-stage','Closing support','2026-10-10T17:30:00+11:00'::timestamptz,'2026-10-10T18:30:00+11:00'::timestamptz,2500)
+) as e(stage_slug,act,starts_at,ends_at,expected_people)
+join zones z on z.slug = e.stage_slug
+on conflict (stage_id, starts_at) do nothing;
+
 insert into playbooks (slug, title, trigger, steps) values
   ('heat-35c', 'Extreme heat (>=35C)', 'BoM forecast or on-site reading >= 35C',
    '[{"step":"Open all water stations, double staffing","team_slug":"ops","template":"Heat plan active. Water stations fully staffed. Rotate volunteers every 45 min."},
