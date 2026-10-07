@@ -54,6 +54,8 @@ export default function RootLayout() {
               headerShown: false,
             }}
           />
+          {/* The finder takes the whole screen, like Apple's: nothing else to look at while you're searching. */}
+          <Stack.Screen name="find/[id]" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }} />
           <Stack.Screen name="inbox" options={{ ...SHEET, title: 'Inbox' }} />
           <Stack.Screen name="respond/[id]" options={{ ...SHEET, title: 'Respond' }} />
           <Stack.Screen name="person/[id]" options={{ ...SHEET, title: 'Person' }} />

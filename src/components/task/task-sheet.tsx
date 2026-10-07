@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
+import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { StatusLine } from '@/components/ui/status-line';
 import { Type } from '@/constants/theme';
@@ -63,6 +64,15 @@ export function TaskSheet({ task }: { task: Task }) {
 
       {helping && <Owner task={task} />}
       <ReplyBar task={task} helping={helping} />
+      {/* A festival-goer's request: their phone runs the same finder, so the last few metres are by Bluetooth. */}
+      {task.requestId && (
+        <Button
+          label="Find them"
+          sf="dot.radiowaves.left.and.right"
+          variant="tinted"
+          onPress={() => router.push({ pathname: '/find/[id]', params: { id: task.id, name: task.reporter.name ?? 'Festival-goer' } })}
+        />
+      )}
 
       <View style={[styles.rule, { backgroundColor: theme.separator }]} />
       <Details task={task} />

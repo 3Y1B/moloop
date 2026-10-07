@@ -171,6 +171,15 @@ function Help({ view }: { view: RequestView }) {
           <Text style={[styles.sub, { color: theme.textSecondary }]}>Sharing location</Text>
         </View>
       </View>
+      {/* Once they're on the way, both phones can run the finder for the last few metres. */}
+      {volunteer && request.taskId && (status.stage === 'coming' || status.stage === 'with_you') && (
+        <Button
+          label={`Find ${volunteer.name.split(' ')[0]}`}
+          sf="dot.radiowaves.left.and.right"
+          variant="tinted"
+          onPress={() => router.push({ pathname: '/find/[id]', params: { id: request.taskId!, name: volunteer.name.split(' ')[0] } })}
+        />
+      )}
     </View>
   );
 }

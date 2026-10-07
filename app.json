@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.anonymous.moloop"
+      "bundleIdentifier": "com.anonymous.moloop",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Moloop uses Bluetooth to help you and your volunteer find each other in the crowd."
+      }
     },
     "android": {
       "adaptiveIcon": {
