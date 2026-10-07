@@ -10,6 +10,7 @@ import { app } from './http/app';
 import { hasOpenAi, onSpark } from './models/providers';
 import { warmSpeech } from './models/speech';
 import { applyPolicyFromEnv } from './policy';
+import { pickNewProposals } from './pick';
 import { startScheduler } from './scheduler';
 import { speakBriefs } from './voice';
 import { afterCommit } from './world';
@@ -20,6 +21,8 @@ if (!hasOpenAi() && !onSpark()) throw new Error('Set OPENAI_API_KEY, or SPARK_AP
 applyPolicyFromEnv();
 // Only the server speaks: a script that runs a second scheduler in-process mustn't render briefs twice.
 afterCommit(speakBriefs);
+// Same for the picker: one server asks the model about each new proposal.
+afterCommit(pickNewProposals);
 warmSpeech().catch((e) => console.error('[voice] warming the speech models failed', e));
 
 const port = Number(process.env.PORT ?? 8787);

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Batch, type World } from './batch';
 import * as C from './commands';
 import type { Triage } from './ai';
-import type { GuestRequest, Task, Volunteer } from './schema';
+import type { GuestRequest, Proposal, Task, Volunteer } from './schema';
 
 const NOW = 1_800_000_000_000;
 const MIN = 60_000;
@@ -129,7 +129,7 @@ describe('updateTask: a new report about an incident already open', () => {
 describe('the intake agent escalates a new report', () => {
   const triaged = (over: Partial<Triage> = {}): Triage => ({
     team: 'first-aid', priority: 'P3', category: 'medical', title: 'Wants the set stopped at the Oval', summary: 'Asks to stop the set.',
-    zoneSlug: 'food-alley', locationHint: null, language: 'en', escalate: { level: 'lead', reason: 'Asks to stop a performance' }, ...over,
+    zoneSlug: 'food-alley', locationHint: null, language: 'en', speakerNeeded: null, escalate: { level: 'lead', reason: 'Asks to stop a performance' }, ...over,
   });
   const fromGuest = (t: Triage) => {
     const b = festival([], [asked]);
@@ -237,13 +237,13 @@ describe('"Problem solved?" No on an AI answer', () => {
     expect(b.requests.asked).toMatchObject({ stage: 'answered', aiAnswer: 'There are more by the Main Entrance.' });
   });
 
-  it('sends someone instead of repeating the same answer', () => {
+  it('answers the same again rather than sending someone: the classifier decides that', () => {
     const b = answered();
 
     C.understand(b, 'asked', answer);
 
-    expect(Object.values(b.tasks)).toHaveLength(1);
-    expect(b.requests.asked.stage).toBe('finding');
+    expect(Object.values(b.tasks)).toEqual([]);
+    expect(b.requests.asked.stage).toBe('answered');
   });
 });
 
@@ -294,6 +294,74 @@ describe('"Problem solved?" on an AI answer', () => {
 
     expect(b.requests.asked).toMatchObject({ stage: 'understanding', aiAnswer: null, reopenedAt: NOW });
     C.understand(b, 'asked', answer);
-    expect(b.requests.asked.stage).toBe('finding');
+    expect(b.requests.asked.stage).toBe('answered');
+  });
+});
+
+describe('the picker’s read of a P1/P2 proposal', () => {
+  const open = task({ status: 'open', assigneeId: null, assignedAt: null, priority: 'P1' });
+  const busyOn = task({ id: 'spill', status: 'assigned', assigneeId: 'kai', priority: 'P3', category: 'facilities', teamSlug: 'ops' });
+  const candidate = (id: string) => ({ volunteerId: id, rationale: `free · ${id}`, distanceM: 50 });
+  const proposal: Proposal = {
+    id: 'p1', taskId: 'collapsed', candidates: [candidate('priya'), candidate('tom')], helperIds: [], createdAt: NOW,
+    autoAssignAt: NOW + 30_000, status: 'pending', volunteerId: null, decidedById: null, decidedAt: null,
+  };
+  const world = (over: Partial<Proposal> = {}, now = NOW) => {
+    const volunteers = [
+      person('priya'), person('tom'), person('ana'), person('kai'), person('lee', { role: 'team_lead' }), person('mo', { role: 'coordinator', teamSlug: null }),
+    ];
+    const w: World = {
+      volunteers: Object.fromEntries(volunteers.map((v) => [v.id, v])),
+      tasks: { collapsed: open, spill: busyOn },
+      proposals: { p1: { ...proposal, ...over } }, requests: {}, teams: { 'first-aid': { name: 'First Aid' } },
+    };
+    let n = 0;
+    return new Batch(w, { now, id: (kind) => `${kind}-${++n}` });
+  };
+
+  it('puts its best first and sends the next free ones along, up to how many it needs', () => {
+    const b = world();
+
+    C.rerank(b, 'p1', [candidate('ana'), candidate('kai'), candidate('priya'), candidate('tom')], 3);
+
+    expect(b.proposals.p1.candidates.map((c) => c.volunteerId)).toEqual(['ana', 'kai', 'priya', 'tom']);
+    // Kai is busy on the spill, so the two going with Ana are the next free ones.
+    expect(b.proposals.p1.helperIds).toEqual(['priya', 'tom']);
+    expect(b.events).toContainEqual(expect.objectContaining({ kind: 'proposed', text: 'Suggested Ana Smith, Priya Smith and Tom Smith, waiting for approval' }));
+  });
+
+  it('changes nothing once someone has decided', () => {
+    const b = world({ status: 'approved', volunteerId: 'priya' });
+
+    C.rerank(b, 'p1', [candidate('ana')], 2);
+
+    expect(b.proposals.p1.candidates.map((c) => c.volunteerId)).toEqual(['priya', 'tom']);
+    expect(b.events).toEqual([]);
+  });
+
+  it('approving the pick sends whoever it said goes along', () => {
+    const b = world({ helperIds: ['tom'] });
+
+    C.approve(b, 'lee', 'p1');
+
+    expect(b.tasks.collapsed).toMatchObject({ assigneeId: 'priya', helperIds: ['tom'] });
+    expect(b.messages).toContainEqual(expect.objectContaining({ recipientId: 'tom', kind: 'backup', body: 'Help Priya: Man collapsed at the food stalls.' }));
+  });
+
+  it('approving someone else sends them alone', () => {
+    const b = world({ helperIds: ['tom'] });
+
+    C.approve(b, 'lee', 'p1', 'ana');
+
+    expect(b.tasks.collapsed).toMatchObject({ assigneeId: 'ana', helperIds: [] });
+  });
+
+  it('nobody approving in time assigns the pick and the helpers it said', () => {
+    const b = world({ helperIds: ['tom'] }, NOW + 31_000);
+
+    C.schedulerStep(b);
+
+    expect(b.proposals.p1.status).toBe('auto_assigned');
+    expect(b.tasks.collapsed).toMatchObject({ assigneeId: 'priya', helperIds: ['tom'] });
   });
 });

@@ -6,6 +6,8 @@ import {
 } from '@/data/supabase/rows';
 import { Batch, type World } from '@/lib/batch';
 import { PRESENCE } from '@/lib/presence';
+import type { RosteredShift } from '@/lib/schema';
+import { currentShift } from '@/lib/shifts';
 import type { Run } from './models/interpreter';
 import type { Database } from '@/lib/database.types';
 import {
@@ -46,8 +48,11 @@ export function sql(): Sql {
   return client;
 }
 
-/** What a command needs beyond the live world (active, open and queued tasks, pending proposals, everyone). */
-export type Load = { taskIds?: string[]; requestIds?: string[]; proposalIds?: string[] };
+/**
+ * What a command needs beyond the live world (active, open and queued tasks, pending proposals, everyone, shifts
+ * around now). `availability`: when people said they're free, for the scheduler's no-show cover.
+ */
+export type Load = { taskIds?: string[]; requestIds?: string[]; proposalIds?: string[]; availability?: boolean };
 
 export type Loaded = {
   world: World;
@@ -60,35 +65,54 @@ export type Loaded = {
  * Where new rows come from: the festival-goer behind a new request, the volunteer behind a new report, the voice
  * clips it was said in (storage paths in the `voice` bucket), and the model run that decided it (a triage_runs row,
  * tied to the new task's report, to the report of the open task it joined (`taskId`), or to the request if no task
- * came of it).
+ * came of it). `before`: runs that led up to `run` on a task it joined (the picker's qualified call), stored beside it.
  */
-export type Owners = { guestId?: string; reporterId?: string; clips?: string[]; run?: Run & { requestId?: string; taskId?: string } };
+export type Owners = {
+  guestId?: string; reporterId?: string; clips?: string[]; run?: Run & { requestId?: string; taskId?: string }; before?: Run[];
+};
 
 type Q = Sql | TransactionSql;
 type Enums = Database['public']['Enums'];
 
-type VolunteerRow = ProfileRow & { skills: string[]; phone: string | null };
+type VolunteerRow = ProfileRow & { skills: string[]; phone: string | null; bio: string | null };
+type ShiftRow = {
+  id: string; volunteer_id: string; status: Enums['shift_assignment_status']; reminded_at: string | null;
+  starts_at: string; ends_at: string; team_id: string; requires: string[];
+};
 type TaskRow = Row<'tasks'> & {
-  reporter_kind: Enums['reporter_kind']; raw_text: string | null; detected_language: string | null; reporter_name: string | null;
+  reporter_kind: Enums['reporter_kind']; raw_text: string | null; detected_language: string | null; speaker_needed: string | null;
+  reporter_name: string | null;
 };
 
 const cols = (select: string) => select.split(',').map((c) => c.trim());
 
 export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
-  const [teams, zones, volunteers, presence] = await Promise.all([
+  const [teams, zones, volunteers, presence, shiftRows, windows] = await Promise.all([
     q<{ id: string; slug: string; name: string }[]>`select id, slug, name from teams`,
     q<{ id: string; slug: string }[]>`select id, slug from zones`,
     q<VolunteerRow[]>`
-      select p.id, p.full_name, p.role, p.team_id, p.status, p.languages, p.last_known_zone, pp.phone,
+      select p.id, p.full_name, p.role, p.team_id, p.status, p.languages, p.last_known_zone, pp.phone, pp.bio,
         coalesce(array_agg(s.slug order by s.slug) filter (where s.slug is not null), '{}') as skills
       from profiles p
       left join profile_private pp on pp.id = p.id
-      left join volunteer_skills vs on vs.volunteer_id = p.id
+      -- A lapsed certificate doesn't count: nobody is picked for a skill they no longer hold.
+      left join volunteer_skills vs on vs.volunteer_id = p.id and (vs.expires_on is null or vs.expires_on >= current_date)
       left join skills s on s.id = vs.skill_id
-      group by p.id, pp.phone
+      group by p.id, pp.phone, pp.bio
       order by p.created_at, p.id`,
     // Live GPS for walking distances. Anything older says nothing (see lib/presence.ts).
     q<Row<'presence'>[]>`select * from presence where at > now() - make_interval(secs => ${PRESENCE.goneMs / 1000})`,
+    // Shifts starting within the hour or not long over (someone may still be finishing a task), not yet done with.
+    q<ShiftRow[]>`
+      select sa.id, sa.volunteer_id, sa.status, sa.reminded_at, s.starts_at, s.ends_at, s.team_id,
+        coalesce((select array_agg(k.slug) from skills k where k.id = any(s.required_skill_ids)), '{}') as requires
+      from shift_assignments sa join shifts s on s.id = sa.shift_id
+      where s.starts_at < now() + interval '1 hour' and s.ends_at > now() - interval '12 hours'
+        and sa.status in ('assigned', 'confirmed', 'checked_in', 'no_show')`,
+    spec.availability
+      ? q<{ volunteer_id: string; starts_at: string; ends_at: string }[]>`
+        select volunteer_id, starts_at, ends_at from availability_windows where ends_at > now() and starts_at < now() + interval '1 day'`
+      : Promise.resolve([]),
   ]);
   const refs = refsFrom(teams, zones);
 
@@ -108,7 +132,7 @@ export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
     ...actions.filter((a) => named.has(a.id)).map((a) => a.task_id!),
   ];
   const taskRows = await q<TaskRow[]>`
-    select t.*, r.reporter_kind, r.raw_text, r.detected_language, rp.full_name as reporter_name
+    select t.*, r.reporter_kind, r.raw_text, r.detected_language, r.speaker_needed, rp.full_name as reporter_name
     from tasks t
     join reports r on r.id = t.report_id
     left join profiles rp on rp.id = r.reporter_id
@@ -121,12 +145,24 @@ export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
   if (more.length) requestRows.push(...(await requestsById(q, more)));
 
   const tasks = taskRows.map((t) => toTask(t, refs, toReporter({
-    reporter_kind: t.reporter_kind, raw_text: t.raw_text, detected_language: t.detected_language,
+    reporter_kind: t.reporter_kind, raw_text: t.raw_text, detected_language: t.detected_language, speaker_needed: t.speaker_needed,
     reporter: t.reporter_name ? { full_name: t.reporter_name } : null,
   })));
+  const shifts = byId(shiftRows.map((r): RosteredShift => ({
+    id: r.id, volunteerId: r.volunteer_id, teamSlug: (refs.teams.get(r.team_id) ?? null) as RosteredShift['teamSlug'],
+    startsAt: Date.parse(r.starts_at), endsAt: Date.parse(r.ends_at), requires: r.requires,
+    status: r.status === 'checked_in' || r.status === 'no_show' ? r.status : 'assigned', remindedAt: r.reminded_at ? Date.parse(r.reminded_at) : null,
+  })));
+  const availability: Record<string, { from: number; to: number }[]> = {};
+  for (const w of windows) (availability[w.volunteer_id] ??= []).push({ from: Date.parse(w.starts_at), to: Date.parse(w.ends_at) });
+  const now = Date.now();
   return {
     world: {
-      volunteers: byId(volunteers.map((v) => toVolunteer(v, refs, { skills: v.skills, phone: v.phone }))),
+      volunteers: byId(volunteers.map((v) => ({
+        ...toVolunteer(v, refs, { skills: v.skills, phone: v.phone }), bio: v.bio, shiftEndsAt: currentShift(shifts, v.id, now)?.endsAt ?? null,
+      }))),
+      shifts,
+      availability,
       tasks: byId(tasks),
       // Only pending ones drive anything; a decided one is loaded to say it's already decided.
       proposals: byId(actions.map((a) => toProposal(a, candidates))),
@@ -187,7 +223,7 @@ async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch, owners
   // A run that made no task hangs off the task it joined (re-triage), or off the request (the AI answered).
   if (owners.run?.taskId && !runWritten) {
     const [joined] = await tx<{ report_id: string }[]>`select report_id from tasks where id = ${owners.run.taskId}`;
-    await insertRun(tx, owners.run, joined?.report_id ?? null);
+    for (const r of [...(owners.before ?? []), owners.run]) await insertRun(tx, r, joined?.report_id ?? null);
   } else if (owners.run?.requestId && !runWritten) await insertRun(tx, owners.run, null);
 
   for (const id of d.requests) {
@@ -198,10 +234,13 @@ async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch, owners
   for (const id of d.proposals) {
     const p = b.proposals[id];
     const row = { ...proposalRow(p), payload: json(proposalRow(p).payload) };
-    if (id in world.proposals) {
-      await tx`update agent_actions set ${tx(row)} where id = ${id}`;
-    } else {
-      await tx`insert into agent_actions ${tx({ id, ...row })}`;
+    const before = world.proposals[id];
+    const same = before && before.candidates.map((c) => `${c.volunteerId} ${c.rationale}`).join() === p.candidates.map((c) => `${c.volunteerId} ${c.rationale}`).join();
+    if (before) await tx`update agent_actions set ${tx(row)} where id = ${id}`;
+    else await tx`insert into agent_actions ${tx({ id, ...row })}`;
+    // New, or re-ranked by the picker (who's on it can change, and the why with it): the candidate rows follow.
+    if (!same && p.status === 'pending') {
+      if (before) await tx`delete from task_assignments where task_id = ${p.taskId} and status = 'proposed'`;
       if (p.candidates.length) {
         await tx`insert into task_assignments ${tx(p.candidates.map((c) => ({
           task_id: p.taskId, volunteer_id: c.volunteerId, rationale: c.rationale, distance_m: c.distanceM,
@@ -226,6 +265,15 @@ async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch, owners
       if (status) await follow(tx, id, v, status);
     }
     for (const v of before) if (!after.includes(v)) await follow(tx, id, v, 'reassigned');
+  }
+
+  for (const id of d.shifts) {
+    const s = b.shifts[id];
+    const checkedIn = s.status === 'checked_in' && world.shifts?.[id]?.status !== 'checked_in' ? new Date(b.now) : null;
+    await tx`
+      update shift_assignments set status = ${s.status}, reminded_at = ${s.remindedAt ? new Date(s.remindedAt) : null},
+        checked_in_at = coalesce(${checkedIn}, checked_in_at)
+      where id = ${id}`;
   }
 
   for (const id of d.volunteers) {

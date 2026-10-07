@@ -398,16 +398,19 @@ export type Database = {
       }
       profile_private: {
         Row: {
+          bio: string | null
           id: string
           phone: string | null
           push_token: string | null
         }
         Insert: {
+          bio?: string | null
           id: string
           phone?: string | null
           push_token?: string | null
         }
         Update: {
+          bio?: string | null
           id?: string
           phone?: string | null
           push_token?: string | null
@@ -490,6 +493,7 @@ export type Database = {
           reporter_contact: string | null
           reporter_id: string | null
           reporter_kind: Database["public"]["Enums"]["reporter_kind"]
+          speaker_needed: string | null
           text_en: string | null
           voice_clips: string[]
           zone_id: string | null
@@ -507,6 +511,7 @@ export type Database = {
           reporter_contact?: string | null
           reporter_id?: string | null
           reporter_kind?: Database["public"]["Enums"]["reporter_kind"]
+          speaker_needed?: string | null
           text_en?: string | null
           voice_clips?: string[]
           zone_id?: string | null
@@ -524,6 +529,7 @@ export type Database = {
           reporter_contact?: string | null
           reporter_id?: string | null
           reporter_kind?: Database["public"]["Enums"]["reporter_kind"]
+          speaker_needed?: string | null
           text_en?: string | null
           voice_clips?: string[]
           zone_id?: string | null
@@ -551,6 +557,7 @@ export type Database = {
           created_at: string
           id: string
           replaced_by: string | null
+          reminded_at: string | null
           shift_id: string
           status: Database["public"]["Enums"]["shift_assignment_status"]
           volunteer_id: string
@@ -560,6 +567,7 @@ export type Database = {
           created_at?: string
           id?: string
           replaced_by?: string | null
+          reminded_at?: string | null
           shift_id: string
           status?: Database["public"]["Enums"]["shift_assignment_status"]
           volunteer_id: string
@@ -569,6 +577,7 @@ export type Database = {
           created_at?: string
           id?: string
           replaced_by?: string | null
+          reminded_at?: string | null
           shift_id?: string
           status?: Database["public"]["Enums"]["shift_assignment_status"]
           volunteer_id?: string

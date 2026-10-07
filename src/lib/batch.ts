@@ -1,5 +1,5 @@
 import { isActive } from '@/lib/lifecycle';
-import type { GuestRequest, Message, Position, Proposal, Task, TaskEvent, Team, TeamSlug, Volunteer } from '@/lib/schema';
+import type { GuestRequest, Message, Position, Proposal, RosteredShift, Task, TaskEvent, Team, TeamSlug, Volunteer } from '@/lib/schema';
 
 /**
  * One state change, built up by the shared commands (src/lib/commands.ts) and then applied in one go:
@@ -15,6 +15,10 @@ export type World = {
   teams: Record<string, Pick<Team, 'name'>>;
   /** Live GPS by person, for walking distances. Read only: phones write their own. */
   positions?: Record<string, Position>;
+  /** Rostered shifts around now, by assignment id. The server loads them; phones don't. */
+  shifts?: Record<string, RosteredShift>;
+  /** When each volunteer said they're free, for who can cover a no-show. Read only. */
+  availability?: Record<string, { from: number; to: number }[]>;
 };
 
 export type IdKind = 'task' | 'event' | 'message' | 'proposal' | 'request';
@@ -43,14 +47,18 @@ export class Batch {
   proposals: Record<string, Proposal>;
   requests: Record<string, GuestRequest>;
   volunteers: Record<string, Volunteer>;
+  shifts: Record<string, RosteredShift>;
   readonly teams: World['teams'];
   readonly positions: Record<string, Position>;
+  readonly availability: NonNullable<World['availability']>;
   readonly events: TaskEvent[] = [];
   readonly messages: Message[] = [];
   /** Who sent a message, when it was a person (direct, broadcast). Not on the domain Message. */
   readonly senders: Record<string, string> = {};
   /** What changed, so the server writes only that. */
-  readonly dirty = { tasks: new Set<string>(), proposals: new Set<string>(), requests: new Set<string>(), volunteers: new Set<string>() };
+  readonly dirty = {
+    tasks: new Set<string>(), proposals: new Set<string>(), requests: new Set<string>(), volunteers: new Set<string>(), shifts: new Set<string>(),
+  };
 
   constructor(world: World, private clock: Clock) {
     this.now = clock.now;
@@ -60,6 +68,8 @@ export class Batch {
     this.volunteers = world.volunteers;
     this.teams = world.teams;
     this.positions = world.positions ?? {};
+    this.shifts = world.shifts ?? {};
+    this.availability = world.availability ?? {};
   }
 
   id = (kind: IdKind) => this.clock.id(kind);
@@ -80,11 +90,15 @@ export class Batch {
     this.volunteers = { ...this.volunteers, [v.id]: v };
     this.dirty.volunteers.add(v.id);
   }
+  shift(s: RosteredShift) {
+    this.shifts = { ...this.shifts, [s.id]: s };
+    this.dirty.shifts.add(s.id);
+  }
 
   all = () => Object.values(this.tasks);
   get changed() {
     const d = this.dirty;
-    return d.tasks.size + d.proposals.size + d.requests.size + d.volunteers.size + this.events.length + this.messages.length > 0;
+    return d.tasks.size + d.proposals.size + d.requests.size + d.volunteers.size + d.shifts.size + this.events.length + this.messages.length > 0;
   }
 
   ev(taskId: string, kind: TaskEvent['kind'], text: string, actor: Actor, extra: Pick<TaskEvent, 'reply' | 'note'> = {}) {

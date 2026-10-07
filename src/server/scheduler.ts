@@ -3,11 +3,12 @@ import { sweepUnderstanding } from './understand';
 import { transact } from './world';
 
 /**
- * The one scheduler: nudges, lead alerts, bumps to Mo, and auto-assigning proposals nobody approved.
+ * The one scheduler: nudges, lead alerts, bumps to Mo, auto-assigning proposals nobody approved, and shifts
+ * starting, not turned up for, and ending (src/lib/shifts.ts).
  * Runs in the server process. Each pass takes the same world lock as commands, so a pass that overlaps
  * a command (or another pass, even from a second server) sees its writes and never doubles a nudge.
  */
-export const schedulerPass = () => transact({}, (b) => schedulerStep(b));
+export const schedulerPass = () => transact({ availability: true }, (b) => schedulerStep(b));
 
 export function startScheduler(everyMs: number) {
   let running = false;

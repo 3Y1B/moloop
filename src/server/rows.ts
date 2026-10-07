@@ -10,7 +10,7 @@ import type { GuestRequest, Message, Proposal, Task, TaskEvent } from '@/lib/sch
  *  - TaskEvent: `task_events.data` = { text, reply?, note?, actorName? }. actor_id is set for crew.
  *  - Message: one `messages` row + one `message_deliveries` row per recipient, broadcasts included, so
  *    Message.id = messages.id is unique per recipient. sender_id is set when a person sent it.
- *  - Proposal: an `agent_actions(assign_volunteer)` row, payload { type, taskId, volunteerIds } best first, plus
+ *  - Proposal: an `agent_actions(assign_volunteer)` row, payload { type, taskId, volunteerIds, helperIds } best first, plus
  *    one task_assignments(proposed) row per candidate. Decided: approved → approved, auto-assigned → executed
  *    with nobody in decided_by, cancelled → expired; the pick's row goes approved, the rest rejected.
  *  - Everyone placed on a task (owner, queued owner, backup) has a task_assignments row that follows them:
@@ -45,6 +45,7 @@ export const reportRow = (t: Task, ids: Ids, reporterId: string | null) => ({
   id: crypto.randomUUID(),
   channel: (t.reporter.kind === 'festivalgoer' ? 'text' : 'voice') as Enums['report_channel'],
   reporter_kind: t.reporter.kind, reporter_id: reporterId, raw_text: t.reporter.quote, detected_language: t.reporter.language,
+  speaker_needed: t.reporter.speakerNeeded ?? null,
   zone_id: idOf(ids.zones, t.zoneSlug), location_hint: t.locationHint, received_at: fromMs(t.createdAt),
 });
 
@@ -66,7 +67,7 @@ const ACTION_STATUS: Record<Proposal['status'], Enums['action_status']> = {
 
 export const proposalRow = (p: Proposal) => ({
   type: 'assign_volunteer' as const, task_id: p.taskId,
-  payload: { type: 'assign_volunteer', taskId: p.taskId, volunteerIds: p.candidates.map((c) => c.volunteerId) },
+  payload: { type: 'assign_volunteer', taskId: p.taskId, volunteerIds: p.candidates.map((c) => c.volunteerId), helperIds: p.helperIds },
   rationale: p.candidates[0]?.rationale ?? null, status: ACTION_STATUS[p.status], decided_by: p.decidedById, decided_at: fromMs(p.decidedAt),
   executed_at: p.status === 'approved' || p.status === 'auto_assigned' ? fromMs(p.decidedAt) : null,
   auto_assign_at: fromMs(p.autoAssignAt), created_at: fromMs(p.createdAt),

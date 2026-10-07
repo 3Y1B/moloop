@@ -21,8 +21,9 @@ const RING = 152;
 const first = (v?: Volunteer) => v?.name.split(' ')[0] ?? '';
 
 /**
- * The AI's pick for a P1/P2 guest report (proposal `id`), inside a ring of the time left. Approve it, or pick who
- * goes: the first ticked gets the task, everyone else ticked is sent to help. Nobody acting before `autoAssignAt`
+ * The AI's pick for a P1/P2 guest report (proposal `id`), inside a ring of the time left, with whoever it says should
+ * go along already ticked. Approve it, or pick who goes: the first ticked gets the task, everyone else ticked is sent
+ * to help. Nobody acting before `autoAssignAt`
  * means the scheduler assigns the top pick; the sheet then shows who got it.
  */
 export default function ApproveSheet() {
@@ -65,7 +66,7 @@ function Pending({ proposal, task, picked, onPick }: {
   }
 
   const touched = picked !== null;
-  const selection = picked ?? [top.volunteerId];
+  const selection = picked ?? [top.volunteerId, ...proposal.helperIds.filter((vid) => volunteers[vid])];
   const lead = selection[0] ? volunteers[selection[0]] : undefined;
   const why = candidates.find((c) => c.volunteerId === lead?.id)?.rationale;
   const extras = selection.slice(1).map((vid) => volunteers[vid]).filter(Boolean);
@@ -74,13 +75,15 @@ function Pending({ proposal, task, picked, onPick }: {
   const left = Math.ceil(leftMs / 1000);
   const share = Math.min(1, leftMs / POLICY.autoAssignMs);
   const ring = touched ? (lead ? 'closed' : 'open') : left > 0 ? 'counting' : 'open';
+  const along = extras.length > 0 ? extras.map(first).join(', ') : null;
   const line = touched
-    ? extras.length > 0 ? `With ${extras.map(first).join(', ')}` : null
-    : left > 0 ? `Auto-assigns in ${left} s` : 'Assigning';
+    ? along && `With ${along}`
+    : `${left > 0 ? `Auto-assigns in ${left} s` : 'Assigning'}${along ? ` with ${along}` : ''}`;
 
+  // Untouched, Approve sends the AI's pick and whoever it ticked to go along.
   const label = selection.length === 0 ? 'Send'
-    : selection.length > 1 ? `Send ${selection.length}`
-      : selection[0] === top.volunteerId ? `Approve ${first(lead)}`
+    : !touched || (selection.length === 1 && selection[0] === top.volunteerId) ? `Approve ${first(lead)}`
+      : selection.length > 1 ? `Send ${selection.length}`
         : `Send ${first(lead)}`;
 
   const toggle = (vid: string) => onPick(selection.includes(vid) ? selection.filter((x) => x !== vid) : [...selection, vid]);
@@ -119,7 +122,7 @@ function Pending({ proposal, task, picked, onPick }: {
       <Button
         size="large"
         label={label}
-        sf={selection.length === 1 && !touched ? 'checkmark' : undefined}
+        sf={!touched ? 'checkmark' : undefined}
         haptic="success"
         disabled={selection.length === 0 || sending}
         onPress={send}

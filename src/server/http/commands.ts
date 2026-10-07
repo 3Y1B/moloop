@@ -8,7 +8,7 @@ import { rankCandidates } from '@/lib/candidates';
 import * as C from '@/lib/commands';
 import { availableResponses, HANDOVER_NAME, isBusy, isQuiet, needsResponse, type RespondInput as RespondInputType } from '@/lib/lifecycle';
 import { walkFrom } from '@/lib/presence';
-import type { RespondCommand } from '@/lib/respond-words';
+import type { RespondCommand } from '@/lib/ai';
 import { routeBetween } from '@/lib/route';
 import { ReplyKind, TeamSlug, type Task, type Volunteer } from '@/lib/schema';
 import { interpreter } from '../models/interpreter';

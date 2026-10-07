@@ -1,4 +1,4 @@
-import type { IncidentCategory, Priority, TeamSlug } from '@/lib/schema';
+import type { HandoverTarget, IncidentCategory, Priority, TeamSlug } from '@/lib/schema';
 
 /**
  * What the models decide, as plain data. The shared commands (src/lib/commands.ts) are pure and synchronous, so a
@@ -19,8 +19,10 @@ export type Triage = {
   summary: string;
   zoneSlug: string | null;
   locationHint: string | null;
-  /** ISO 639-1 of what the reporter wrote ("es"), since volunteers are matched on languages spoken. */
+  /** ISO 639-1 of what the reporter wrote ("es"): replies and "translated from" follow it. */
   language: string;
+  /** ISO 639-1 of a language someone there needs a volunteer to speak, else null (Reporter.speakerNeeded). */
+  speakerNeeded: string | null;
   /** Set when the intake agent escalated instead of creating a task for the allocator. */
   escalate: EscalateTo | null;
 };
@@ -38,3 +40,35 @@ export type Reread = { priority: Priority; resolved: boolean };
 
 /** The open task a new report is about, read again with what's new. Null: a new incident. */
 export type Match = { taskId: string; read: Reread } | null;
+
+/**
+ * What a lead said on the Respond screen, read as one of the responses on it (src/server/models/interpreter.ts).
+ * Null when the model can't tell: the lead taps instead.
+ */
+export type RespondCommand =
+  | { kind: 'backup' | 'reassign'; volunteerId?: string }
+  | { kind: 'handover'; target: HandoverTarget }
+  | { kind: 'call' } | { kind: 'carry_on' } | { kind: 'pass' }
+  | { kind: 'close'; note?: string };
+
+/** Someone who could be sent: not the volunteer on the task, nor anyone already helping. */
+export type Named = { id: string; name: string };
+
+export const TEAM_CATEGORY: Record<TeamSlug, IncidentCategory> = {
+  'first-aid': 'medical', welfare: 'other', crowd: 'crowding', security: 'security',
+  info: 'info_request', artist: 'artist', vendors: 'vendor', ops: 'facilities',
+};
+
+const titleFrom = (text: string) => {
+  const t = text.length > 55 ? `${text.slice(0, 52).trim()}…` : text;
+  return t ? t[0].toUpperCase() + t.slice(1) : t;
+};
+
+/**
+ * When no model read it: a P2 for Info with their words as the title, and a lead decides. Nothing guesses from
+ * keywords; a person reads it.
+ */
+export const unread = (text: string, zoneSlug: string | null = null, locationHint: string | null = null): Triage => ({
+  team: 'info', priority: 'P2', category: TEAM_CATEGORY.info, title: titleFrom(text), summary: text, zoneSlug, locationHint,
+  language: 'en', speakerNeeded: null, escalate: { level: 'lead', reason: 'No model read it: needs a lead' },
+});

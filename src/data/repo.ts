@@ -1,6 +1,6 @@
 import type { RespondInput } from '@/lib/lifecycle';
 import type { Fix } from '@/lib/presence';
-import type { RespondCommand } from '@/lib/respond-words';
+import type { RespondCommand } from '@/lib/ai';
 import type { Duty, GuestRequest, Message, Position, Proposal, ReplyKind, Task, TaskEvent, Team, TeamSlug, Volunteer, Zone } from '@/lib/schema';
 
 export type { RespondInput };

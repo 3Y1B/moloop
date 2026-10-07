@@ -83,23 +83,14 @@ describe('Interpreter.respond: what a lead said on the Respond screen', () => {
     expect(value).toBeNull();
   });
 
-  it('words that say 000 only ever read as the 000 handover', async () => {
-    replies.push(decided({ handover_medics: 0.8, handover_emergency: 0.2 }));
-
-    const { value } = await new SparkInterpreter().respond(heard('call an ambulance, he is not breathing'));
-
-    expect(value).toEqual({ kind: 'handover', target: 'emergency' });
-  });
-
-  describe('falls back to keywords', () => {
+  describe('is null, for the lead to tap', () => {
     it('when the model fails, saying so in the run, and never throws', async () => {
       replies.push({ status: 400 });
 
       const { value, run } = await new SparkInterpreter().respond(heard('send Tom'));
 
-      expect(value).toEqual({ kind: 'backup', volunteerId: 'tom' });
+      expect(value).toBeNull();
       expect(run.error).toBeTruthy();
-      expect(run.models.interpreter).toBe('keywords');
     });
 
     it('when the network is down', async () => {
@@ -107,21 +98,13 @@ describe('Interpreter.respond: what a lead said on the Respond screen', () => {
 
       const { value } = await new SparkInterpreter().respond(heard('hand it over to the medics'));
 
-      expect(value).toEqual({ kind: 'handover', target: 'medics' });
+      expect(value).toBeNull();
     });
 
     it('when the model is not sure', async () => {
       replies.push(decided({ close: 0.4, call: 0.35, unclear: 0.25 }));
 
       const { value } = await new SparkInterpreter().respond(heard('give her a call'));
-
-      expect(value).toEqual({ kind: 'call' });
-    });
-
-    it('and is null when neither can tell', async () => {
-      replies.push({ status: 400 });
-
-      const { value } = await new SparkInterpreter().respond(heard('hmm'));
 
       expect(value).toBeNull();
     });

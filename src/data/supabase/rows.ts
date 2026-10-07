@@ -110,6 +110,8 @@ export type ReportJoin = {
   reporter_kind: Row<'reports'>['reporter_kind'];
   raw_text: string | null;
   detected_language: string | null;
+  /** Server-side only (server/world.ts): the app's embed leaves it out, and the picker that reads it is on the server. */
+  speaker_needed?: string | null;
   reporter: { full_name: string } | null;
 } | null;
 
@@ -126,6 +128,7 @@ export function toReporter(report: ReportJoin | undefined): Reporter {
     ...(report.reporter?.full_name ? { name: report.reporter.full_name } : {}),
     quote: report.raw_text ?? '',
     language: report.detected_language ?? 'en',
+    ...(report.speaker_needed !== undefined ? { speakerNeeded: report.speaker_needed } : {}),
   };
 }
 
@@ -252,10 +255,10 @@ export function toProposalStatus(row: Pick<Row<'agent_actions'>, 'status' | 'dec
 
 /**
  * `candidates` are the proposed assignment rows, in the order the agent proposed them
- * (`payload.volunteerIds`, else row creation order). `volunteerId` is who got it, once decided.
+ * (`payload.volunteerIds`, else row creation order); `helperIds` go with the top pick. `volunteerId` is who got it, once decided.
  */
 export function toProposal(action: ProposalActionRow, candidates: ProposalCandidateRow[], volunteerId: string | null = null): Proposal {
-  const order = asObject(action.payload).volunteerIds;
+  const { volunteerIds: order, helperIds } = asObject(action.payload);
   const rank = new Map(Array.isArray(order) ? order.map((id, i) => [String(id), i]) : []);
   const proposed = candidates
     .filter((c) => c.status === 'proposed' && c.task_id === action.task_id)
@@ -268,6 +271,7 @@ export function toProposal(action: ProposalActionRow, candidates: ProposalCandid
     id: action.id,
     taskId: action.task_id ?? '',
     candidates: proposed.map((c) => ({ volunteerId: c.volunteer_id, rationale: c.rationale ?? '', distanceM: c.distance_m })),
+    helperIds: Array.isArray(helperIds) ? helperIds.map(String).filter((id) => proposed.some((c) => c.volunteer_id === id)) : [],
     createdAt,
     autoAssignAt: toMsOrNull(action.auto_assign_at) ?? createdAt + POLICY.autoAssignMs,
     status,

@@ -59,16 +59,8 @@ describe('Interpreter.match: is a new report about a task already open?', () => 
     expect(value).toEqual({ taskId: 'collapsed', read: { priority: 'P2', resolved: false } });
   });
 
-  describe('keeps the safety rules on the new priority', () => {
+  describe('the new priority', () => {
     const about = { task_1: 0.95, new: 0.05 };
-
-    it('red-flag words make it P1, whatever the model says', async () => {
-      replies.push(decided({ about, priority: { P1: 0.2, P2: 0.75, P3: 0.05 }, sorted: 0.01 }));
-
-      const { value } = await new SparkInterpreter().match(heard("he's not breathing", [collapsed]));
-
-      expect(value?.read.priority).toBe('P1');
-    });
 
     it('a model that is not sure rounds up', async () => {
       replies.push(decided({ about, priority: { P1: 0.42, P2: 0.46, P3: 0.12 }, sorted: 0.01 }));

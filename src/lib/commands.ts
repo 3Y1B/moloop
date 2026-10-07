@@ -1,15 +1,15 @@
-import type { DetailRead, EscalateTo, Match, Reread, Triage, Understood } from '@/lib/ai';
+import { unread, type DetailRead, type EscalateTo, type Match, type Reread, type Triage, type Understood } from '@/lib/ai';
 import { AGENT, Batch, CommandError, FESTIVALGOER, SCHEDULER, TRIAGE_AGENT, type Actor } from '@/lib/batch';
 import { rankCandidates } from '@/lib/candidates';
+import { checkIn, shiftStep } from '@/lib/shifts';
 import { REPLY_LABEL } from '@/lib/format';
-import { heuristicDetail, heuristicPerson, heuristicTriage, heuristicUnderstanding, noteFor, replyIn } from '@/lib/heuristics';
 import {
   applyReply, assignOrQueue, handoverArrived, HANDOVER_NAME, isActive, isBusy, isOnTask, needsApproval, nextQueued,
   isHeld, passUp, POLICY, proposalDue, respondToEscalation, tick, type RespondInput,
 } from '@/lib/lifecycle';
 import { walkFrom } from '@/lib/presence';
 import { routeBetween } from '@/lib/route';
-import type { Duty, GuestRequest, Priority, Proposal, ReplyKind, Task, TeamSlug, Volunteer } from '@/lib/schema';
+import type { Duty, GuestRequest, Priority, Proposal, ProposalCandidate, ReplyKind, Task, TeamSlug, Volunteer } from '@/lib/schema';
 
 /**
  * What every command does, beyond the task state machine in lifecycle.ts: the events it writes, the messages it
@@ -67,34 +67,29 @@ export function reply(b: Batch, actorId: string, taskId: string, kind: ReplyKind
   if (kind === 'decline') freeUp(b, me.id);
 }
 
+/** On duty during a rostered shift checks them into it (lib/shifts.ts). */
 export function setDuty(b: Batch, volunteerId: string, duty: Duty) {
   const me = b.volunteers[volunteerId];
-  if (me) b.volunteer({ ...me, duty });
+  if (!me) return;
+  b.volunteer({ ...me, duty });
+  if (duty === 'on_duty') checkIn(b, volunteerId);
 }
 
 /** The task a volunteer is on right now, as owner or helper. */
 export const activeTaskOf = (tasks: Task[], volunteerId: string) => tasks.find((t) => isOnTask(t, volunteerId));
-
-/** Keyword stand-in for the reply classifier: a short reply to the task you're on, or a new report. */
-export function interpretHeuristic(tasks: Task[], meId: string | null, text: string): { heard: string; intent: Intent } {
-  const heard = text.trim();
-  const active = meId ? activeTaskOf(tasks, meId) : undefined;
-  const kind = active ? replyIn(heard, active.assigneeId !== meId) : null;
-  return { heard, intent: active && kind ? { kind: 'reply', taskId: active.id, reply: kind } : { kind: 'report' } };
-}
 
 /** A message to send once triage has had time to run. The server sends it straight away. */
 export type Later = { recipientId: string; body: string; taskId: string };
 
 /**
  * Commit what the volunteer confirmed: a reply to their task, an update to an open task it's about (`match`), or a
- * new report (triaged by `ai`, or by keywords).
+ * new report (triaged by `ai`, or unread: a lead reads it).
  */
 export function commit(
   b: Batch, actorId: string, i: { heard: string; intent: Intent }, ai?: Triage, match?: Match,
 ): { confirmation: string; later?: Later } {
   if (i.intent.kind === 'reply') {
-    reply(b, actorId, i.intent.taskId, i.intent.reply, noteFor(i.intent.reply, i.heard));
+    reply(b, actorId, i.intent.taskId, i.intent.reply, i.heard);
     return { confirmation: `Sent “${REPLY_LABEL[i.intent.reply]}”` };
   }
   if (i.intent.kind === 'tell_guest') {
@@ -118,7 +113,7 @@ const openMatch = (b: Batch, match: Match | undefined) => {
 /** A volunteer's own report: triage, then straight to a teammate (or queued behind their current task). */
 export function fileReport(b: Batch, reporterId: string, text: string, ai?: Triage): { confirmation: string; later?: Later } {
   const me = b.volunteers[reporterId];
-  const t = ai ?? heuristicTriage(text);
+  const t = ai ?? unread(text);
   const { team, priority } = t;
   const tasks = b.all();
   const candidates = Object.values(b.volunteers).filter(
@@ -130,7 +125,7 @@ export function fileReport(b: Batch, reporterId: string, text: string, ai?: Tria
     id: b.id('task'), title: t.title, summary: t.summary, category: t.category, priority, teamSlug: team,
     // Where they said it's happening, else where they are.
     zoneSlug: t.zoneSlug ?? me?.zoneSlug ?? null, locationHint: t.locationHint, status: 'open', assigneeId: null, handledBy: 'human',
-    reporter: { kind: 'volunteer', name: me?.name, quote: text, language: t.language },
+    reporter: { kind: 'volunteer', name: me?.name, quote: text, language: t.language, speakerNeeded: t.speakerNeeded },
     createdAt: b.now, assignedAt: null, etaAt: null, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null,
     escalation: null, helperIds: [], resolution: null, requestId: null,
   };
@@ -313,29 +308,24 @@ export function assign(b: Batch, byId: string, taskId: string, volunteerId: stri
   };
   place(b, fresh, volunteerId, b.actor(byId), `${how === 'approved' ? 'Approved' : 'Assigned'} by ${by.name}`);
   settleProposal(b, taskId, 'approved', volunteerId, byId);
-  // Picked to go with them: on the task as helpers, same as backup.
-  if (helpers.length) {
-    b.task({ ...b.tasks[taskId], helperIds: helpers });
-    for (const id of helpers) {
-      const h = b.volunteers[id];
-      b.ev(taskId, 'responded', `${by.name} sent ${h.name}`, b.actor(byId));
-      b.send(id, 'backup', `Help ${first(target)}: ${task.title}.`, { taskId, delivery: 'spoken' });
-    }
-    b.send(volunteerId, 'backup', `${helpers.map((id) => first(b.volunteers[id])).join(', ')} ${helpers.length > 1 ? 'are' : 'is'} joining you.`, { taskId });
-  }
+  sendHelpers(b, taskId, volunteerId, helpers, b.actor(byId), by.name);
   for (const id of prev) {
     b.send(id, 'moved', `Moved to ${first(target)}: ${task.title}.`, { taskId });
     freeUp(b, id);
   }
 }
 
-/** Approve the AI's proposal: its top pick, or `volunteerId` instead, with `helperIds` going along. */
-export function approve(b: Batch, byId: string, proposalId: string, volunteerId?: string, helperIds: string[] = []) {
+/**
+ * Approve the AI's proposal: its top pick, or `volunteerId` instead, with `helperIds` going along. Left out, the
+ * helpers are the proposal's own when its top pick goes, and nobody when someone else does.
+ */
+export function approve(b: Batch, byId: string, proposalId: string, volunteerId?: string, helperIds?: string[]) {
   const p = b.proposals[proposalId];
   if (!p) throw new CommandError('not_found', `No proposal ${proposalId}`);
-  const pick = volunteerId ?? p.candidates[0]?.volunteerId;
+  const top = p.candidates[0]?.volunteerId;
+  const pick = volunteerId ?? top;
   if (p.status !== 'pending' || !pick) throw new CommandError('conflict', `Cannot approve proposal ${proposalId}`);
-  assign(b, byId, p.taskId, pick, 'approved', helperIds);
+  assign(b, byId, p.taskId, pick, 'approved', helperIds ?? (pick === top ? p.helperIds : []));
 }
 
 export function broadcast(b: Batch, byId: string, body: string, scope: Scope = {}) {
@@ -371,17 +361,15 @@ export function guestAsk(b: Batch, text: string, zoneSlug: string | null, locati
 
 /**
  * A routine question gets an answer; a report about a task already open joins it (`match`); anything else becomes a
- * task. `ai` is the model's call, else keywords decide.
+ * task. `ai` is the model's call; without one, a lead reads it.
  */
 export function understand(b: Batch, requestId: string, ai?: Understood, match?: Match) {
   const r = b.requests[requestId];
   if (!r || r.stage !== 'understanding') return;
-  const u = ai ?? heuristicUnderstanding(r.heard, r.zoneSlug, r.locationHint);
+  const u: Understood = ai ?? { kind: 'task', ...unread(r.heard, r.zoneSlug, r.locationHint) };
   const open = u.kind === 'task' ? openMatch(b, match) : undefined;
-  // The same answer again after "not solved" won't help: send someone instead.
-  const repeat = u.kind === 'answer' && r.thread.some((e) => e.from === 'ai' && e.text === u.answer);
+  // An answer stands even if it's said again ("hello?" twice): the classifier decides when someone is needed.
   if (open) updateTask(b, open.id, { requestId }, r.heard, match!.read);
-  else if (repeat) createGuestTask(b, r, heuristicPerson(r.heard, r.zoneSlug, r.locationHint));
   else if (u.kind === 'answer') b.request({ ...r, stage: 'answered', aiAnswer: u.answer, thread: [...r.thread, { from: 'ai', text: u.answer, at: b.now }] });
   else createGuestTask(b, r, u);
 }
@@ -426,12 +414,13 @@ export function guestAddDetail(b: Batch, requestId: string, text: string, ai?: D
   if (!task || (!isActive(task) && task.status !== 'open' && task.status !== 'queued')) {
     // Nothing open to add to: treat it as asking for a person, with the detail as the report.
     const withDetail = { ...r, heard: `${r.heard}. ${text}`, thread, taskId: null };
-    const t = ai?.triage ?? heuristicTriage(withDetail.heard, r.zoneSlug, r.locationHint);
+    const t = ai?.triage ?? unread(withDetail.heard, r.zoneSlug, r.locationHint);
     createGuestTask(b, withDetail, t);
     return { escalated: t.priority !== 'P3' };
   }
 
-  const worse = (ai ?? heuristicDetail(text)).worse;
+  // Unread detail goes to the lead as if worse: a person reads it.
+  const worse = ai?.worse ?? true;
   const updated: Task = worse ? { ...task, priority: BUMP[task.priority] } : task;
   b.task({ ...updated, summary: `${task.summary} Update: ${text}` });
   b.ev(task.id, 'note', worse ? `Festival-goer says it’s worse. Now ${updated.priority}` : 'Detail from the festival-goer', TRIAGE_AGENT, { note: text });
@@ -465,7 +454,7 @@ export function guestReopen(b: Batch, requestId: string) {
   const r = b.requests[requestId];
   if (!r) return;
   const task = r.taskId ? b.tasks[r.taskId] : undefined;
-  // Sorted by an AI answer: back through the AI, which won't repeat itself.
+  // Sorted by an AI answer: back through the classifier.
   if (!task) {
     if (r.stage !== 'sorted') return;
     b.request({ ...r, stage: 'understanding', aiAnswer: null, reopenedAt: b.now, thread: [...r.thread, { from: 'guest', text: 'Still need help', at: b.now }] });
@@ -488,7 +477,7 @@ function createGuestTask(b: Batch, r: GuestRequest, t: Triage) {
   const task: Task = {
     id: b.id('task'), title: t.title, summary: t.summary, priority: t.priority, teamSlug: t.team, category: t.category,
     zoneSlug: r.zoneSlug ?? t.zoneSlug, locationHint: r.locationHint ?? t.locationHint, status: 'open', assigneeId: null, handledBy: 'ai',
-    reporter: { kind: 'festivalgoer', quote: r.heard, language: t.language },
+    reporter: { kind: 'festivalgoer', quote: r.heard, language: t.language, speakerNeeded: t.speakerNeeded },
     createdAt: b.now, assignedAt: null, etaAt: null, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null,
     resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: r.id,
   };
@@ -527,7 +516,7 @@ export function dispatch(b: Batch, task: Task) {
   if (needsApproval(task.priority)) {
     b.task(task);
     const p: Proposal = {
-      id: b.id('proposal'), taskId: task.id, candidates, createdAt: b.now, autoAssignAt: b.now + POLICY.autoAssignMs,
+      id: b.id('proposal'), taskId: task.id, candidates, helperIds: [], createdAt: b.now, autoAssignAt: b.now + POLICY.autoAssignMs,
       status: 'pending', volunteerId: null, decidedById: null, decidedAt: null,
     };
     b.proposal(p);
@@ -560,6 +549,38 @@ export function place(b: Batch, task: Task, volunteerId: string, actor: Actor, w
   );
 }
 
+/** Sent along with the task's owner, as backup: each told to go, the owner told who's coming. */
+function sendHelpers(b: Batch, taskId: string, ownerId: string, helperIds: string[], actor: Actor, byName?: string) {
+  if (!helperIds.length) return;
+  const task = b.tasks[taskId];
+  b.task({ ...task, helperIds });
+  for (const id of helperIds) {
+    b.ev(taskId, 'responded', `${byName ? `${byName} sent` : 'Sent'} ${b.volunteers[id].name}`, actor);
+    b.send(id, 'backup', `Help ${first(b.volunteers[ownerId])}: ${task.title}.`, { taskId, delivery: 'spoken' });
+  }
+  b.send(ownerId, 'backup', `${helperIds.map((id) => first(b.volunteers[id])).join(', ')} ${helperIds.length > 1 ? 'are' : 'is'} joining you.`, { taskId });
+}
+
+/**
+ * The picker's read of a pending proposal (server/pick.ts): `ranked` best first, and how many `people` the task
+ * needs. The top pick leads; the next free ones in order go with them. Anyone gone off duty since is dropped.
+ * Nothing changes once someone has decided, or if nobody it ranked is still around.
+ */
+export function rerank(b: Batch, proposalId: string, ranked: ProposalCandidate[], people: number) {
+  const p = b.proposals[proposalId];
+  const task = p && b.tasks[p.taskId];
+  if (!p || p.status !== 'pending' || task?.status !== 'open') return;
+  const candidates = ranked.filter((c) => b.volunteers[c.volunteerId]?.duty === 'on_duty');
+  if (!candidates.length) return;
+  const [top, ...rest] = candidates;
+  const helperIds = rest.filter((c) => !isBusy(b.all(), c.volunteerId)).slice(0, Math.max(0, people - 1)).map((c) => c.volunteerId);
+  b.proposal({ ...p, candidates, helperIds });
+  const was = { top: p.candidates[0]?.volunteerId, helpers: p.helperIds.join() };
+  if (top.volunteerId === was.top && helperIds.join() === was.helpers) return;
+  const names = [top.volunteerId, ...helperIds].map((id) => b.volunteers[id].name);
+  b.ev(task.id, 'proposed', `Suggested ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]}, waiting for approval`, AGENT);
+}
+
 /** Freed up → pull the next queued task, delivered spoken since they're now idle. */
 function freeUp(b: Batch, volunteerId: string) {
   if (isBusy(b.all(), volunteerId)) return;
@@ -575,7 +596,7 @@ function settleProposal(b: Batch, taskId: string, status: Proposal['status'], vo
   if (p) b.proposal({ ...p, status, volunteerId, decidedById: byId, decidedAt: b.now });
 }
 
-/** One scheduler pass: nudges, lead alerts and bumps from lifecycle.tick, then proposals nobody approved in time. */
+/** One scheduler pass: nudges, lead alerts and bumps from lifecycle.tick, proposals nobody approved in time, then shifts. */
 export function schedulerStep(b: Batch) {
   const mo = b.coordinator();
   for (const task of b.all()) {
@@ -603,18 +624,23 @@ export function schedulerStep(b: Batch) {
       }
     }
   }
-  // Nobody approved or changed the AI's pick in time: assign the top pick that's still around.
+  // Nobody approved or changed the AI's pick in time: assign its top pick if they're still free, and whoever it
+  // said should go with them. Otherwise the best free one by the rules now, alone.
   for (const p of Object.values(b.proposals)) {
     if (!proposalDue(p, b.now)) continue;
     const task = b.tasks[p.taskId];
-    const pick = task?.status === 'open'
-      ? (rankCandidates(task, Object.values(b.volunteers), b.all(), { positions: b.positions, now: b.now })[0] ?? p.candidates[0])?.volunteerId
-      : undefined;
+    const around = (id: string | undefined) => !!id && b.volunteers[id]?.duty === 'on_duty' && !isBusy(b.all(), id);
+    const top = p.candidates[0]?.volunteerId;
+    const pick = task?.status !== 'open' ? undefined
+      : around(top) ? top
+        : (rankCandidates(task, Object.values(b.volunteers), b.all(), { positions: b.positions, now: b.now })[0] ?? p.candidates[0])?.volunteerId;
     if (!task || !pick) {
       b.proposal({ ...p, status: 'cancelled', decidedAt: b.now });
       continue;
     }
     place(b, task, pick, AGENT, `auto-assigned, no approval in ${POLICY.autoAssignMs / 1000} s`);
     b.proposal({ ...p, status: 'auto_assigned', volunteerId: pick, decidedAt: b.now });
+    if (pick === top) sendHelpers(b, task.id, pick, p.helperIds.filter((id) => around(id)), AGENT);
   }
+  shiftStep(b);
 }

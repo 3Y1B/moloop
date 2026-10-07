@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Payloads for agent_actions.payload, discriminated by action type.
 // Nothing here executes until a human flips agent_actions.status to 'approved'.
 export const AgentActionPayload = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('assign_volunteer'), taskId: z.string().uuid(), volunteerIds: z.array(z.string().uuid()) }),
+  z.object({ type: z.literal('assign_volunteer'), taskId: z.string().uuid(), volunteerIds: z.array(z.string().uuid()), helperIds: z.array(z.string().uuid()).optional() }),
   z.object({ type: z.literal('broadcast_message'), scope: z.enum(['team', 'zone', 'broadcast']), targetId: z.string().optional(), body: z.string() }),
   z.object({ type: z.literal('move_team'), teamSlug: z.string(), fromZoneSlug: z.string().nullable(), toZoneSlug: z.string(), volunteerIds: z.array(z.string().uuid()) }),
   z.object({ type: z.literal('draft_incident_report'), taskId: z.string().uuid(), markdown: z.string() }),

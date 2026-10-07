@@ -18,8 +18,8 @@ import { hasOpenAi, onSpark, openai, spark, sparkLimiter } from './providers';
  * If both the Spark and OpenAI fail, the error reaches the caller, which fails closed to a person.
  */
 
-/** `urgent` jumps the Spark's queue; `signal` bounds the whole call, fallback included. */
-export type CallOptions = { urgent?: boolean; signal?: AbortSignal };
+/** `urgent` jumps the Spark's queue; `signal` bounds the whole call, fallback included; `cloud` skips the Spark. */
+export type CallOptions = { urgent?: boolean; signal?: AbortSignal; cloud?: boolean };
 
 // How long the Spark gets before OpenAI takes over, and how long the last resort gets.
 const LIMITS = { chat: { primaryMs: 5_000, lastMs: 15_000 }, decide: { primaryMs: 4_000, lastMs: 10_000 }, tool: { primaryMs: 15_000, lastMs: 15_000 } };
@@ -38,7 +38,7 @@ const cloud = <R>(id: string, call: (signal: AbortSignal) => Promise<R>): Attemp
 
 /** The models answering first, for triage_runs. */
 export const chatModelId = () => models().openaiChat.id;
-export const decideModelId = () => (onSpark() ? models().jev : models().decisions).id;
+export const decideModelId = (o: CallOptions = {}) => (onSpark() && !o.cloud ? models().jev : models().decisions).id;
 
 /** Structured output validated against `schema`. */
 export function generate<T extends z.ZodType>(
@@ -61,7 +61,7 @@ export const toolModelId = () => models().openaiChat.id;
 export function decide<const Q extends Questions>(state: EntryType, questions: Q, o: CallOptions = {}): Promise<Answers<Q>> {
   const m = models();
   return withFallback(
-    queued(m.jev.id, o.urgent, (signal) => m.jev.decide(state, questions, signal)),
+    o.cloud ? null : queued(m.jev.id, o.urgent, (signal) => m.jev.decide(state, questions, signal)),
     cloud(m.decisions.id, (signal) => m.decisions.decide(state, questions, signal)),
     { ...LIMITS.decide, signal: o.signal },
   );

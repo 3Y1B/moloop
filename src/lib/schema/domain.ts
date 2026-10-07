@@ -34,6 +34,24 @@ export type Volunteer = {
   shiftEndsAt: number | null;
   /** For Call. */
   phone: string | null;
+  /** Background and strengths, for the picker ("ICU nurse. Calm under pressure."). Crew-only, so the server's alone. */
+  bio?: string | null;
+};
+
+/** Someone's place on a rostered shift (src/lib/roster.ts), as the day runs it (src/lib/shifts.ts). */
+export type RosteredShift = {
+  /** The shift_assignments row. */
+  id: string;
+  volunteerId: string;
+  teamSlug: TeamSlug | null;
+  startsAt: number;
+  endsAt: number;
+  /** Certificates everyone on it holds: what someone covering it needs too. */
+  requires: string[];
+  /** Assigned until they go on duty during it (checked in); no-show if they don't by SHIFTS.noShowMs; completed after. */
+  status: 'assigned' | 'checked_in' | 'no_show' | 'completed';
+  /** When they were told it's starting. */
+  remindedAt: number | null;
 };
 
 /**
@@ -57,6 +75,11 @@ export type Reporter = {
   /** What they actually said, in their language. */
   quote: string;
   language: string;
+  /**
+   * The language someone there needs a volunteer to speak: their own when it isn't English, or one the report names
+   * ("his wife only speaks Mandarin"). Null when English will do; missing on reports from before intake said.
+   */
+  speakerNeeded?: string | null;
 };
 
 export type Task = {
@@ -165,6 +188,8 @@ export type Proposal = {
   taskId: string;
   /** Best first. */
   candidates: ProposalCandidate[];
+  /** Who goes with the top pick: the picker's read of how many it needs (one, so none, until it has read it). */
+  helperIds: string[];
   createdAt: number;
   autoAssignAt: number;
   status: ProposalStatus;
