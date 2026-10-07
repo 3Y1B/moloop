@@ -37,7 +37,8 @@ function progress(stage: GuestRequestStage, reached: number): { done: number; ac
   }
 }
 
-export function StepTracker({ stage, reached = 1 }: { stage: GuestRequestStage; reached?: number }) {
+/** `matched`: someone's lined up while the stage is still `finding`. */
+export function StepTracker({ stage, reached = 1, matched = false }: { stage: GuestRequestStage; reached?: number; matched?: boolean }) {
   const theme = useTheme();
   const { done, active } = progress(stage, reached);
   const color = stage === 'cancelled' ? theme.textTertiary : done === STEPS.length ? theme.success : theme.tint;
@@ -59,7 +60,7 @@ export function StepTracker({ stage, reached = 1 }: { stage: GuestRequestStage; 
             <View style={styles.labelBox}>
               <Text
                 style={[styles.label, { color: i === active ? color : i < done ? theme.text : theme.textTertiary }]}>
-                {i === STEPS.length - 1 ? LAST[stage] ?? s : s}
+                {i === STEPS.length - 1 ? (matched && stage === 'finding' ? 'Matched' : LAST[stage] ?? s) : s}
               </Text>
             </View>
           </Fragment>

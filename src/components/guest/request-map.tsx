@@ -23,7 +23,7 @@ function along(points: Point[], t: number): { at: Point; next: number } {
 }
 
 /**
- * Both dots: the festival-goer, and whoever is coming, walking the route toward them.
+ * Both dots: the festival-goer, and whoever is coming, walking the route toward them (or where they are, while matched).
  * Full-bleed behind the sheet. Until GPS lands, the volunteer's dot is placed by time: how far into their walk they should be.
  */
 export function RequestMap({ view, frame }: { view: RequestView; frame: { top: number; bottom: number } }) {
@@ -42,7 +42,8 @@ export function RequestMap({ view, frame }: { view: RequestView; frame: { top: n
   if (volunteer) {
     const color = (volunteer.teamSlug && teams[volunteer.teamSlug]?.color) || theme.tint;
     const walk = status.stage === 'coming' && status.arriveAt ? routeBetween(volunteer.zoneSlug, zone) : null;
-    let at = zoneSpot(zone, 1) ?? here;
+    // Matched but not walking over yet (finishing a task): wherever they are now. Otherwise, with the festival-goer.
+    let at = (status.stage === 'finding' ? zoneSpot(volunteer.zoneSlug, 1) : null) ?? zoneSpot(zone, 1) ?? here;
     if (walk && walk.points.length > 1) {
       const start = task?.assignedAt ?? task?.createdAt ?? now;
       const span = (status.arriveAt ?? now) - start;
