@@ -225,8 +225,8 @@ export class SupabaseRepo implements Repo {
     return requestId;
   }
 
-  async guestRequestHuman(requestId: string) {
-    await this.post('guestRequestHuman', { requestId });
+  async guestFollowUp(requestId: string, text: string) {
+    await this.post('guestFollowUp', { requestId, text });
   }
 
   guestAddDetail(requestId: string, text: string) {

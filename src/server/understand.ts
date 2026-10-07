@@ -1,4 +1,5 @@
 import * as C from '@/lib/commands';
+import type { GuestRequest } from '@/lib/schema';
 import { interpreter } from './models/interpreter';
 import { matchOpen } from './retriage';
 import { read, sql, transact } from './world';
@@ -16,7 +17,7 @@ export async function understandRequest(requestId: string) {
   try {
     const r = await read({ requestIds: [requestId] }, ({ world }) => world.requests[requestId]);
     if (!r || r.stage !== 'understanding') return;
-    const { value, run } = await interpreter.understand({ text: r.heard, zoneSlug: r.zoneSlug, locationHint: r.locationHint, from: { kind: 'festivalgoer' } });
+    const { value, run } = await interpreter.understand({ text: conversation(r), zoneSlug: r.zoneSlug, locationHint: r.locationHint, from: { kind: 'festivalgoer' } });
     // A report (not a question) may be about something already open nearby.
     const matched = value.kind === 'task'
       ? await read({}, ({ world }) => Object.values(world.tasks)).then((tasks) => matchOpen(tasks, {
@@ -30,6 +31,12 @@ export async function understandRequest(requestId: string) {
   } finally {
     inFlight.delete(requestId);
   }
+}
+
+/** The first ask is just what they said; after "not solved", the model sees what it already told them. */
+function conversation(r: GuestRequest) {
+  if (!r.thread.some((e) => e.from === 'ai')) return r.heard;
+  return r.thread.map((e) => `${e.from === 'ai' ? 'You answered' : 'Festival-goer'}: ${e.text}`).join('\n');
 }
 
 export function understandLater(requestId: string) {

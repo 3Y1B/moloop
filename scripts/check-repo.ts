@@ -327,7 +327,7 @@ try {
   await leadRepo.broadcast('drink water', { teamSlug: 'first-aid' });
   await leadRepo.broadcast('everyone');
   await leadRepo.sendDirect(priya, 'hi');
-  await guestRepo.guestRequestHuman(request.id);
+  await guestRepo.guestFollowUp(request.id, 'still lost');
   await guestRepo.guestCancel(request.id);
   await guestRepo.guestReopen(request.id);
   await priyaRepo.guestReply(T.tom, 'on my way');
@@ -350,7 +350,7 @@ try {
     ['broadcast', jToken, { body: 'drink water', scope: { teamSlug: 'first-aid' } }],
     ['broadcast', jToken, { body: 'everyone' }],
     ['sendDirect', jToken, { volunteerId: priya, body: 'hi' }],
-    ['guestRequestHuman', gToken, { requestId: request.id }],
+    ['guestFollowUp', gToken, { requestId: request.id, text: 'still lost' }],
     ['guestCancel', gToken, { requestId: request.id }],
     ['guestReopen', gToken, { requestId: request.id }],
     ['guestReply', pToken, { taskId: T.tom, text: 'on my way' }],

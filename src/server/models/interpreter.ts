@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { DetailRead, EscalateTo, Match, Triage, Understood } from '@/lib/ai';
 import {
-  heuristicDetail, heuristicPerson, heuristicTriage, heuristicUnderstanding, soundsCritical, soundsUrgent, TEAM_CATEGORY,
+  heuristicDetail, heuristicTriage, heuristicUnderstanding, soundsCritical, soundsUrgent, TEAM_CATEGORY,
 } from '@/lib/heuristics';
 import { activeTaskOf, interpretHeuristic } from '@/lib/commands';
 import { ReplyKind, type Priority, type Task, type TeamSlug } from '@/lib/schema';
@@ -46,8 +46,6 @@ export interface Interpreter {
   understand(i: Heard): Promise<Judged<Understood>>;
   /** Where a report goes and how urgent it is. `urgent` puts it ahead of festival-goers' requests (a volunteer's report). */
   triage(i: Heard & { urgent?: boolean }): Promise<Judged<Triage>>;
-  /** "Talk to a person" on an AI answer: the team that fits, P3 unless a safety rule raises it. */
-  person(i: Heard): Promise<Judged<Triage>>;
   /** Added detail on an open task: is it worse? On a closed one: triage the whole account instead. */
   detail(i: Heard & { before: string; open: boolean }): Promise<Judged<DetailRead & { triage?: Triage }>>;
   /** A new report against open tasks nearby: the one it's about, read again with what's new, or null for a new incident. */
@@ -73,9 +71,6 @@ export class KeywordInterpreter implements Interpreter {
   }
   async triage(i: Heard) {
     return { value: heuristicTriage(i.text, i.zoneSlug, i.locationHint), run: run() };
-  }
-  async person(i: Heard) {
-    return { value: heuristicPerson(i.text, i.zoneSlug, i.locationHint), run: run() };
   }
   async detail(i: Heard & { before: string; open: boolean }) {
     return {
@@ -138,10 +133,9 @@ const higher = (a: EscalateTo | null, b: EscalateTo | null) => (!a ? b : !b ? a 
  * priority and "is this routine". In parallel: they don't depend on each other. Then code has the last word:
  * priority is never below the red-flag words, an escalation is never dropped (except one back to its own sender),
  * and a keyword rule can add one.
- * `canAnswer`: the agent may answer a routine question instead of calling a tool. `answered`: the AI already answered
- * it and the person asked for a human anyway, so it stays P3 unless a safety rule raises it.
+ * `canAnswer`: the agent may answer a routine question instead of calling a tool.
  */
-async function assess(i: Heard, { canAnswer = false, answered = false }, o: CallOptions) {
+async function assess(i: Heard, { canAnswer = false }, o: CallOptions) {
   const t0 = Date.now();
   const zs = await zones();
   const where = [zs.find((z) => z.slug === i.zoneSlug)?.name, i.locationHint].filter(Boolean).join(', ');
@@ -169,7 +163,6 @@ async function assess(i: Heard, { canAnswer = false, answered = false }, o: Call
   // routine reports to P2 (scripts/check-intake.ts).
   let priority: Priority = d ? modelPriority(d.priority) : moreUrgent(agent?.priority ?? kw.priority, 'P2');
   if (agent?.priority === 'P1') priority = 'P1';
-  if (answered && d && priority !== 'P1') priority = 'P3';
   priority = floor(priority, i.text);
 
   const team = agent?.team ?? (d ? (d.team.choice as Triage['team']) : kw.team);
@@ -232,11 +225,6 @@ export class SparkInterpreter implements Interpreter {
 
   async triage({ urgent, ...i }: Heard & { urgent?: boolean }) {
     const { triage, run } = await assess(i, {}, { ...OPTS, urgent });
-    return { value: triage, run };
-  }
-
-  async person(i: Heard) {
-    const { triage, run } = await assess(i, { answered: true }, OPTS);
     return { value: triage, run };
   }
 

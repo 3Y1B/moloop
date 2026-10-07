@@ -186,15 +186,12 @@ async function ownRequest(requestId: string, caller: Caller) {
   });
 }
 
-route('guestRequestHuman', 'any', RequestArgs, async (a, caller) => {
-  const { request } = await ownRequest(a.requestId, caller);
-  const judged = request.taskId ? undefined : await interpreter.person({
-    text: request.heard, zoneSlug: request.zoneSlug, locationHint: request.locationHint, from: { kind: 'festivalgoer' },
-  });
+route('guestFollowUp', 'any', z.object({ requestId: Id, text: Text }), async (a, caller) => {
   await transact({ requestIds: [a.requestId] }, (b, w) => {
     mustOwn(w, a.requestId, caller);
-    C.guestRequestHuman(b, a.requestId, judged?.value);
-  }, { run: judged && { ...judged.run, requestId: a.requestId } });
+    C.guestFollowUp(b, a.requestId, a.text);
+  });
+  understandLater(a.requestId);
 });
 
 route('guestAddDetail', 'any', z.object({ requestId: Id, text: Text }), async (a, caller) => {

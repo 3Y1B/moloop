@@ -239,7 +239,7 @@ Owns everything shared. Leaves stub screens for every route, so Phase 2 agents o
   - P3 assigns straight away, no approval (as today)
 - **Status copy** (`src/lib/status.ts`, new): `taskStatusFor(viewer, task, lookups, now)`, `memberStatus(volunteer, tasks, now)`, `guestStage(request, task)`. Returns `{ label, detail?, tone, action? }`.
 - **Repo** (`src/data/repo.ts`, `mock/mock-repo.ts`, `mock/fixtures.ts`):
-  - new commands: `respond`, `assign`, `approve`, `broadcast`, `sendDirect`, `guestAsk`, `guestRequestHuman`, `guestAddDetail` (the AI decides: note or priority bump), `guestCancel`, `guestReopen`, `guestReply`
+  - new commands: `respond`, `assign`, `approve`, `broadcast`, `sendDirect`, `guestAsk`, `guestFollowUp` ("Problem solved?" No: back through the AI), `guestAddDetail` (the AI decides: note or priority bump), `guestCancel`, `guestReopen`, `guestReply`
   - snapshot gains `requests`, `proposals`, `guestId`
   - fixtures cover every Needs-you type
 - **Hooks** (`src/data/hooks.ts`): `useNeedsMe`, `useTeam`, `useAllActive`, `useRequest`, `useMyRequests`, `usePerson`.

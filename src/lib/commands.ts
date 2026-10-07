@@ -360,12 +360,23 @@ export function understand(b: Batch, requestId: string, ai?: Understood, match?:
   if (!r || r.stage !== 'understanding') return;
   const u = ai ?? heuristicUnderstanding(r.heard, r.zoneSlug, r.locationHint);
   const open = u.kind === 'task' ? openMatch(b, match) : undefined;
+  // The same answer again after "not solved" won't help: send someone instead.
+  const repeat = u.kind === 'answer' && r.thread.some((e) => e.from === 'ai' && e.text === u.answer);
   if (open) updateTask(b, open.id, { requestId }, r.heard, match!.read);
+  else if (repeat) createGuestTask(b, r, heuristicPerson(r.heard, r.zoneSlug, r.locationHint));
   else if (u.kind === 'answer') b.request({ ...r, stage: 'answered', aiAnswer: u.answer, thread: [...r.thread, { from: 'ai', text: u.answer, at: b.now }] });
   else createGuestTask(b, r, u);
 }
 
-/** "Talk to a person" on an AI answer: a task for the team that fits, P3 unless `ai` raised it. */
+/** "Problem solved?" No: what's still wrong goes back through `understand` with the conversation so far. */
+export function guestFollowUp(b: Batch, requestId: string, text: string) {
+  const r = b.requests[requestId];
+  if (!r) throw new CommandError('not_found', `No request ${requestId}`);
+  if (r.stage !== 'answered' || r.taskId) return;
+  b.request({ ...r, heard: `${r.heard}. ${text}`, stage: 'understanding', aiAnswer: null, thread: [...r.thread, { from: 'guest', text, at: b.now }] });
+}
+
+/** Asking for a person: a task for the team that fits, P3 unless `ai` raised it. */
 export function guestRequestHuman(b: Batch, requestId: string, ai?: Triage) {
   const r = b.requests[requestId];
   if (!r || r.taskId) return;

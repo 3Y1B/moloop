@@ -211,3 +211,38 @@ describe('the intake agent escalates a new report', () => {
     });
   });
 });
+
+describe('"Problem solved?" No on an AI answer', () => {
+  const answer = { kind: 'answer' as const, answer: 'Toilets are behind the Oval stage.', language: 'en' };
+  const answered = () => {
+    const b = festival([], [{ ...asked, heard: 'where are the toilets' }]);
+    C.understand(b, 'asked', answer);
+    C.guestFollowUp(b, 'asked', 'the queue is huge, any others?');
+    return b;
+  };
+
+  it('goes back to Understanding with the follow-up, and no task yet', () => {
+    const b = answered();
+
+    expect(b.requests.asked).toMatchObject({ stage: 'understanding', aiAnswer: null, taskId: null, heard: 'where are the toilets. the queue is huge, any others?' });
+    expect(b.requests.asked.thread.map((e) => e.from)).toEqual(['guest', 'ai', 'guest']);
+    expect(Object.values(b.tasks)).toEqual([]);
+  });
+
+  it('can be answered again', () => {
+    const b = answered();
+
+    C.understand(b, 'asked', { ...answer, answer: 'There are more by the Main Entrance.' });
+
+    expect(b.requests.asked).toMatchObject({ stage: 'answered', aiAnswer: 'There are more by the Main Entrance.' });
+  });
+
+  it('sends someone instead of repeating the same answer', () => {
+    const b = answered();
+
+    C.understand(b, 'asked', answer);
+
+    expect(Object.values(b.tasks)).toHaveLength(1);
+    expect(b.requests.asked.stage).toBe('finding');
+  });
+});
