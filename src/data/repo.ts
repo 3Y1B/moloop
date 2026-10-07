@@ -1,13 +1,7 @@
 import type { RespondInput } from "@/lib/lifecycle";
 import type { Fix } from "@/lib/presence";
 import type { RespondCommand } from "@/lib/respond-words";
-import type {
-  ManagedPlaybook,
-  SavePlaybookDraftInput,
-  SimulationContext,
-  SimulationInput,
-  SimulationRunResult,
-} from "@/lib/mobilization-contracts";
+import type { SimulationRunResult } from "@/lib/mobilization-contracts";
 import type {
   Duty,
   GuestRequest,
@@ -137,8 +131,6 @@ export interface Repo {
 
   /** Mobilization is server/Supabase-only: real-model simulation and approval need shared persistence. */
   mobilizations?: MobilizationControls;
-  /** Mo-authored, versioned SOPs. Published revisions are immutable. */
-  playbooks?: PlaybookControls;
 }
 
 export type CreateMobilizationInput = {
@@ -158,20 +150,9 @@ export interface MobilizationControls {
   approve(mobilizationId: string, review?: MobilizationReview): Promise<void>;
   reject(mobilizationId: string): Promise<void>;
   standDown(mobilizationId: string, outcome: "stood_down" | "cancelled"): Promise<void>;
-  context(): Promise<SimulationContext>;
-  /** Analyze editable facts with the real configured model; never inject canned tasks. */
-  simulate(input: SimulationInput): Promise<SimulationRunResult>;
   getRun(id: string): Promise<SimulationRunResult>;
 }
 
 /** An explicit Mo review of the immutable analysis, including any known execution gaps. */
 export type MobilizationReview = { reviewedRunId?: string; acknowledgeGaps?: boolean };
 
-export interface PlaybookControls {
-  list(): Promise<ManagedPlaybook[]>;
-  saveDraft(input: SavePlaybookDraftInput): Promise<ManagedPlaybook>;
-  revise(id: string): Promise<ManagedPlaybook>;
-  publish(id: string, expectedUpdatedAt: string): Promise<ManagedPlaybook>;
-  disable(id: string, expectedUpdatedAt: string): Promise<ManagedPlaybook>;
-  deleteDraft(id: string, expectedUpdatedAt: string): Promise<void>;
-}

@@ -322,9 +322,9 @@ The hall demo then runs the real pipeline, real triage and the real scheduler, w
 
 ## Mobilization: current implementation (7 October)
 
-Mo explicitly runs **Simulate mobilization**. The legacy background predictor, its weather/lineup
-heuristics, timer, new-task hook and canned incident-injection route have been retired. The ordinary
-task reminder scheduler remains independent.
+The planner has no entry point right now: "Test situation" and Mo's playbook editor were removed on
+8 October (no demo scaffolding; Mo doesn't edit SOPs mid-festival). The next step starts it from a real
+report. The ordinary task reminder scheduler remains independent.
 
 Flow: editable scenario + a consistent database snapshot → configured Responses model + published
 SOP index → one audited, read-only `get_playbooks` call → JSON schema and relationship validation → pending Mobilizations → Mo approval →
@@ -335,17 +335,14 @@ Approval rechecks free, on-duty, qualified same-team crew. Shortfalls remain vis
 Data ownership:
 
 - `event_timetable`: saved three-day demo stage schedule; relative demo overrides never rewrite it.
-- `playbook_versions`: Mo's drafts, published revisions and disabled history. One active revision per
-  slug; published bodies are immutable. Edits create a new draft and publishing switches versions.
 - `mobilization_runs`: the exact input, system/user prompts, prompt version, requested model, actual
   replies, the exact read-only tool result, validation errors and resulting Mobilization IDs. There is
   no automatic JSON repair or generation retry after failed validation.
 - `mobilizations.analysis_run_id` and `tasks.mobilization_step_key`: audit and action identity links.
 
-The supplied 10 emergency SOPs are archived at `supabase/playbooks/festival-emergency.yaml` and
-imported with `npm run playbooks:import`. The importer is atomic and rerunning it does not overwrite
-Mo's edits or re-enable disabled versions. Unspecified headcounts remain null; source rules and Mo
-decision questions are preserved. Do not add made-up approvals, shelters, sensor readings or SOP rules.
+The playbooks are code: `src/server/playbooks/festival.ts` (storm, crowd surge, heat, gate breach),
+loaded by `src/server/playbooks/index.ts`. Change them there. Unspecified headcounts remain null; source
+rules and Mo decision questions are preserved. Do not add made-up approvals, shelters, sensor readings or SOP rules.
 
 Contracts, input availability and the typed observation catalog live in
 `src/lib/mobilization-contracts.ts`, `src/lib/mobilization-inputs.ts` and
@@ -356,7 +353,7 @@ unknown is not zero, crowd samples are not a full census, and walking distances 
 The server verifies legal references and required-action coverage, **not the truth of free-text causes
 or natural-language safety instructions**. Mo's review and scenario quality evaluation are still required.
 
-**Expanded scenario inputs:** all 64 distinct required-input keys in the 10 supplied SOPs have an
+**Expanded scenario inputs:** every required-input key in the playbooks has an
 explicit source: built-in controls, database facts or an additional typed observation. The additional
 editor groups weather, crowd, infrastructure, medical reports and approvals. It supports numbers with
 canonical units/ranges, booleans, finite statuses, text reports, real venue locations, scoped zone counts,
@@ -372,11 +369,8 @@ unavailable and must be reported as missing, not guessed from similarly named fi
 
 Local testing: `npm run server`, then `npm start -- --web --port 8081`.
 The app now always uses Supabase (the upstream live-only change); `EXPO_PUBLIC_REPO` is no longer a mode switch.
-Sign in as `mo@moloop.test`, open Playbooks or Simulate mobilization.
-Run `npm run playbooks:check`, `npm run mobilization:check`,
-`npm run mobilization-observations:check`,
-`npm run mobilization-commands:check`, `npm run mobilization-api:check` and
-`npm run mobilization-status:check`, plus lint/typecheck.
+Run `npm run mobilization:check`, `npm run mobilization-observations:check`,
+`npm run mobilization-commands:check` and `npm run mobilization-status:check`, plus lint/typecheck.
 API integration checks use an explicitly fake local provider only in the test process; they establish
 plumbing/validation, not real model intelligence. Missing model configuration is shown as a clear
 configuration-required result, never a heuristic proposal. Set provider credentials in `.env.local`,

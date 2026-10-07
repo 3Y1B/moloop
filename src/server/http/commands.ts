@@ -6,8 +6,7 @@ import type { VoiceResponse } from '@/data/repo';
 import { CommandError, type Batch } from '@/lib/batch';
 import { rankCandidates } from '@/lib/candidates';
 import * as C from '@/lib/commands';
-import { SimulationInputSchema } from "@/lib/mobilization-contracts";
-import { simulationContext, simulateMobilization, simulationRun } from "../predict/simulation";
+import { simulationRun } from "../predict/simulation";
 import { availableResponses, HANDOVER_NAME, isBusy, isQuiet, needsResponse, type RespondInput as RespondInputType } from '@/lib/lifecycle';
 import { walkFrom } from '@/lib/presence';
 import type { RespondCommand } from '@/lib/respond-words';
@@ -311,12 +310,6 @@ route(
       C.standDown(b, caller.id, a.mobilizationId, a.outcome),
     );
   },
-);
-
-route("mobilizationContext", "mo", z.object({}), async () => simulationContext());
-
-route("simulateMobilization", "mo", SimulationInputSchema, async (input, caller) =>
-  simulateMobilization(input, caller.id),
 );
 
 route("getMobilizationRun", "mo", z.object({ runId: Id }), async ({ runId }) => {

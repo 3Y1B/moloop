@@ -8,11 +8,7 @@ import type {
 import type { Database } from "@/lib/database.types";
 import type { Fix } from "@/lib/presence";
 import { applyHelperReply, applyReply } from "@/lib/lifecycle";
-import type {
-  ManagedPlaybook,
-  SimulationContext,
-  SimulationRunResult,
-} from "@/lib/mobilization-contracts";
+import type { SimulationRunResult } from "@/lib/mobilization-contracts";
 import type {
   Duty,
   GuestRequest,
@@ -29,7 +25,6 @@ import type {
   Heard,
   Interpretation,
   MobilizationControls,
-  PlaybookControls,
   Repo,
   Recording,
   RespondInput,
@@ -336,35 +331,7 @@ export class SupabaseRepo implements Repo {
     standDown: async (mobilizationId: string, outcome: "stood_down" | "cancelled") => {
       await this.post("standDown", { mobilizationId, outcome });
     },
-    context: () => this.post<SimulationContext>("mobilizationContext", {}),
-    simulate: (input) => this.post<SimulationRunResult>("simulateMobilization", input),
     getRun: (runId) => this.post<SimulationRunResult>("getMobilizationRun", { runId }),
-  };
-
-  playbooks: PlaybookControls = {
-    list: async () =>
-      (await this.post<{ playbooks: ManagedPlaybook[] }>("playbooks/list", {})).playbooks,
-    saveDraft: async (input) =>
-      (await this.post<{ playbook: ManagedPlaybook }>("playbooks/saveDraft", input)).playbook,
-    revise: async (id) =>
-      (await this.post<{ playbook: ManagedPlaybook }>("playbooks/revise", { id })).playbook,
-    publish: async (id, expectedUpdatedAt) =>
-      (
-        await this.post<{ playbook: ManagedPlaybook }>("playbooks/publish", {
-          id,
-          expectedUpdatedAt,
-        })
-      ).playbook,
-    disable: async (id, expectedUpdatedAt) =>
-      (
-        await this.post<{ playbook: ManagedPlaybook }>("playbooks/disable", {
-          id,
-          expectedUpdatedAt,
-        })
-      ).playbook,
-    deleteDraft: async (id, expectedUpdatedAt) => {
-      await this.post("playbooks/deleteDraft", { id, expectedUpdatedAt });
-    },
   };
 
   // ── festival-goer ──

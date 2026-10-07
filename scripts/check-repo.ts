@@ -13,7 +13,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { CommandError, SupabaseRepo } from "../src/data/supabase-repo";
 import type { Snapshot } from "../src/data/repo";
 import type { Database } from "../src/lib/database.types";
-import type { ManagedPlaybook, SimulationInput, SimulationRunResult } from "../src/lib/mobilization-contracts";
+import type { SimulationRunResult } from "../src/lib/mobilization-contracts";
 
 const url = process.env.SUPABASE_URL!;
 const secret = process.env.SUPABASE_SECRET_KEY!;
@@ -38,19 +38,7 @@ function expect(label: string, ok: boolean, detail?: unknown) {
 type Recorded = { method: string; auth: string | null; body: Record<string, unknown> };
 const recorded: Recorded[] = [];
 let requestIdForAsk = "";
-// Transport fixtures only: these never create a database playbook, run or Mobilization.
-const planningBook: ManagedPlaybook = {
-  id: "00000000-0000-4000-8000-000000000001", version: 1, status: "draft",
-  createdAt: "2026-10-07T00:00:00.000Z", updatedAt: "2026-10-07T00:00:00.000001Z", publishedAt: null,
-  content: { schemaVersion: 1, slug: "transport-fixture", title: "Transport fixture", appliesWhen: "Test only",
-    requiredInputs: [], decisionPoints: [], constraints: [], actions: [], source: "Transport test" },
-};
-const planningInput: SimulationInput = {
-  requestId: "transport-request-0001",
-  weather: { temperatureC: 28, trendCPerHour: null, condition: "clear", warning: "none", warningInMinutes: null },
-  upcomingSets: [], crowdByZone: [], recentIncidents: [],
-  observations: [{ key: "weather.windSpeed", kind: "number", zoneSlug: null, minutesAgo: 0, value: 0 }],
-};
+// Transport fixture only: never creates a database run or Mobilization.
 const planningRun: SimulationRunResult = {
   runId: "00000000-0000-4000-8000-000000000002", status: "configuration_required", decision: null,
   output: null, mobilizationIds: [], validationErrors: [], error: "Test model not configured",
@@ -68,19 +56,8 @@ function answer(method: string, body: Record<string, unknown>): [number, unknown
       return [200, { requestId: requestIdForAsk }];
     case "guestAddDetail":
       return [200, { escalated: true }];
-    case "mobilizationContext":
-      return [200, { zones: [], teams: [], skills: [], timetable: [], playbooks: [planningBook],
-        modelReady: false, modelConfigurationMessage: "Test model not configured" }];
-    case "simulateMobilization":
     case "getMobilizationRun":
       return [200, planningRun];
-    case "playbooks/list":
-      return [200, { playbooks: [planningBook] }];
-    case "playbooks/saveDraft":
-    case "playbooks/revise":
-    case "playbooks/publish":
-    case "playbooks/disable":
-      return [200, { playbook: planningBook }];
     default:
       return [200, {}];
   }
@@ -593,16 +570,8 @@ try {
   await priyaRepo.setDuty("on_break");
   // Stub transport checks, not lead authorization: real Mo-only guards are covered by API tests.
   const planningResults = {
-    context: await leadRepo.mobilizations.context(),
-    run: await leadRepo.mobilizations.simulate(planningInput),
     recoveredRun: await leadRepo.mobilizations.getRun(planningRun.runId),
-    books: await leadRepo.playbooks.list(),
-    draft: await leadRepo.playbooks.saveDraft({ id: null, expectedUpdatedAt: null, content: planningBook.content }),
-    revision: await leadRepo.playbooks.revise(planningBook.id),
-    published: await leadRepo.playbooks.publish(planningBook.id, planningBook.updatedAt),
-    disabled: await leadRepo.playbooks.disable(planningBook.id, planningBook.updatedAt),
   };
-  await leadRepo.playbooks.deleteDraft(planningBook.id, planningBook.updatedAt);
   await leadRepo.mobilizations.approve("transport-mobilization");
   await leadRepo.mobilizations.reject("transport-mobilization");
   await leadRepo.mobilizations.standDown("transport-mobilization", "stood_down");
@@ -635,15 +604,7 @@ try {
     ["guestReopen", gToken, { requestId: request.id }],
     ["guestReply", pToken, { taskId: T.tom, text: "on my way" }],
     ["setDuty", pToken, { duty: "on_break" }],
-    ["mobilizationContext", jToken, {}],
-    ["simulateMobilization", jToken, planningInput],
     ["getMobilizationRun", jToken, { runId: planningRun.runId }],
-    ["playbooks/list", jToken, {}],
-    ["playbooks/saveDraft", jToken, { id: null, expectedUpdatedAt: null, content: planningBook.content }],
-    ["playbooks/revise", jToken, { id: planningBook.id }],
-    ["playbooks/publish", jToken, { id: planningBook.id, expectedUpdatedAt: planningBook.updatedAt }],
-    ["playbooks/disable", jToken, { id: planningBook.id, expectedUpdatedAt: planningBook.updatedAt }],
-    ["playbooks/deleteDraft", jToken, { id: planningBook.id, expectedUpdatedAt: planningBook.updatedAt }],
     ["approveMobilization", jToken, { mobilizationId: "transport-mobilization" }],
     ["rejectMobilization", jToken, { mobilizationId: "transport-mobilization" }],
     ["standDown", jToken, { mobilizationId: "transport-mobilization", outcome: "stood_down" }],
@@ -666,14 +627,9 @@ try {
       results.guestAddDetail.escalated === true,
     results,
   );
-  expect("planning transport: unwraps playbook envelopes and preserves model-required result",
-    planningResults.context.playbooks[0]?.id === planningBook.id &&
-    planningResults.context.modelConfigurationMessage === "Test model not configured" &&
-    planningResults.run.status === "configuration_required" &&
+  expect("planning transport: a saved analysis comes back typed",
     planningResults.recoveredRun.runId === planningRun.runId &&
-    planningResults.books[0]?.id === planningBook.id &&
-    [planningResults.draft, planningResults.revision, planningResults.published, planningResults.disabled]
-      .every((book) => book.id === planningBook.id && book.updatedAt === planningBook.updatedAt));
+    planningResults.recoveredRun.status === "configuration_required");
 
   // Optimistic: markRead and setDuty show at once (the stub doesn't write, so this is the local change).
   expect(

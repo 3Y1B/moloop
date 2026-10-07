@@ -2,9 +2,7 @@ import { Batch, CommandError } from "@/lib/batch";
 import * as C from "@/lib/commands";
 import { isBusy } from "@/lib/lifecycle";
 import {
-  PlaybookContentSchema,
   SimulationInputSchema,
-  type ManagedPlaybook,
   type PlanningEvidence,
   type PlanningSnapshot,
   type SimulationContext,
@@ -16,16 +14,13 @@ import { routeBetween } from "@/lib/route";
 import { observationDefinition, observationIsMeaningful } from "@/lib/mobilization-observations";
 import type { IncidentCategory, Task, Volunteer } from "@/lib/schema";
 import { mobilizationModelReadiness, generateWithReadTool, type ModelDiagnostic, type ModelIdentity } from "../models";
+import { playbooks } from "../playbooks";
 import { loadWorld, sql, transact } from "../world";
 import { createMobilizationPlanningRequest } from "./planning-request";
 import { mobilizationStaleRunTimeoutMs, mobilizationTimeouts } from "./timeouts";
 import { groundMobilizationPlans, validateScenario } from "./validate";
 
 type Query = Parameters<typeof loadWorld>[0];
-type BookRow = {
-  id: string; version: number; status: "published"; content: unknown;
-  created_at: string; updated_at: string; published_at: string;
-};
 type RunRow = {
   id: string; request_id: string; requested_by: string; status: SimulationRunResult["status"];
   input_snapshot: PlanningSnapshot | null; result: SimulationRunResult["output"];
@@ -33,13 +28,10 @@ type RunRow = {
   prompt_version: string; model: string | null; created_at: string; updated_at: string;
 };
 const iso = (value: string) => new Date(value).toISOString();
-/** updatedAt is an opaque optimistic-concurrency token; preserve PostgreSQL's microseconds. */
-const preciseTimestamp = (value: string) => value.replace(" ", "T")
-  .replace(/([+-]\d{2})$/, "$1:00").replace(/\+00:00$/, "Z");
 export const MOBILIZATION_OUTPUT_TOKEN_BUDGET = 12_000;
 
 async function contextFrom(query: Query): Promise<SimulationContext> {
-  const [zones, teams, skills, timetable, books] = await Promise.all([
+  const [zones, teams, skills, timetable] = await Promise.all([
     query<SimulationContext["zones"]>`
       select slug, name, kind, capacity, is_open_air as "isOpenAir" from zones order by name`,
     query<SimulationContext["teams"]>`select slug, name, description from teams order by name`,
@@ -48,25 +40,15 @@ async function contextFrom(query: Query): Promise<SimulationContext> {
       select t.id, z.slug as "stageSlug", t.act, t.starts_at as "startsAt", t.ends_at as "endsAt",
         t.expected_people as "expectedPeople"
       from event_timetable t join zones z on z.id = t.stage_id order by t.starts_at limit 300`,
-    query<BookRow[]>`select * from playbook_versions where status = 'published' order by slug, version`,
   ]);
   const readiness = mobilizationModelReadiness();
   let timeoutConfigurationMessage: string | null = null;
   try { mobilizationTimeouts(process.env.MOBILIZATION_MODEL_TIMEOUT_MS); }
   catch (error) { timeoutConfigurationMessage = error instanceof Error ? error.message : "Invalid Mobilization timeout configuration"; }
-  const playbooks: ManagedPlaybook[] = books.map((book) => ({
-    id: book.id,
-    version: book.version,
-    status: book.status,
-    content: PlaybookContentSchema.parse(book.content),
-    createdAt: preciseTimestamp(book.created_at),
-    updatedAt: preciseTimestamp(book.updated_at),
-    publishedAt: preciseTimestamp(book.published_at),
-  }));
   return {
     zones, teams, skills, timetable: timetable.map((entry) => ({
       ...entry, startsAt: iso(entry.startsAt), endsAt: iso(entry.endsAt),
-    })), playbooks,
+    })), playbooks: playbooks(),
     modelReady: readiness.ready && timeoutConfigurationMessage == null,
     modelConfigurationMessage: timeoutConfigurationMessage ??
       (readiness.ready ? null : `Configure ${readiness.missing.join("; ")}`),
@@ -340,18 +322,6 @@ export async function simulateMobilization(input: SimulationInput, actorId: stri
       (batch) => validOutput.decision === "propose" ? proposeGroundedPlans(batch, validOutput, id) : [],
       {},
       async (tx, mobilizationIds) => {
-        const cited = validOutput.mobilizations.flatMap((plan) => [
-          ...plan.tasks.flatMap((task) => task.playbookRefs),
-          ...plan.unmetRequirements.map((requirement) => requirement.playbookRef),
-        ]);
-        if (cited.length) {
-          const current = await tx<{ slug: string; version: number }[]>`
-            select slug, version from playbook_versions where status = 'published'
-              and slug = any(${[...new Set(cited.map((ref) => ref.slug))]}::text[]) for share`;
-          const published = new Set(current.map((book) => `${book.slug}:${book.version}`));
-          if (cited.some((ref) => !published.has(`${ref.slug}:${ref.version}`)))
-            throw new CommandError("conflict", "A cited playbook changed during generation; start a new simulation");
-        }
         const completed = await tx<{ id: string }[]>`
           update mobilization_runs set status = 'completed', result = ${tx.json(validOutput)},
             model = ${actualModel}, mobilization_ids = ${mobilizationIds}::uuid[],

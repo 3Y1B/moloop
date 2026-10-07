@@ -5,7 +5,6 @@ import { POLICY } from '@/lib/lifecycle';
 import { requireCaller, type AuthEnv } from './auth';
 import { briefsEnabled, speechAvailable } from '../models/speech';
 import { commands } from './commands';
-import { playbookRoutes } from './playbooks';
 import { signIn } from './sign-in';
 import { voice } from './voice';
 
@@ -36,5 +35,4 @@ app.use("/api/*", requireCaller);
 
 // One route per Repo command (./commands.ts).
 app.route("/api", commands);
-app.route("/api", playbookRoutes);
 app.route("/api", voice);

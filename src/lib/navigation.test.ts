@@ -13,7 +13,7 @@ describe('safe back navigation', () => {
   it('preserves the previous screen when there is navigator history', () => {
     vi.mocked(router.canGoBack).mockReturnValue(true);
 
-    goBack('/playbooks');
+    goBack('/inbox');
 
     expect(router.back).toHaveBeenCalledExactlyOnceWith();
     expect(router.replace).not.toHaveBeenCalled();
@@ -31,10 +31,10 @@ describe('safe back navigation', () => {
   it('returns a directly opened playbook to its list', () => {
     vi.mocked(router.canGoBack).mockReturnValue(false);
 
-    goBack('/playbooks');
+    goBack('/inbox');
 
     expect(router.back).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/playbooks');
+    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/inbox');
   });
 
   it('keeps the task ID in a dynamic fallback', () => {
@@ -51,10 +51,10 @@ describe('safe back navigation', () => {
     vi.mocked(router.canGoBack).mockReturnValueOnce(true).mockReturnValueOnce(false);
 
     goBack();
-    goBack('/playbooks');
+    goBack('/inbox');
 
     expect(router.canGoBack).toHaveBeenCalledTimes(2);
     expect(router.back).toHaveBeenCalledTimes(1);
-    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/playbooks');
+    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/inbox');
   });
 });

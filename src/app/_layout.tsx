@@ -63,9 +63,6 @@ export default function RootLayout() {
           <Stack.Screen name="assign/[id]" options={{ ...SHEET, title: 'Pick a volunteer' }} />
           <Stack.Screen name="approve/[id]" options={{ ...SHEET, sheetAllowedDetents: [0.6, 1], title: 'Approve' }} />
           <Stack.Screen name="mobilize/[id]" options={{ ...SHEET, title: "Mobilization" }} />
-          <Stack.Screen name="mobilize/simulate" options={{ ...SHEET, title: "Simulate mobilization" }} />
-          <Stack.Screen name="playbooks/index" options={{ ...SHEET, title: "Playbooks" }} />
-          <Stack.Screen name="playbooks/[id]" options={{ ...SHEET, title: "Playbook" }} />
         </Stack>
         <FinderPrompt />
         <DemoOverlay />

@@ -40,10 +40,6 @@ export type ManagedPlaybook = {
   id: string; version: number; status: "draft" | "published" | "disabled";
   content: PlaybookContent; createdAt: string; updatedAt: string; publishedAt: string | null;
 };
-export const SavePlaybookDraftSchema = z.object({
-  id: z.uuid().nullable(), expectedUpdatedAt: z.string().nullable(), content: PlaybookContentSchema,
-});
-export type SavePlaybookDraftInput = z.infer<typeof SavePlaybookDraftSchema>;
 
 export const SimulationInputSchema = z.object({
   requestId: z.string().min(16).max(128),

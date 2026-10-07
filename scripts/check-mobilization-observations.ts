@@ -1,5 +1,5 @@
 /** Typed observation boundary checks; uses the supplied 10-SOP file, no DB or live model. */
-import { parseAllDocuments } from "yaml";
+import { FESTIVAL_PLAYBOOKS } from "../src/server/playbooks/festival";
 import { inputAvailability } from "../src/lib/mobilization-inputs";
 import { SimulationInputSchema, type PlanningSnapshot, type SimulationContext, type SimulationInput } from "../src/lib/mobilization-contracts";
 import { OBSERVATION_CATALOG, ObservationSchema, observationIsMeaningful, observationReferenceErrors, type MobilizationObservation } from "../src/lib/mobilization-observations";
@@ -27,10 +27,8 @@ const snapshot = (observations: MobilizationObservation[]): PlanningSnapshot => 
   evidence: buildEvidence({ ...input, observations }, context, [], evaluatedAt),
 });
 
-const supplied = parseAllDocuments(await Bun.file("supabase/playbooks/festival-emergency.yaml").text());
-check("catalog covers every required input in all 10 supplied SOPs", () => {
-  equal(supplied.length, 10, "Expected 10 SOP documents");
-  const keys = [...new Set(supplied.flatMap((document) => (document.toJSON() as { requiredInputs: string[] }).requiredInputs))];
+check("catalog covers every required input in every playbook", () => {
+  const keys = [...new Set(FESTIVAL_PLAYBOOKS.flatMap((book) => book.requiredInputs))];
   for (const key of keys) ok(OBSERVATION_CATALOG[key], `Missing catalog input ${key}`);
 });
 check("unknown keys, wrong kinds, numeric bounds, future ages and built-in overrides reject", () => {

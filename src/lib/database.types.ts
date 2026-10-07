@@ -511,51 +511,6 @@ export type Database = {
           },
         ];
       };
-      playbook_versions: {
-        Row: {
-          content: NonNullable<Json>;
-          created_at: string;
-          created_by: string;
-          id: string;
-          published_at: string | null;
-          slug: string;
-          status: string;
-          updated_at: string;
-          version: number;
-        };
-        ComputedFields: never;
-        Insert: {
-          content: NonNullable<Json>;
-          created_at?: string;
-          created_by: string;
-          id?: string;
-          published_at?: string | null;
-          slug: string;
-          status?: string;
-          updated_at?: string;
-          version: number;
-        };
-        Update: {
-          content?: NonNullable<Json>;
-          created_at?: string;
-          created_by?: string;
-          id?: string;
-          published_at?: string | null;
-          slug?: string;
-          status?: string;
-          updated_at?: string;
-          version?: number;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "playbook_versions_created_by_fkey";
-            columns: ["created_by"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       playbooks: {
         Row: {
           created_by: string | null;

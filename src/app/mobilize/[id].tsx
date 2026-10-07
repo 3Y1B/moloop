@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { Fragment, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -296,17 +296,6 @@ export default function MobilizeSheet() {
                         </Text>
                       </View>
                     ))}
-                  <Button
-                    label="View playbook rules"
-                    variant="tinted"
-                    size="large"
-                    onPress={() =>
-                      router.push({
-                        pathname: "/playbooks/[id]",
-                        params: { id: review.slug, version: review.version.toString() },
-                      })
-                    }
-                  />
                 </Card>
               ))}
             </Group>
@@ -407,41 +396,6 @@ export default function MobilizeSheet() {
         </Text>
       ) : null}
 
-      {mobilization.relatedPlaybooks.length > 0 &&
-        !mobilization.steps.some((step) => step.playbookRefs?.length) && (
-          <Group title="Referenced playbooks">
-            <Card>
-              {mobilization.relatedPlaybooks.map((slug, index) => (
-                <Fragment key={slug}>
-                  {index > 0 && <Separator />}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open playbook ${slug}`}
-                    disabled={!mo}
-                    onPress={() =>
-                      router.push({ pathname: "/playbooks/[id]", params: { id: slug } })
-                    }
-                    style={({ pressed }) => [
-                      styles.link,
-                      pressed && { backgroundColor: theme.backgroundSelected },
-                    ]}
-                  >
-                    <Text style={[styles.linkLabel, { color: theme.tint }]}>
-                      {slug.replaceAll("-", " ")}
-                    </Text>
-                    <Icon
-                      sf="chevron.right"
-                      md="chevron_right"
-                      size={12}
-                      color={theme.textTertiary}
-                    />
-                  </Pressable>
-                </Fragment>
-              ))}
-            </Card>
-          </Group>
-        )}
-
       <Text style={[styles.sectionSummary, { color: theme.text }]}>
         {visibleSteps.length} response tasks ·{" "}
         {visibleSteps.reduce((sum, step) => sum + step.peopleNeeded, 0)} crew required
@@ -513,34 +467,6 @@ export default function MobilizeSheet() {
                 Sources: {step.evidenceRefs.join(", ")}
               </Text>
             ) : null}
-            {step.playbookRefs?.map((reference) => (
-              <Pressable
-                key={`${reference.slug}-${reference.version}-${reference.actionId}`}
-                disabled={!mo}
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${reference.slug} version ${reference.version}`}
-                onPress={() =>
-                  router.push({
-                    pathname: "/playbooks/[id]",
-                    params: { id: reference.slug, version: reference.version.toString() },
-                  })
-                }
-                style={styles.link}
-              >
-                <Text style={[styles.linkLabel, { color: mo ? theme.tint : theme.textSecondary }]}>
-                  {reference.slug.replaceAll("-", " ")} v{reference.version} · action{" "}
-                  {reference.actionId}
-                </Text>
-                {mo && (
-                  <Icon
-                    sf="chevron.right"
-                    md="chevron_right"
-                    size={12}
-                    color={theme.textTertiary}
-                  />
-                )}
-              </Pressable>
-            ))}
             {pending ? (
               <>
                 <Text style={[styles.small, { color: theme.textSecondary }]}>
