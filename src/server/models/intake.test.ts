@@ -14,7 +14,7 @@ const called = (name: 'create_task' | 'escalate', over: Record<string, unknown> 
     name,
     arguments: JSON.stringify({
       title: 'Asks to stop the set at the Oval', summary: 'Wants the set stopped.', team: 'ops', priority: 'P3', category: 'facilities',
-      zone: 'oval-stage', place: null, language: 'en', ...(name === 'escalate' ? { level: 'lead', reason: 'Needs a decision' } : {}), ...over,
+      zone: 'oval-stage', place: null, language: 'en', english: 'Stop the set at the Oval', ...(name === 'escalate' ? { level: 'lead', reason: 'Needs a decision' } : {}), ...over,
     }),
   } }] } }] },
 });

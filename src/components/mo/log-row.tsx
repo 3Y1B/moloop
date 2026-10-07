@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { TeamRow } from '@/components/lead/team-list';
 import { PrioritySignal } from '@/components/task/badges';
+import { Untranslated } from '@/components/task/untranslated';
 import { StatusLine } from '@/components/ui/status-line';
 import { Type } from '@/constants/theme';
 import { useLookups, useNow, useTaskStatus } from '@/data/hooks';
@@ -33,6 +34,7 @@ export function LogRow({ row }: { row: Row }) {
       <View style={styles.body}>
         <View style={styles.top}>
           <Text style={[styles.title, { color: closed ? theme.textSecondary : theme.text }]} numberOfLines={1}>{task.title}</Text>
+          <Untranslated task={task} />
           <Text style={[styles.when, { color: theme.textTertiary }]}>{ago(when, now)}</Text>
         </View>
         {status && <StatusLine status={{ ...status, detail: detail || undefined }} />}

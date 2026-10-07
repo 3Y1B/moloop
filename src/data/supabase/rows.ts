@@ -111,12 +111,14 @@ export type ReportJoin = {
   reporter_kind: Row<'reports'>['reporter_kind'];
   raw_text: string | null;
   detected_language: string | null;
+  /** `raw_text` in English, when the AI read it. */
+  text_en?: string | null;
   reporter: { full_name: string } | null;
 } | null;
 
 /** `report` is null when the caller can't read it (RLS) or the embed was left out. */
 export const TASK_SELECT =
-  '*, report:reports!tasks_report_id_fkey(reporter_kind, raw_text, detected_language, reporter:profiles!reports_reporter_id_fkey(full_name))';
+  '*, report:reports!tasks_report_id_fkey(reporter_kind, raw_text, detected_language, text_en, reporter:profiles!reports_reporter_id_fkey(full_name))';
 
 export type TaskRow = Row<'tasks'> & { report?: ReportJoin };
 
@@ -127,6 +129,7 @@ export function toReporter(report: ReportJoin | undefined): Reporter {
     ...(report.reporter?.full_name ? { name: report.reporter.full_name } : {}),
     quote: report.raw_text ?? '',
     language: report.detected_language ?? 'en',
+    ...(report.text_en ? { english: report.text_en } : {}),
   };
 }
 

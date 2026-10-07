@@ -84,6 +84,21 @@ async function toGuest(text: string): Promise<string> {
     return plainToGuest(text);
   }
 }
+/** A festival-goer's words in English, or null when they're already English or the model is down or slow. */
+async function toEnglish(text: string): Promise<string | null> {
+  try {
+    const { language, english } = await generate({
+      system: 'A festival-goer added this to their request for help. Say which language it is in (ISO 639-1) and give it '
+        + 'in English, faithful to what they said, names and places kept as written. If it is already English, repeat it.',
+      prompt: text,
+      schema: z.object({ language: z.string().min(2).max(8), english: z.string().min(1).max(2000) }),
+    }, { signal: AbortSignal.timeout(Number(process.env.AI_TRANSLATE_MS ?? 3_000)) });
+    return language.toLowerCase().startsWith('en') ? null : english.trim();
+  } catch (e) {
+    console.warn(`toEnglish kept the original: ${(e as Error).message}`);
+    return null;
+  }
+}
 const moreUrgent = (a: Priority, b: Priority) => (URGENCY.indexOf(a) <= URGENCY.indexOf(b) ? a : b);
 
 // ── keywords: only when a model call fails ──
@@ -234,7 +249,9 @@ async function assess(i: Heard, { canAnswer = false }, o: CallOptions) {
     summary: (agent?.summary ?? kw.summary).slice(0, 280),
     zoneSlug: dropUnknownZone(agent?.zone ?? null, zs) ?? i.zoneSlug,
     locationHint: agent?.place ?? i.locationHint,
-    language: (agent?.language ?? replied?.language ?? 'en').toLowerCase().slice(0, 2),
+    // No model said which language: keywords can't tell, so it stays unknown rather than English.
+    language: (agent?.language ?? replied?.language)?.toLowerCase().slice(0, 2) || kw.language,
+    ...(agent?.english?.trim() ? { english: agent.english.trim().slice(0, 2000) } : {}),
     escalate: aboveSender(higher(asked, kw.escalate), i.from, team),
   };
 
@@ -295,6 +312,8 @@ export class SparkInterpreter implements Interpreter {
       return { value: { worse: heuristicDetail(i.text).worse, triage }, run };
     }
     const t0 = Date.now();
+    // Staff read the detail in English. The classifier only scores it, so a small call translates it alongside.
+    const translating = toEnglish(i.text);
     let worse = heuristicDetail(i.text).worse;
     let error: string | null = null;
     let p: number | null = null;
@@ -307,7 +326,11 @@ export class SparkInterpreter implements Interpreter {
     } catch (e) {
       error = String((e as Error).message);
     }
-    return { value: { worse }, run: run({ confidence: p, models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, error }) };
+    const english = await translating;
+    return {
+      value: { worse, ...(english ? { english } : {}) },
+      run: run({ confidence: p, models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, error }),
+    };
   }
 
   /** One typed call: which open task this is about (or none), how urgent that is now, and whether it says it's sorted. */

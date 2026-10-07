@@ -69,7 +69,7 @@ type Enums = Database['public']['Enums'];
 
 type VolunteerRow = ProfileRow & { skills: string[]; phone: string | null };
 type TaskRow = Row<'tasks'> & {
-  reporter_kind: Enums['reporter_kind']; raw_text: string | null; detected_language: string | null; reporter_name: string | null;
+  reporter_kind: Enums['reporter_kind']; raw_text: string | null; detected_language: string | null; text_en: string | null; reporter_name: string | null;
 };
 
 const cols = (select: string) => select.split(',').map((c) => c.trim());
@@ -108,7 +108,7 @@ export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
     ...actions.filter((a) => named.has(a.id)).map((a) => a.task_id!),
   ];
   const taskRows = await q<TaskRow[]>`
-    select t.*, r.reporter_kind, r.raw_text, r.detected_language, rp.full_name as reporter_name
+    select t.*, r.reporter_kind, r.raw_text, r.detected_language, r.text_en, rp.full_name as reporter_name
     from tasks t
     join reports r on r.id = t.report_id
     left join profiles rp on rp.id = r.reporter_id
@@ -121,7 +121,7 @@ export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
   if (more.length) requestRows.push(...(await requestsById(q, more)));
 
   const tasks = taskRows.map((t) => toTask(t, refs, toReporter({
-    reporter_kind: t.reporter_kind, raw_text: t.raw_text, detected_language: t.detected_language,
+    reporter_kind: t.reporter_kind, raw_text: t.raw_text, detected_language: t.detected_language, text_en: t.text_en,
     reporter: t.reporter_name ? { full_name: t.reporter_name } : null,
   })));
   return {

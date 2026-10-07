@@ -37,6 +37,7 @@ const Incident = {
   zone: z.string().nullable().describe('Slug of the place named in the message, from the list, else null'),
   place: z.string().nullable().describe('The location as the person described it, else null'),
   language: z.string().describe('ISO 639-1 code of the language the message is written in, e.g. "en", "es"'),
+  english: z.string().describe('The whole message in English, faithful to what they said, names and places kept as written. If it is already English, repeat it unchanged.'),
 };
 
 export const CreateTaskArgs = z.object(Incident);

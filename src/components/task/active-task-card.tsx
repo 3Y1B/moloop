@@ -11,7 +11,7 @@ import { Icon } from '@/components/ui/icon';
 import { StatusLine } from '@/components/ui/status-line';
 import { Radius, Type } from '@/constants/theme';
 import { useLookups, useSnapshot, useTaskStatus } from '@/data/hooks';
-import { languageName } from '@/lib/format';
+import { quoteFor } from '@/lib/quote';
 import type { Task } from '@/lib/schema';
 import { usePriorityColors, useTheme } from '@/hooks/use-theme';
 import { PriorityBadge, TeamChip } from './badges';
@@ -100,17 +100,34 @@ export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = tr
 export function Details({ task }: { task: Task }) {
   const theme = useTheme();
   const { teams } = useLookups();
-  const translated = task.reporter.language !== 'en';
+  // English first; tapping a translated quote shows what they actually said.
+  const [original, setOriginal] = useState(false);
+  const q = quoteFor(task.reporter);
+  const shown = original && q.original ? q.original : { text: q.text, label: q.label };
+  const by = task.reporter.name ?? (task.reporter.kind === 'festivalgoer' ? 'Festival-goer' : 'Reporter');
+  const quote = (
+    <>
+      <Text style={[styles.quoteText, { color: theme.textSecondary }]}>“{shown.text}”</Text>
+      <Text style={[styles.quoteBy, { color: theme.textTertiary }]}>
+        {by}
+        {shown.label && <Text style={q.original && { color: theme.tint }}> · {shown.label}</Text>}
+      </Text>
+    </>
+  );
   return (
     <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(120)} style={styles.details}>
       <Text style={[styles.summary, { color: theme.text }]}>{task.summary}</Text>
-      <View style={[styles.quote, { backgroundColor: theme.backgroundElement }]}>
-        <Text style={[styles.quoteText, { color: theme.textSecondary }]}>“{task.reporter.quote}”</Text>
-        <Text style={[styles.quoteBy, { color: theme.textTertiary }]}>
-          {task.reporter.name ?? (task.reporter.kind === 'festivalgoer' ? 'Festival-goer' : 'Reporter')}
-          {translated ? ` · translated from ${languageName(task.reporter.language)}` : ''}
-        </Text>
-      </View>
+      {q.original ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={original ? 'Show the English' : `Show the original, ${q.original.label.replace('Original, ', '')}`}
+          onPress={() => setOriginal((o) => !o)}
+          style={({ pressed }) => [styles.quote, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
+          {quote}
+        </Pressable>
+      ) : (
+        <View style={[styles.quote, { backgroundColor: theme.backgroundElement }]}>{quote}</View>
+      )}
       <TeamChip team={task.teamSlug ? teams[task.teamSlug] : undefined} />
     </Animated.View>
   );
