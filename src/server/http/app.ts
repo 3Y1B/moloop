@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
+import { POLICY } from '@/lib/lifecycle';
 import { ReportInput } from '@/lib/schema';
 import { handleReport } from '../pipeline';
 import { requireCaller, type AuthEnv } from './auth';
+import { commands } from './commands';
 
 /**
  * The server's HTTP surface. Phones read Supabase directly; every write comes through here so the
@@ -14,7 +16,8 @@ export const app = new Hono<AuthEnv>();
 // Mo's console is the web build on another origin.
 app.use('/api/*', cors({ origin: (origin) => origin, allowHeaders: ['authorization', 'content-type'] }));
 
-app.get('/health', (c) => c.json({ ok: true }));
+// The timings in force, so a test can check it's talking to a fast-policy server.
+app.get('/health', (c) => c.json({ ok: true, policy: POLICY }));
 
 app.use('/api/*', requireCaller);
 
@@ -36,3 +39,6 @@ app.post('/api/reports', async (c) => {
     return c.json({ error: 'pipeline_failed' }, 502);
   }
 });
+
+// One route per Repo command (./commands.ts).
+app.route('/api', commands);

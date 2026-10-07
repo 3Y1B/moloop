@@ -23,13 +23,19 @@ export type Policy = {
   autoAssignMs: number;
 };
 
-export const POLICY: Readonly<Policy> = {
+/** The shipped timings. */
+export const DEFAULT_POLICY: Readonly<Policy> = {
   ackTimeoutMs: 2 * MIN,
   nudgeGapMs: 3 * MIN,
   etaMs: { P1: 4 * MIN, P2: 10 * MIN, P3: 20 * MIN },
   delayExtendMs: 5 * MIN,
   bumpToCoordinatorMs: { P1: 1 * MIN, P2: 2 * MIN, P3: 3 * MIN },
   autoAssignMs: 30_000,
+};
+
+/** The timings in force. */
+export const POLICY: Readonly<Policy> = {
+  ...DEFAULT_POLICY, etaMs: { ...DEFAULT_POLICY.etaMs }, bumpToCoordinatorMs: { ...DEFAULT_POLICY.bumpToCoordinatorMs },
 };
 
 /** Override timings in place (the server reads them from env, so tests run fast). Everything reads POLICY at call time. */
