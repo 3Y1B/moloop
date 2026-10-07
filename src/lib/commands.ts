@@ -7,13 +7,14 @@ import {
   applyReply, assignOrQueue, handoverArrived, HANDOVER_NAME, isActive, isBusy, isOnTask, needsApproval, nextQueued,
   isHeld, passUp, POLICY, proposalDue, respondToEscalation, tick, type RespondInput,
 } from '@/lib/lifecycle';
+import { walkFrom } from '@/lib/presence';
 import { routeBetween } from '@/lib/route';
 import type { Duty, GuestRequest, Priority, Proposal, ReplyKind, Task, TeamSlug, Volunteer } from '@/lib/schema';
 
 /**
  * What every command does, beyond the task state machine in lifecycle.ts: the events it writes, the messages it
- * sends, proposals, queueing, and festival-goer requests. Pure functions over a Batch, shared by MockRepo, the
- * server (src/server/http/commands.ts) and the demo-day simulator. MockRepo was the spec; this is it, moved.
+ * sends, proposals, queueing, and festival-goer requests. Pure functions over a Batch, run by the server
+ * (src/server/http/commands.ts) and, later, the demo-day simulator.
  */
 
 /** A broadcast's audience. Neither set = everyone on duty. */
@@ -81,7 +82,7 @@ export function interpretHeuristic(tasks: Task[], meId: string | null, text: str
   return { heard, intent: active && kind ? { kind: 'reply', taskId: active.id, reply: kind } : { kind: 'report' } };
 }
 
-/** A message to send once triage has had time to run. The mock delays it; the server sends it straight away. */
+/** A message to send once triage has had time to run. The server sends it straight away. */
 export type Later = { recipientId: string; body: string; taskId: string };
 
 /**
@@ -252,7 +253,8 @@ export function respond(b: Batch, byId: string, taskId: string, input: RespondIn
 
 /** Walking time for backup or medics, so screens can say "~3 min". */
 function responseEta(b: Batch, task: Task, input: RespondInput): number | undefined {
-  const from = input.kind === 'backup' ? b.volunteers[input.volunteerId ?? '']?.zoneSlug ?? null
+  const backup = input.kind === 'backup' ? b.volunteers[input.volunteerId ?? ''] : undefined;
+  const from = backup ? walkFrom(b.positions, backup.id, backup.zoneSlug, b.now)
     : input.kind === 'handover' && input.target === 'medics' ? 'first-aid-hq'
       : null;
   const walk = from ? routeBetween(from, task.zoneSlug) : null;
@@ -472,7 +474,7 @@ export function escalateNew(b: Batch, task: Task, e: EscalateTo): { level: 'lead
 
 /** P1/P2: a proposal a human can approve (auto-assigns later). P3: straight to the top pick. */
 export function dispatch(b: Batch, task: Task) {
-  const candidates = rankCandidates(task, Object.values(b.volunteers), b.all());
+  const candidates = rankCandidates(task, Object.values(b.volunteers), b.all(), { positions: b.positions, now: b.now });
   if (needsApproval(task.priority)) {
     b.task(task);
     const p: Proposal = {
@@ -557,7 +559,7 @@ export function schedulerStep(b: Batch) {
     if (!proposalDue(p, b.now)) continue;
     const task = b.tasks[p.taskId];
     const pick = task?.status === 'open'
-      ? (rankCandidates(task, Object.values(b.volunteers), b.all())[0] ?? p.candidates[0])?.volunteerId
+      ? (rankCandidates(task, Object.values(b.volunteers), b.all(), { positions: b.positions, now: b.now })[0] ?? p.candidates[0])?.volunteerId
       : undefined;
     if (!task || !pick) {
       b.proposal({ ...p, status: 'cancelled', decidedAt: b.now });
@@ -566,37 +568,4 @@ export function schedulerStep(b: Batch) {
     place(b, task, pick, AGENT, `auto-assigned, no approval in ${POLICY.autoAssignMs / 1000} s`);
     b.proposal({ ...p, status: 'auto_assigned', volunteerId: pick, decidedAt: b.now });
   }
-}
-
-/** Task fields a canned report supplies; the command fills in ids, times and lifecycle fields. */
-export type TaskDraft = Omit<
-  Task,
-  | 'id' | 'createdAt' | 'lastActivityAt' | 'status' | 'assigneeId' | 'assignedAt' | 'etaAt' | 'nudgeCount' | 'lastNudgeAt'
-  | 'leadAlertedAt' | 'resolvedAt' | 'escalation' | 'helperIds' | 'resolution' | 'requestId'
->;
-
-// ── demo scenarios (the dev panel now, the demo-day simulator later) ──
-
-/** The volunteer's active task goes silent: nudged, then the lead is alerted. */
-export function goQuiet(b: Batch, volunteerId: string) {
-  const task = b.all().find((t) => t.assigneeId === volunteerId && isActive(t) && t.status !== 'escalated');
-  if (!task) return;
-  const v = b.volunteers[volunteerId];
-  b.task({ ...task, status: task.status === 'assigned' ? 'accepted' : task.status, nudgeCount: 1, lastNudgeAt: b.now - POLICY.nudgeGapMs, leadAlertedAt: b.now });
-  b.ev(task.id, 'nudged', `Still on "${task.title}"? Send a quick update.`, SCHEDULER);
-  b.ev(task.id, 'lead_alerted', `No update on "${task.title}". Lead alerted.`, SCHEDULER);
-  b.send(volunteerId, 'system', `Your team lead has been alerted about “${task.title}”. Send an update when you can.`, { taskId: task.id });
-  const lead = b.leadFor(task.teamSlug) ?? b.coordinator();
-  if (lead) b.send(lead.id, 'escalation', `${first(v)} went quiet: ${task.title}.`, { taskId: task.id });
-}
-
-/** A canned report lands on a volunteer. */
-export function spawnIncoming(b: Batch, volunteerId: string, draft: TaskDraft) {
-  const task: Task = {
-    ...draft, id: b.id('task'), status: 'open', assigneeId: null, createdAt: b.now, assignedAt: null, etaAt: null,
-    lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null,
-    escalation: null, helperIds: [], resolution: null, requestId: null,
-  };
-  b.ev(task.id, 'created', `Reported by ${draft.reporter.name ?? 'a festival-goer'}`, TRIAGE_AGENT);
-  place(b, task, volunteerId, TRIAGE_AGENT, undefined);
 }

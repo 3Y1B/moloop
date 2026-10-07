@@ -31,16 +31,28 @@ function extension(file: File) {
 /** A clip someone recorded, as its path in the `voice` bucket. Only the caller's own clips can go on what they report. */
 export const ownClip = (callerId: string, path: string) => path.startsWith(`${callerId}/`) && !path.includes('..');
 
-let names: { at: number; text: string } | undefined;
+let names: { at: number; text: string; words: string[] } | undefined;
 
 /** Places and people the recogniser wouldn't guess. Changes rarely: cached for a minute. */
 async function vocabulary() {
   if (!names || Date.now() - names.at > 60_000) {
     const [zs, people] = await Promise.all([zones(), sql()<{ name: string }[]>`select split_part(full_name, ' ', 1) as name from profiles`]);
     const words = [...new Set([...zs.map((z) => z.name), ...people.map((p) => p.name), 'Moloop', 'Mo'])];
-    names = { at: Date.now(), text: `Vocabulary: ${words.join(', ')}`.slice(0, 600) };
+    names = { at: Date.now(), text: `Vocabulary: ${words.join(', ')}`.slice(0, 600), words };
   }
-  return names.text;
+  return names;
+}
+
+const norm = (s: string) => s.toLowerCase().replace(/^vocabulary:\s*/, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * Given silence or noise, the recogniser can read its hint back ("Backstage, First Aid, Food Alley, ...").
+ * That's nothing said: a transcript that is mostly a run of hint words counts as empty.
+ */
+export function echoesHint(text: string, words: string[]) {
+  const known = new Set(words.map(norm));
+  const parts = text.split(/[,.;\n]+/).map(norm).filter(Boolean);
+  return parts.length >= 3 && parts.filter((p) => known.has(p)).length / parts.length >= 0.6;
 }
 
 /**
@@ -58,9 +70,11 @@ export async function hear(callerId: string, file: File): Promise<{ text: string
       console.error('keeping a voice clip failed', e);
       return null;
     });
-  const [{ text, latencyMs }, clip] = await Promise.all([transcribe(file, `clip.${extension(file)}`, await vocabulary().catch(() => undefined)), kept]);
-  console.log(`[voice] ${speechModels().asr} ${latencyMs} ms, ${Math.round(file.size / 1024)} KB: ${JSON.stringify(text)}`);
-  return { text, clip };
+  const hint = await vocabulary().catch(() => undefined);
+  const [heard, clip] = await Promise.all([transcribe(file, `clip.${extension(file)}`, hint?.text), kept]);
+  const echo = !!hint && echoesHint(heard.text, hint.words);
+  console.log(`[voice] ${speechModels().asr} ${heard.latencyMs} ms, ${Math.round(file.size / 1024)} KB: ${JSON.stringify(heard.text)}${echo ? ' (the hint read back: dropped)' : ''}`);
+  return { text: echo ? '' : heard.text, clip };
 }
 
 /** Render a batch's spoken messages. Same words for two people (owner and backup) are rendered once. */

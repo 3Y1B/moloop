@@ -1,10 +1,8 @@
 import type { IncidentCategory, Priority, ReplyKind, TaskStatus, TeamSlug } from './enums';
 
 /**
- * Client-facing domain model. Screens only ever see these shapes, whichever Repo backs them
- * (in-memory mock now, Supabase later). Times are epoch ms.
- * The escalation, guest request and proposal shapes run on the mock only for now; the SQL
- * migration in supabase/migrations will be updated to match them later.
+ * Client-facing domain model. Screens only ever see these shapes; SupabaseRepo maps rows into them.
+ * Times are epoch ms.
  */
 
 export type Team = {
@@ -34,8 +32,23 @@ export type Volunteer = {
   zoneSlug: string | null;
   duty: Duty;
   shiftEndsAt: number | null;
-  /** For Call. Mock numbers only. */
+  /** For Call. */
   phone: string | null;
+};
+
+/**
+ * Where someone's phone last put them (live GPS), in plan metres (see data/venue.ts). Crew share it while on
+ * duty, a festival-goer while someone is coming to them. `at` is when the server got it.
+ */
+export type Position = {
+  personId: string;
+  x: number;
+  y: number;
+  /** Metres. */
+  accuracy: number | null;
+  /** Degrees clockwise from north. */
+  heading: number | null;
+  at: number;
 };
 
 export type Reporter = {
@@ -117,11 +130,13 @@ export type GuestRequestStage = 'understanding' | 'answered' | 'finding' | 'comi
 export type GuestThreadEntry = { from: 'guest' | 'ai' | 'staff'; name?: string; text: string; at: number };
 
 /**
- * A festival-goer's question or report. No owner field: the backend only ever returns the
- * requester's own rows (RLS on the device session), so every request in a snapshot is theirs.
+ * A festival-goer's question or report. A festival-goer only ever reads their own; crew read the ones
+ * behind tasks they work on.
  */
 export type GuestRequest = {
   id: string;
+  /** Who asked. Crew use it to find them on the map. */
+  guestId?: string;
   createdAt: number;
   heard: string;
   zoneSlug: string | null;

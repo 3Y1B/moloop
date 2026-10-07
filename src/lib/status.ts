@@ -1,7 +1,8 @@
 import { VENUE_ZONES } from '@/data/venue';
 import { HANDOVER_NAME, isAboutPerson, isActive, isHeld, isQuiet, needsResponse, quietSince } from '@/lib/lifecycle';
 import { routeBetween } from '@/lib/route';
-import type { GuestRequest, GuestRequestStage, HandoverTarget, Task, Volunteer, Zone } from '@/lib/schema';
+import { meetingPoint, walkFrom } from '@/lib/presence';
+import type { GuestRequest, GuestRequestStage, HandoverTarget, Position, Task, Volunteer, Zone } from '@/lib/schema';
 
 /**
  * Every status line in the app comes from here, so every screen says the same thing.
@@ -19,7 +20,13 @@ export type StatusAction =
 
 export type Status = { label: string; detail?: string; tone: Tone; action?: StatusAction };
 
-export type StatusLookups = { volunteers: Record<string, Volunteer>; zones?: Record<string, Zone> };
+export type StatusLookups = {
+  volunteers: Record<string, Volunteer>;
+  zones?: Record<string, Zone>;
+  /** Live GPS, and the festival-goer on this device: "coming" counts down from where the volunteer really is. */
+  positions?: Record<string, Position>;
+  guestId?: string | null;
+};
 
 const MIN = 60_000;
 const STAY = 'Stay with them';
@@ -134,12 +141,14 @@ export type GuestStatus = Status & {
   stage: GuestRequestStage;
   /** Who is coming, or who they're matched with while still `finding`. */
   volunteerId?: string;
-  /** When they should be with the festival-goer (walking time from where they were when assigned). */
+  /** When they should be with the festival-goer: the walk left from where their phone is, else from where they were when assigned. */
   arriveAt?: number;
+  /** `arriveAt` comes from where they really are, not from the clock. */
+  live?: boolean;
 };
 
 /** What the festival-goer sees. Derived from the task once there is one; the stored stage covers the steps before. */
-export function guestStage(request: GuestRequest, task: Task | undefined, { volunteers }: StatusLookups, now: number): GuestStatus {
+export function guestStage(request: GuestRequest, task: Task | undefined, { volunteers, positions, guestId }: StatusLookups, now: number): GuestStatus {
   if (request.stage === 'cancelled') return { stage: 'cancelled', label: 'Cancelled', tone: 'neutral' };
   if (!task) {
     if (request.stage === 'answered') return { stage: 'answered', label: 'Answered', tone: 'success' };
@@ -166,6 +175,17 @@ export function guestStage(request: GuestRequest, task: Task | undefined, { volu
 
   const r = task.escalation?.response;
   if (r?.kind === 'handover' && r.target) return { stage: 'coming', label: ON_THE_WAY[r.target], tone: 'tint', volunteerId: v?.id };
+
+  // Their phone says where they are: count down the walk that's left, and say so when they're here.
+  const from = v ? walkFrom(positions, v.id, null, now) : null;
+  if (v && from) {
+    const guest = walkFrom(positions, guestId, null, now);
+    const left = routeBetween(from, meetingPoint(typeof guest === 'object' ? guest : null, task.zoneSlug));
+    if (left?.here) return { stage: 'with_you', label: `${first(v)} is here`, tone: 'tint', volunteerId: v.id, arriveAt: now, live: true };
+    if (left) {
+      return { stage: 'coming', label: `${first(v)} is coming · ${left.minutes} min`, tone: 'tint', volunteerId: v.id, arriveAt: now + left.minutes * MIN, live: true };
+    }
+  }
 
   const walk = routeBetween(v?.zoneSlug ?? null, task.zoneSlug);
   const arriveAt = (task.assignedAt ?? task.createdAt) + (walk?.minutes ?? 0) * MIN;

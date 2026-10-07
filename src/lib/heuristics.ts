@@ -3,7 +3,7 @@ import type { IncidentCategory, Priority, ReplyKind, TeamSlug } from '@/lib/sche
 
 /**
  * Keyword stand-ins for the models: the reply classifier, triage and the routine-answer agent.
- * Shared by MockRepo and the server until phase 3 puts the real models behind the same calls.
+ * What the server falls back on when a model is down or live models are off.
  */
 
 // Order matters: "need help" before "help"-ish report words.
@@ -109,7 +109,7 @@ export function authorityFor(text: string): EscalateTo | null {
   return lead ? { level: 'lead', reason: `Mentions “${lead[0]}”: needs a lead's call` } : null;
 }
 
-/** Keyword triage as a full Triage: what MockRepo uses, and what the server falls back on when a model is down. */
+/** Keyword triage as a full Triage: what the server falls back on when a model is down. */
 export function heuristicTriage(text: string, zoneSlug: string | null = null, locationHint: string | null = null): Triage {
   const { team, priority } = triage(text);
   const category = team === 'welfare' && /child|kid|son|daughter/i.test(text) ? 'lost_child' : TEAM_CATEGORY[team];

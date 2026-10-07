@@ -1,11 +1,13 @@
 import { languageName } from '@/lib/format';
 import { isBusy } from '@/lib/lifecycle';
+import { walkFrom } from '@/lib/presence';
 import { formatMeters, routeBetween } from '@/lib/route';
-import type { IncidentCategory, ProposalCandidate, Task, Volunteer } from '@/lib/schema';
+import type { IncidentCategory, Position, ProposalCandidate, Task, Volunteer } from '@/lib/schema';
 
 /**
  * Who should take a task, best first, with a short why ("free · 120 m · first aid cert").
- * Stand-in for the assign agent: same team, then free, then the right skill, then nearest.
+ * Stand-in for the assign agent: same team, then free, then the right skill, then nearest. Nearest is the walk
+ * from where their phone says they are (`positions`, fresh at `now`), else from their zone.
  * Used for P1/P2 proposals, the Assign picker and the backup picker.
  */
 
@@ -26,7 +28,7 @@ const SKILL_LABEL: Record<string, string> = {
 
 export function rankCandidates(
   task: Task, volunteers: Volunteer[], tasks: Task[],
-  { exclude = [], limit = 5 }: { exclude?: string[]; limit?: number } = {},
+  { exclude = [], limit = 5, positions, now = Date.now() }: { exclude?: string[]; limit?: number; positions?: Record<string, Position>; now?: number } = {},
 ): ProposalCandidate[] {
   const skip = new Set([...exclude, ...task.helperIds, ...(task.assigneeId ? [task.assigneeId] : [])]);
   const skill = SKILL_FOR[task.category];
@@ -35,7 +37,7 @@ export function rankCandidates(
   return volunteers
     .filter((v) => v.role === 'volunteer' && v.duty === 'on_duty' && !skip.has(v.id))
     .map((v) => {
-      const route = routeBetween(v.zoneSlug, task.zoneSlug);
+      const route = routeBetween(walkFrom(positions, v.id, v.zoneSlug, now), task.zoneSlug);
       const distanceM = route ? Math.round(route.meters) : null;
       const free = !isBusy(tasks, v.id);
       const hasSkill = !!skill && v.skills.includes(skill);

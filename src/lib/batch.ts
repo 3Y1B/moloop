@@ -1,9 +1,9 @@
 import { isActive } from '@/lib/lifecycle';
-import type { GuestRequest, Message, Proposal, Task, TaskEvent, Team, TeamSlug, Volunteer } from '@/lib/schema';
+import type { GuestRequest, Message, Position, Proposal, Task, TaskEvent, Team, TeamSlug, Volunteer } from '@/lib/schema';
 
 /**
  * One state change, built up by the shared commands (src/lib/commands.ts) and then applied in one go:
- * MockRepo emits it as a new snapshot, the server writes it in one transaction. Pure, no I/O.
+ * the server writes it in one transaction. Pure, no I/O.
  */
 
 /** The slice of the world a command reads. The server loads live tasks plus whatever the command names. */
@@ -13,14 +13,16 @@ export type World = {
   proposals: Record<string, Proposal>;
   requests: Record<string, GuestRequest>;
   teams: Record<string, Pick<Team, 'name'>>;
+  /** Live GPS by person, for walking distances. Read only: phones write their own. */
+  positions?: Record<string, Position>;
 };
 
 export type IdKind = 'task' | 'event' | 'message' | 'proposal' | 'request';
 
-/** Time and ids come from outside: the mock has a dev clock and short ids, the server has Date.now() and uuids. */
+/** Time and ids come from outside: the server uses Date.now() and uuids, tests whatever they like. */
 export type Clock = { now: number; id: (kind: IdKind) => string };
 
-/** A command that doesn't fit. `code` maps to the HTTP status on the server; the mock just throws it. */
+/** A command that doesn't fit. `code` maps to the HTTP status on the server. */
 export class CommandError extends Error {
   constructor(readonly code: 'invalid' | 'forbidden' | 'not_found' | 'conflict', message: string) {
     super(message);
@@ -42,6 +44,7 @@ export class Batch {
   requests: Record<string, GuestRequest>;
   volunteers: Record<string, Volunteer>;
   readonly teams: World['teams'];
+  readonly positions: Record<string, Position>;
   readonly events: TaskEvent[] = [];
   readonly messages: Message[] = [];
   /** Who sent a message, when it was a person (direct, broadcast). Not on the domain Message. */
@@ -56,6 +59,7 @@ export class Batch {
     this.requests = world.requests;
     this.volunteers = world.volunteers;
     this.teams = world.teams;
+    this.positions = world.positions ?? {};
   }
 
   id = (kind: IdKind) => this.clock.id(kind);

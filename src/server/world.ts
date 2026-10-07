@@ -1,10 +1,11 @@
 import postgres, { type Sql, type TransactionSql } from 'postgres';
 
 import {
-  PROPOSAL_ACTION_SELECT, PROPOSAL_CANDIDATE_SELECT, refsFrom, toGuestRequest, toProposal, toReporter, toTask, toVolunteer,
+  PROPOSAL_ACTION_SELECT, PROPOSAL_CANDIDATE_SELECT, refsFrom, toGuestRequest, toPosition, toProposal, toReporter, toTask, toVolunteer,
   type ProfileRow, type ProposalActionRow, type ProposalCandidateRow, type Row,
 } from '@/data/supabase/rows';
 import { Batch, type World } from '@/lib/batch';
+import { PRESENCE } from '@/lib/presence';
 import type { Run } from './models/interpreter';
 import type { Database } from '@/lib/database.types';
 import {
@@ -74,7 +75,7 @@ type TaskRow = Row<'tasks'> & {
 const cols = (select: string) => select.split(',').map((c) => c.trim());
 
 export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
-  const [teams, zones, volunteers] = await Promise.all([
+  const [teams, zones, volunteers, presence] = await Promise.all([
     q<{ id: string; slug: string; name: string }[]>`select id, slug, name from teams`,
     q<{ id: string; slug: string }[]>`select id, slug from zones`,
     q<VolunteerRow[]>`
@@ -86,6 +87,8 @@ export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
       left join skills s on s.id = vs.skill_id
       group by p.id, pp.phone
       order by p.created_at, p.id`,
+    // Live GPS for walking distances. Anything older says nothing (see lib/presence.ts).
+    q<Row<'presence'>[]>`select * from presence where at > now() - make_interval(secs => ${PRESENCE.goneMs / 1000})`,
   ]);
   const refs = refsFrom(teams, zones);
 
@@ -129,6 +132,7 @@ export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
       proposals: byId(actions.map((a) => toProposal(a, candidates))),
       requests: byId(requestRows.map((r) => toGuestRequest(r, refs))),
       teams: Object.fromEntries(teams.map((t) => [t.slug, { name: t.name }])),
+      positions: Object.fromEntries(presence.map((r) => [r.person_id, toPosition(r)])),
     },
     ids: idsFrom(refs),
     requestOwner: Object.fromEntries(requestRows.map((r) => [r.id, r.guest_id])),

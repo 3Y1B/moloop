@@ -1,5 +1,4 @@
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
@@ -42,7 +41,7 @@ export function DutyChip({ open, onToggle }: { open: boolean; onToggle: () => vo
   );
 }
 
-/** Expanded shift details: team, shift end, break toggle, demo controls. */
+/** Expanded shift details: team, shift end, break toggle. */
 export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
   const theme = useTheme();
   const repo = useRepo();
@@ -81,14 +80,6 @@ export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
               {onDuty ? 'Take a break' : 'Back on duty'}
             </Text>
           </Pressable>
-          {repo.dev && (
-            <Pressable
-              onPress={() => router.push('/dev')}
-              style={({ pressed }) => [styles.pill, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.6 : 1 }]}>
-              <Icon sf="slider.horizontal.3" md="tune" size={13} color={theme.textSecondary} />
-              <Text style={[styles.pillText, { color: theme.textSecondary }]}>Demo</Text>
-            </Pressable>
-          )}
         </View>
     </Animated.View>
   );

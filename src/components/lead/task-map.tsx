@@ -2,32 +2,38 @@ import { StyleSheet, View } from 'react-native';
 
 import { VenueMap, zoneSpot, type MapMarker } from '@/components/map/venue-map';
 import { Radius } from '@/constants/theme';
-import { useLookups } from '@/data/hooks';
+import { useLookups, useSnapshot } from '@/data/hooks';
 import { initials } from '@/lib/format';
 import { needsResponse } from '@/lib/lifecycle';
+import { placeOf } from '@/lib/presence';
 import type { Task } from '@/lib/schema';
 import { usePriorityColors, useTheme } from '@/hooks/use-theme';
 
 const HEIGHT = 130;
 
-/** Small map for a task sheet: the spot, the volunteer with the person, and any backup on the way. */
+/** Small map for a task sheet: the spot, the volunteer and any backup, where their phones say (else beside the spot). */
 export function TaskMap({ task }: { task: Task }) {
   const theme = useTheme();
   const accent = usePriorityColors()[task.priority];
   const { volunteers, teams } = useLookups();
+  const { positions, now } = useSnapshot();
   if (!task.zoneSlug) return null;
 
   const color = (task.teamSlug && teams[task.teamSlug]?.color) || theme.tint;
   const markers: MapMarker[] = [];
   const owner = task.assigneeId ? volunteers[task.assigneeId] : undefined;
-  const at = zoneSpot(task.zoneSlug, 1);
+  const ownerLive = placeOf(positions, owner?.id, now);
+  const at = ownerLive?.at ?? zoneSpot(task.zoneSlug, 1);
   if (owner && at) {
-    markers.push({ kind: 'volunteer', id: owner.id, at, color, initials: initials(owner.name), onTask: true, needsHelp: needsResponse(task) });
+    markers.push({
+      kind: 'volunteer', id: owner.id, at, color, initials: initials(owner.name), onTask: true, needsHelp: needsResponse(task), stale: ownerLive?.stale,
+    });
   }
   task.helperIds.forEach((id, i) => {
     const v = volunteers[id];
-    const spot = v && zoneSpot(v.zoneSlug, i + 2);
-    if (v && spot) markers.push({ kind: 'volunteer', id, at: spot, color, initials: initials(v.name), onTask: true });
+    const live = placeOf(positions, id, now);
+    const spot = live?.at ?? (v && zoneSpot(v.zoneSlug, i + 2));
+    if (v && spot) markers.push({ kind: 'volunteer', id, at: spot, color, initials: initials(v.name), onTask: true, stale: live?.stale });
   });
 
   return (

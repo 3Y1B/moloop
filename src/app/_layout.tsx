@@ -4,6 +4,8 @@ import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { DemoOverlay } from '@/components/demo-panel';
+import { LocationSharing } from '@/components/location-sharing';
 import { Colors } from '@/constants/theme';
 import { RepoProvider } from '@/data/provider';
 import { useThemeName } from '@/hooks/use-theme';
@@ -30,6 +32,7 @@ export default function RootLayout() {
     <ThemeProvider value={NAV_THEME[scheme]}>
       <RepoProvider>
         <AnimatedSplashOverlay />
+        <LocationSharing />
         {/* Every route is registered here; (staff) and (guest) redirect to each other by role, and to sign-in when nobody is. */}
         <Stack>
           <Stack.Screen name="(staff)" options={{ headerShown: false }} />
@@ -56,17 +59,8 @@ export default function RootLayout() {
           <Stack.Screen name="person/[id]" options={{ ...SHEET, title: 'Person' }} />
           <Stack.Screen name="assign/[id]" options={{ ...SHEET, title: 'Pick a volunteer' }} />
           <Stack.Screen name="approve/[id]" options={{ ...SHEET, sheetAllowedDetents: [0.6, 1], title: 'Approve' }} />
-          <Stack.Screen
-            name="dev"
-            options={{
-              title: 'Demo controls',
-              presentation: 'formSheet',
-              sheetAllowedDetents: [0.7, 1],
-              sheetGrabberVisible: true,
-              headerShown: false,
-            }}
-          />
         </Stack>
+        <DemoOverlay />
       </RepoProvider>
     </ThemeProvider>
     </GestureHandlerRootView>

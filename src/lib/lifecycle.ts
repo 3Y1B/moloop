@@ -4,7 +4,7 @@ import type {
 
 /**
  * The task state machine from docs/ARCHITECTURE.md as pure functions. Deterministic, no I/O:
- * the mock repo runs it in-process today, the server (route handlers + nudge scheduler) runs it later.
+ * the server (route handlers + nudge scheduler) runs it.
  */
 
 const MIN = 60_000;

@@ -34,13 +34,14 @@ function markerView(m: MapMarker, danger: string, priorityColor: Record<string, 
   if (m.kind === 'task') return { anchor: 'bottom', view: <Pin color={priorityColor[m.priority]} /> };
   const help = m.kind === 'volunteer' && m.needsHelp;
   const ring = m.kind === 'volunteer' && (m.onTask || m.needsHelp);
-  return { anchor: 'center', view: <Dot color={help ? danger : m.color} initials={m.initials} ring={ring} /> };
+  const stale = m.kind === 'volunteer' && m.stale;
+  return { anchor: 'center', view: <Dot color={help ? danger : m.color} initials={m.initials} ring={ring} stale={stale} /> };
 }
 
-/** A person: a dot in their colour with initials, ringed when busy. */
-function Dot({ color, initials, ring }: { color: string; initials?: string; ring?: boolean }) {
+/** A person: a dot in their colour with initials, ringed when busy, faded where they were last seen. */
+function Dot({ color, initials, ring, stale }: { color: string; initials?: string; ring?: boolean; stale?: boolean }) {
   return (
-    <View style={[styles.ringBox, ring && { borderColor: color }]}>
+    <View style={[styles.ringBox, ring && { borderColor: color }, stale && styles.stale]}>
       <View style={[styles.dot, { backgroundColor: color }]}>
         {!!initials && <Text style={styles.initials}>{initials}</Text>}
       </View>
@@ -82,6 +83,7 @@ const styles = StyleSheet.create({
   ringBox: { width: DOT + 8, height: DOT + 8, borderRadius: (DOT + 8) / 2, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   dot: { width: DOT, height: DOT, borderRadius: DOT / 2, borderWidth: 1.5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   initials: { color: '#fff', fontSize: 9, fontWeight: '700' },
+  stale: { opacity: 0.45 },
   meBox: { width: ME, height: ME, alignItems: 'center', justifyContent: 'center' },
   mePulse: { position: 'absolute', width: ME, height: ME, borderRadius: ME / 2 },
   meOuter: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' },

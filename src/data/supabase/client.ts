@@ -8,7 +8,7 @@ let client: SupabaseClient<Database> | undefined;
 /**
  * The app's Supabase client (Expo's Supabase guide, SDK 57): the session persists on the device through
  * expo-sqlite's localStorage, and refreshes only while the app is in the foreground.
- * Created on first use, so the mock build never loads expo-sqlite (older dev builds don't have it).
+ * Created on first use.
  */
 export function getSupabase(): SupabaseClient<Database> {
   if (client) return client;

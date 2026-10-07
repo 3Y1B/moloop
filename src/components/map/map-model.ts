@@ -15,13 +15,13 @@ export type MapPerson = { id: string; initials: string; color: string; at: Point
 
 /**
  * Things drawn on top of the site plan for leads and festival-goers.
- *  - volunteer: team-coloured dot, a ring when on a task, red when they asked for help
+ *  - volunteer: team-coloured dot, a ring when on a task, red when they asked for help, faded when their GPS has gone quiet
  *  - task: a pin in its priority colour
  *  - person: someone who isn't a volunteer, e.g. the festival-goer at the end of a two-person route
  * For a two-person route (volunteer → reporter), pass `route` plus a volunteer and a person marker, and `me={null}`.
  */
 export type MapMarker =
-  | { kind: 'volunteer'; id: string; at: Point; color: string; initials?: string; onTask?: boolean; needsHelp?: boolean }
+  | { kind: 'volunteer'; id: string; at: Point; color: string; initials?: string; onTask?: boolean; needsHelp?: boolean; stale?: boolean }
   | { kind: 'task'; id: string; at: Point; priority: Priority }
   | { kind: 'person'; id: string; at: Point; color: string; initials?: string };
 

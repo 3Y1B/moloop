@@ -1,12 +1,13 @@
 import type { RealtimeChannel, RealtimePostgresChangesPayload, Session, SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '@/lib/database.types';
+import type { Fix } from '@/lib/presence';
 import { applyReply } from '@/lib/lifecycle';
 import type { Duty, GuestRequest, Message, Proposal, ReplyKind, Task, TaskEvent, Volunteer } from '@/lib/schema';
 import type { BroadcastScope, Heard, Interpretation, Recording, Repo, RespondInput, Snapshot } from './repo';
 import {
   DELIVERY_SELECT, PROFILE_SELECT, PROPOSAL_ACTION_SELECT, PROPOSAL_CANDIDATE_SELECT, refsFrom, TASK_SELECT,
-  toGuestRequest, toMessage, toProposal, toTask, toTaskEvent, toTeam, toVolunteer, toZone, emptyRefs,
+  toGuestRequest, toMessage, toPosition, toProposal, toTask, toTaskEvent, toTeam, toVolunteer, toZone, emptyRefs,
   type DeliveryRow, type ProfileRow, type ProposalActionRow, type ProposalCandidateRow, type Refs, type Row, type TaskRow,
 } from './supabase/rows';
 
@@ -15,7 +16,7 @@ type Db = SupabaseClient<Database>;
 export type SupabaseRepoOptions = {
   /** The command server (Hono on Bun). Defaults to EXPO_PUBLIC_SERVER_URL, then http://127.0.0.1:8787. */
   serverUrl?: string;
-  /** How often `now` moves forward with nothing else changing. Same as the mock's scheduler. */
+  /** How often `now` moves forward with nothing else changing. */
   tickMs?: number;
   /** For tests. */
   fetch?: typeof fetch;
@@ -37,7 +38,7 @@ const ASSIGNED: Row<'task_assignments'>['status'][] = ['approved', 'notified', '
 
 const blank = (status: Snapshot['status']): Snapshot => ({
   status, now: Date.now(), meId: null, guestId: null,
-  teams: {}, zones: {}, volunteers: {}, tasks: {}, events: [], messages: [], requests: {}, proposals: {},
+  teams: {}, zones: {}, volunteers: {}, tasks: {}, events: [], messages: [], requests: {}, proposals: {}, positions: {},
 });
 
 const without = <T>(record: Record<string, T>, ...ids: string[]) => {
@@ -166,6 +167,15 @@ export class SupabaseRepo implements Repo {
     if (!this.state.messages.some((m) => ids.has(m.id) && !m.read)) return;
     this.set({ messages: this.state.messages.map((m) => (ids.has(m.id) ? { ...m, read: true } : m)) });
     await this.command('markRead', { messageIds }, () => this.refetchMessages(messageIds));
+  }
+
+  /** Straight to `presence` (RLS: my own row only); the server stamps the time. Realtime brings it back to everyone. */
+  async sharePosition(fix: Fix) {
+    if (!this.userId) return;
+    const { error } = await this.db.from('presence').upsert({
+      person_id: this.userId, lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy, heading: fix.heading,
+    });
+    if (error) throw new Error(`presence: ${error.message}`);
   }
 
   async guestReply(taskId: string, text: string) {
@@ -301,8 +311,8 @@ export class SupabaseRepo implements Repo {
           (p) => this.receive(gen, () => handle(p as Change<T>)),
         );
 
-    // Every table the phone reads that's in the supabase_realtime publication, minus presence (phase 5)
-    // and shift_assignments (not in the snapshot). `messages` arrive through the caller's own deliveries.
+    // Every table the phone reads that's in the supabase_realtime publication, minus shift_assignments (not in
+    // the snapshot). `messages` arrive through the caller's own deliveries.
     let channel = this.db.channel(`repo:${uid}:${gen}`, { config: { postgres_changes_options: { wait: true } } });
     for (const add of [
       pg('tasks', (p) => this.onTask(p)),
@@ -312,6 +322,7 @@ export class SupabaseRepo implements Repo {
       pg('message_deliveries', (p) => this.onDelivery(p), `recipient_id=eq.${uid}`),
       pg('guest_requests', (p) => this.onRequest(p)),
       pg('profiles', (p) => this.onProfile(p)),
+      pg('presence', (p) => this.onPresence(p)),
     ]) channel = add(channel);
     // The join reply only says the channel is open. The server confirms the Postgres side separately
     // ("Subscribed to PostgreSQL"), on every join and rejoin. Changes before that are lost, so that's
@@ -412,7 +423,7 @@ export class SupabaseRepo implements Repo {
   private async load(): Promise<Snapshot> {
     const uid = this.userId!;
     const db = this.db;
-    const [teams, zones, profiles, skills, contacts, tasks, events, deliveries, requests, actions, candidates] = await Promise.all([
+    const [teams, zones, profiles, skills, contacts, tasks, events, deliveries, requests, actions, candidates, presence] = await Promise.all([
       db.from('teams').select('id, slug, name, color'),
       db.from('zones').select('id, slug, name'),
       db.from('profiles').select(PROFILE_SELECT),
@@ -424,6 +435,7 @@ export class SupabaseRepo implements Repo {
       db.from('guest_requests').select('*'),
       db.from('agent_actions').select(PROPOSAL_ACTION_SELECT).eq('type', 'assign_volunteer'),
       db.from('task_assignments').select(PROPOSAL_CANDIDATE_SELECT),
+      db.from('presence').select('person_id, lat, lng, accuracy, heading, at'),
     ]);
 
     const teamRows = must(teams, 'teams');
@@ -461,6 +473,7 @@ export class SupabaseRepo implements Repo {
         const p = this.proposal(a, assignmentRows, taskRows.find((t) => t.id === a.task_id)?.assignee_id ?? null);
         return [p.id, p];
       })),
+      positions: Object.fromEntries(must(presence, 'presence').map((r) => [r.person_id, toPosition(r)])),
     };
   }
 
@@ -497,11 +510,30 @@ export class SupabaseRepo implements Repo {
     await this.ensurePeople(rows.map((r) => toTask(r, this.refs)));
   }
 
-  /** A festival-goer only sees who's helping them once they're on the task: fetch them as they appear. */
+  /**
+   * What a task brings into view: a festival-goer only sees who's helping them once they're on it, and a volunteer
+   * only sees the request behind a task (and where its festival-goer is) once it's theirs. Realtime sends rows as
+   * they change, not as they become visible, so fetch them as they appear.
+   */
   private async ensurePeople(tasks: Task[]) {
-    const missing = [...new Set(tasks.flatMap((t) => [t.assigneeId, ...t.helperIds]))]
-      .filter((id): id is string => !!id && !this.state.volunteers[id]);
-    if (missing.length) await this.refetchVolunteers(missing);
+    const people = [...new Set(tasks.flatMap((t) => [t.assigneeId, ...t.helperIds]))].filter((id): id is string => !!id);
+    const missing = people.filter((id) => !this.state.volunteers[id]);
+    const requests = [...new Set(tasks.map((t) => t.requestId))].filter((id): id is string => !!id && !this.state.requests[id]);
+    await Promise.all([
+      missing.length ? this.refetchVolunteers(missing) : null,
+      requests.length ? this.refetchRequests(requests) : null,
+      this.refetchPositions(people.filter((id) => !this.state.positions[id])),
+    ]);
+  }
+
+  private async refetchPositions(ids: string[]) {
+    if (!ids.length) return;
+    const gen = this.gen;
+    const rows = must(await this.db.from('presence').select('person_id, lat, lng, accuracy, heading, at').in('person_id', ids), 'presence');
+    if (gen !== this.gen || !rows.length) return;
+    const positions = { ...this.state.positions };
+    for (const r of rows) positions[r.person_id] = toPosition(r);
+    this.set({ positions });
   }
 
   private async refetchVolunteers(ids: string[]) {
@@ -545,7 +577,10 @@ export class SupabaseRepo implements Repo {
     const requests = without(this.state.requests, ...ids);
     for (const r of rows) requests[r.id] = toGuestRequest(r, this.refs);
     this.set({ requests });
-    await this.ensureTasksFor(Object.values(requests).filter((r) => ids.includes(r.id)));
+    await Promise.all([
+      this.ensureTasksFor(Object.values(requests).filter((r) => ids.includes(r.id))),
+      this.refetchPositions([...new Set(rows.map((r) => r.guest_id))].filter((id) => !this.state.positions[id])),
+    ]);
   }
 
   /** A request just got its task: the festival-goer can read it from now on. */
@@ -684,6 +719,15 @@ export class SupabaseRepo implements Repo {
     // Skills and phone live in other tables: keep what we have.
     const v = toVolunteer(row, this.refs, { skills: known.skills, phone: known.phone });
     this.set({ volunteers: { ...this.state.volunteers, [v.id]: v } });
+  }
+
+  private onPresence(p: Change<'presence'>) {
+    if (p.eventType === 'DELETE') {
+      if (p.old.person_id) this.set({ positions: without(this.state.positions, p.old.person_id) });
+      return;
+    }
+    const pos = toPosition(p.new);
+    this.set({ positions: { ...this.state.positions, [pos.personId]: pos } });
   }
 
   // ── plumbing ──

@@ -6,9 +6,10 @@ import { VoiceGradient } from '@/constants/theme';
 import { toLngLat } from '@/data/venue';
 import { useTheme } from '@/hooks/use-theme';
 import { STYLE_ICONS } from './map-icons';
-import { useOverlays } from './map-markers';
+import { useOverlays, type Overlay } from './map-markers';
 import { cameraFor, frameBox, liveData, liveLayers, type VenueMapProps } from './map-model';
 import { useMapStyle } from './map-style';
+import { useGlide } from './use-glide';
 
 export { zoneSpot, type MapMarker, type MapPerson } from './map-model';
 
@@ -58,14 +59,20 @@ export function VenueMap(props: VenueMapProps) {
           <GeoJSONSource id="live" data={liveData(route, target, targetColor ?? theme.danger)} lineMetrics>
             {LIVE.map((layer) => <Layer key={layer.id} {...layer} />)}
           </GeoJSONSource>
-          {overlays.map((o) => (
-            <Marker key={o.key} id={o.key} lngLat={toLngLat(o.at)} anchor={o.anchor} onPress={o.onPress} pointerEvents={o.onPress ? 'auto' : 'none'}>
-              {o.view}
-            </Marker>
-          ))}
+          {overlays.map((o) => <GlidingMarker key={o.key} overlay={o} />)}
         </Map>
       )}
     </View>
+  );
+}
+
+/** A marker that walks to its new spot instead of jumping. Re-renders on its own, not the whole map. */
+function GlidingMarker({ overlay: o }: { overlay: Overlay }) {
+  const at = useGlide(o.at);
+  return (
+    <Marker id={o.key} lngLat={toLngLat(at)} anchor={o.anchor} onPress={o.onPress} pointerEvents={o.onPress ? 'auto' : 'none'}>
+      {o.view}
+    </Marker>
   );
 }
 

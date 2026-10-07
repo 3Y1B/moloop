@@ -3,8 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/ui/icon';
 import { Radius, Type } from '@/constants/theme';
-import { NODES, VENUE_ZONES } from '@/data/venue';
-import { useMe, useRouteTo } from '@/data/hooks';
+import { VENUE_ZONES } from '@/data/venue';
+import { useMyDot, useReporterPlace, useRouteTo } from '@/data/hooks';
 import { formatMeters } from '@/lib/route';
 import type { Task } from '@/lib/schema';
 import { usePriorityColors, useTheme } from '@/hooks/use-theme';
@@ -16,11 +16,11 @@ const HEIGHT = { route: 156, here: 116 } as const;
 /** Glanceable route on the task card. Tap for full walking directions. */
 export function MapPreview({ task }: { task: Task }) {
   const theme = useTheme();
-  const me = useMe();
+  const me = useMyDot();
+  const reporter = useReporterPlace(task);
   const route = useRouteTo(task);
   const accent = usePriorityColors()[task.priority];
   if (!task.zoneSlug || !VENUE_ZONES[task.zoneSlug]) return null;
-  const myZone = me?.zoneSlug ? VENUE_ZONES[me.zoneSlug] : undefined;
   const height = route?.here ? HEIGHT.here : HEIGHT.route;
 
   return (
@@ -31,9 +31,10 @@ export function MapPreview({ task }: { task: Task }) {
       style={({ pressed }) => [styles.wrap, { height, opacity: pressed ? 0.85 : 1 }]}>
       <VenueMap
         route={route}
-        me={myZone ? NODES[myZone.node] : null}
+        me={me}
         target={task.zoneSlug}
         targetColor={accent}
+        markers={reporter ? [{ kind: 'person', id: 'reporter', at: reporter, color: accent }] : undefined}
         interactive={false}
         style={styles.map}
       />

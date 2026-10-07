@@ -3,6 +3,7 @@ import { Fragment, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
+import { DemoButton } from '@/components/demo-panel';
 import { DutyChip, DutyPanel } from '@/components/duty-header';
 import { openTaskSheet } from '@/components/lead/open-sheet';
 import { TeamMap } from '@/components/lead/team-map';
@@ -19,8 +20,7 @@ import { Card, Separator } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { Segmented } from '@/components/ui/segmented';
 import { Type } from '@/constants/theme';
-import { NODES, VENUE_ZONES } from '@/data/venue';
-import { useInbox, useMe, useMyWork, useNeedsMe, useRepo, useRole, useRouteTo, useSnapshot, useTeam } from '@/data/hooks';
+import { useCrew, useInbox, useMe, useMyDot, useMyWork, useNeedsMe, useRepo, useReporterPlace, useRole, useRouteTo, useSnapshot, useTeam } from '@/data/hooks';
 import type { Task } from '@/lib/schema';
 import { usePriorityColors, useTheme } from '@/hooks/use-theme';
 
@@ -47,7 +47,12 @@ export default function HomeScreen() {
       <MapTopBar
         top={layout.barTop}
         left={<DutyChip open={duty} onToggle={() => setDuty((d) => !d)} />}
-        right={<MapButton label="Inbox" sf="tray" md="inbox" badge={unread} onPress={() => router.push('/inbox')} />}
+        right={
+          <>
+            <DemoButton />
+            <MapButton label="Inbox" sf="tray" md="inbox" badge={unread} onPress={() => router.push('/inbox')} />
+          </>
+        }
       />
 
       <BottomSheet
@@ -85,16 +90,17 @@ export default function HomeScreen() {
 
 /** Me, and the way to my task. Free: the whole site with me on it. */
 function MyMap({ task, frame }: { task: Task | undefined; frame: { top: number; bottom: number } }) {
-  const me = useMe();
+  const me = useMyDot();
+  const reporter = useReporterPlace(task);
   const route = useRouteTo(task);
   const accent = usePriorityColors()[task?.priority ?? 'P3'];
-  const zone = me?.zoneSlug ? VENUE_ZONES[me.zoneSlug] : undefined;
   return (
     <VenueMap
       route={route}
-      me={zone ? NODES[zone.node] : null}
+      me={me}
       target={task?.zoneSlug}
       targetColor={accent}
+      markers={reporter ? [{ kind: 'person', id: 'reporter', at: reporter, color: accent }] : undefined}
       fit={task ? 'route' : 'site'}
       frame={frame}
       style={StyleSheet.absoluteFill}
@@ -102,17 +108,21 @@ function MyMap({ task, frame }: { task: Task | undefined; frame: { top: number; 
   );
 }
 
+/** A lead's team, or for Mo the whole crew, live on the site. */
 function LeadMap({ frame }: { frame: { top: number; bottom: number } }) {
   const theme = useTheme();
-  const me = useMe();
-  const { team, members, openTasks } = useTeam();
+  const me = useMyDot();
+  const role = useRole();
+  const team = useTeam();
+  const crew = useCrew();
+  const everyone = role === 'coordinator';
   const { proposals, tasks } = useSnapshot();
   return (
     <TeamMap
-      members={members}
-      tasks={openTasks}
-      color={team?.color ?? theme.tint}
-      myZone={me?.zoneSlug ?? null}
+      members={everyone ? crew.members : team.members}
+      tasks={everyone ? crew.openTasks : team.openTasks}
+      color={team.team?.color ?? theme.tint}
+      me={me}
       frame={frame}
       onPerson={(id) => router.push({ pathname: '/person/[id]', params: { id } })}
       onTask={(id) => tasks[id] && openTaskSheet(tasks[id], proposals)}
