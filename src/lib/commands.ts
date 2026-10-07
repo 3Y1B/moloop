@@ -290,7 +290,7 @@ export function arrived(b: Batch, byId: string, taskId: string) {
 }
 
 /** Give a task to someone (unassigned, queued, or moving it). Settles a pending proposal for it. */
-export function assign(b: Batch, byId: string, taskId: string, volunteerId: string, how: 'assigned' | 'approved' = 'assigned') {
+export function assign(b: Batch, byId: string, taskId: string, volunteerId: string, how: 'assigned' | 'approved' = 'assigned', helperIds: string[] = []) {
   const task = b.tasks[taskId];
   const by = b.volunteers[byId];
   const target = b.volunteers[volunteerId];
@@ -298,26 +298,37 @@ export function assign(b: Batch, byId: string, taskId: string, volunteerId: stri
   if (!target) throw new CommandError('invalid', `No volunteer ${volunteerId}`);
   if (task.status === 'resolved' || task.status === 'cancelled') throw new CommandError('conflict', `Cannot assign task ${taskId}`);
   const queuedFor = task.status === 'queued' && task.assigneeId ? [task.assigneeId] : [];
-  const prev = [...b.onIt(task), ...queuedFor].filter((id) => id !== volunteerId);
+  const helpers = [...new Set(helperIds)].filter((id) => id !== volunteerId && b.volunteers[id]);
+  const prev = [...b.onIt(task), ...queuedFor].filter((id) => id !== volunteerId && !helpers.includes(id));
   const fresh: Task = {
     ...task, status: 'open', assigneeId: null, helperIds: [], escalation: null, etaAt: null,
     nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, lastActivityAt: b.now,
   };
   place(b, fresh, volunteerId, b.actor(byId), `${how === 'approved' ? 'Approved' : 'Assigned'} by ${by.name}`);
   settleProposal(b, taskId, 'approved', volunteerId, byId);
+  // Picked to go with them: on the task as helpers, same as backup.
+  if (helpers.length) {
+    b.task({ ...b.tasks[taskId], helperIds: helpers });
+    for (const id of helpers) {
+      const h = b.volunteers[id];
+      b.ev(taskId, 'responded', `${by.name} sent ${h.name}`, b.actor(byId));
+      b.send(id, 'backup', `Help ${first(target)}: ${task.title}.`, { taskId, delivery: 'spoken' });
+    }
+    b.send(volunteerId, 'backup', `${helpers.map((id) => first(b.volunteers[id])).join(', ')} ${helpers.length > 1 ? 'are' : 'is'} joining you.`, { taskId });
+  }
   for (const id of prev) {
     b.send(id, 'moved', `Moved to ${first(target)}: ${task.title}.`, { taskId });
     freeUp(b, id);
   }
 }
 
-/** Approve the AI's proposal: its top pick, or `volunteerId` instead. */
-export function approve(b: Batch, byId: string, proposalId: string, volunteerId?: string) {
+/** Approve the AI's proposal: its top pick, or `volunteerId` instead, with `helperIds` going along. */
+export function approve(b: Batch, byId: string, proposalId: string, volunteerId?: string, helperIds: string[] = []) {
   const p = b.proposals[proposalId];
   if (!p) throw new CommandError('not_found', `No proposal ${proposalId}`);
   const pick = volunteerId ?? p.candidates[0]?.volunteerId;
   if (p.status !== 'pending' || !pick) throw new CommandError('conflict', `Cannot approve proposal ${proposalId}`);
-  assign(b, byId, p.taskId, pick, 'approved');
+  assign(b, byId, p.taskId, pick, 'approved', helperIds);
 }
 
 export function broadcast(b: Batch, byId: string, body: string, scope: Scope = {}) {

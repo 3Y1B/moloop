@@ -31,7 +31,7 @@ export function Segmented<K extends string>({ segments, value, onChange }: {
             <Text style={[styles.label, { color: on ? theme.text : theme.textSecondary }]}>{s.label}</Text>
             {!!s.badge && (
               <View style={[styles.badge, { backgroundColor: theme.danger }]}>
-                <Text style={styles.badgeText}>{s.badge}</Text>
+                <Text style={[styles.badgeText, { color: theme.onTint }]}>{s.badge}</Text>
               </View>
             )}
           </Pressable>
@@ -50,5 +50,5 @@ const styles = StyleSheet.create({
   on: { boxShadow: '0 1px 3px rgba(17, 24, 39, 0.1)' },
   label: { fontSize: Type.footnote, fontWeight: '600' },
   badge: { minWidth: 17, height: 17, paddingHorizontal: 4, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  badgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  badgeText: { fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] },
 });

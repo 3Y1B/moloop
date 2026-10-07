@@ -7,8 +7,13 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
-// Calm, flat palette: white canvas, white cards outlined by a hairline, one blue accent.
-// No glass, no washes, no drop shadows. Change the look here; components only read tokens.
+// THE palette. Every screen reads these tokens; no screen defines its own colours.
+// Rules:
+//  - One accent: `tint` (loop blue). Primary buttons are filled tint with `onTint` text. Nothing else is filled.
+//  - Secondary controls are `backgroundElement` with `text`. Text-only actions use `tint`.
+//  - Colour carries meaning, never decoration: `danger` = P1 / asked for help / 000, `warning` = waiting on someone,
+//    `success` = done. No yellow, green, teal or indigo accents.
+//  - Flat: white canvas, hairline borders, no gradients except the voice gradient, no drop shadows.
 export const Colors = {
   light: {
     text: '#111827',
@@ -22,10 +27,15 @@ export const Colors = {
     /** Hairline around cards and controls; replaces shadows. */
     border: '#E7E9EE',
     tint: '#2F6BF5',
-    danger: '#E5484D',
-    warning: '#F08C00',
-    success: '#2BA36B',
+    /** Soft tint wash: selected rows, chosen chips, the minutes badge. Text on it is `tint`. */
+    tintSoft: '#EAF0FE',
+    danger: '#D92D20',
+    dangerSoft: '#FDECEA',
+    warning: '#C26A00',
+    success: '#1F8A5B',
     onTint: '#FFFFFF',
+    /** Dims the map behind a modal or a held voice bar. */
+    scrim: 'rgba(17,24,39,0.36)',
     /** Map */
     mapGround: '#F1F3F6',
     mapGrass: '#E2F2E8',
@@ -44,10 +54,13 @@ export const Colors = {
     separator: '#22262D',
     border: '#252A32',
     tint: '#5B8DFF',
+    tintSoft: '#18233D',
     danger: '#FF6369',
+    dangerSoft: '#3A1A1C',
     warning: '#FFA94D',
     success: '#3DD68C',
     onTint: '#FFFFFF',
+    scrim: 'rgba(0,0,0,0.6)',
     mapGround: '#13161B',
     mapGrass: '#15241B',
     mapPath: '#232831',

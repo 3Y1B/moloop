@@ -11,10 +11,10 @@ import { ago } from '@/lib/format';
 import type { Message, MessageKind } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
-const KIND: Record<MessageKind, { sf: string; md: string; color: 'tint' | 'warning' | 'success' | 'danger' | 'textTertiary' | 'purple' }> = {
+const KIND: Record<MessageKind, { sf: string; md: string; color: 'tint' | 'warning' | 'success' | 'danger' | 'textTertiary' }> = {
   task: { sf: 'list.bullet.clipboard.fill', md: 'assignment', color: 'tint' },
   nudge: { sf: 'bell.badge.fill', md: 'notifications_active', color: 'warning' },
-  broadcast: { sf: 'megaphone.fill', md: 'campaign', color: 'purple' },
+  broadcast: { sf: 'megaphone.fill', md: 'campaign', color: 'tint' },
   direct: { sf: 'person.crop.circle.fill', md: 'person', color: 'success' },
   system: { sf: 'info.circle.fill', md: 'info', color: 'textTertiary' },
   moved: { sf: 'arrow.triangle.2.circlepath', md: 'swap_horiz', color: 'textTertiary' },
@@ -76,7 +76,7 @@ function MessageRow({ message: m }: { message: Message }) {
   const repo = useRepo();
   const now = useNow();
   const k = KIND[m.kind];
-  const color = k.color === 'purple' ? '#AF52DE' : theme[k.color];
+  const color = theme[k.color];
 
   const from = m.kind === 'broadcast' ? `${m.fromName} · Everyone` : m.fromName === 'Moloop' ? TITLE[m.kind] ?? m.fromName : m.fromName;
 

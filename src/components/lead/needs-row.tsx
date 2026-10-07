@@ -1,49 +1,29 @@
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { PrioritySignal } from '@/components/task/badges';
-import { Icon } from '@/components/ui/icon';
 import { StatusLine } from '@/components/ui/status-line';
 import { Radius, Type } from '@/constants/theme';
-import { useLookups, useNow, useRepo, useTaskStatus, type NeedsItem } from '@/data/hooks';
-import { ago } from '@/lib/format';
+import { useLookups, useRepo, useTaskStatus, type NeedsItem } from '@/data/hooks';
 import type { Proposal } from '@/lib/schema';
 import type { Status } from '@/lib/status';
 import { useTheme } from '@/hooks/use-theme';
+import { openNeed } from './open-sheet';
 import { attempt } from './sheet';
+import { TeamRow } from './team-list';
 import { useLiveNow } from './use-live-now';
 
-/** One thing that needs the lead: what, the status line, who and where. Tap opens the right sheet. */
+/** One thing that needs the lead: what, and its status line. Tap opens the right sheet; a handover takes Arrived here. */
 export function NeedsRow({ item }: { item: NeedsItem }) {
   const theme = useTheme();
   const repo = useRepo();
-  const now = useNow();
-  const { volunteers, zones } = useLookups();
-  const taskStatus = useTaskStatus(item.task);
   const { task, kind } = item;
-  const owner = task.assigneeId ? volunteers[task.assigneeId] : undefined;
-  const zone = task.zoneSlug ? zones[task.zoneSlug]?.name : null;
-  const waiting = kind === 'approval' || kind === 'unassigned' || kind === 'escalated';
-  const sub = [owner?.name.split(' ')[0], zone, waiting ? ago(item.since, now) : null].filter(Boolean).join(' · ');
-
-  const open = () => {
-    if (kind === 'approval' && item.proposal) router.push({ pathname: '/approve/[id]', params: { id: item.proposal.id } });
-    else if (kind === 'unassigned' || kind === 'escalated') router.push({ pathname: '/assign/[id]', params: { id: task.id, mode: 'assign' } });
-    else router.push({ pathname: '/respond/[id]', params: { id: task.id } });
-  };
-
   return (
-    <Pressable onPress={open} style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.backgroundSelected }]}>
-      <View style={styles.signal}>
-        <PrioritySignal priority={task.priority} size={13} />
-      </View>
+    <TeamRow label={task.title} onPress={() => openNeed(item)}>
       <View style={styles.body}>
         <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{task.title}</Text>
-        {kind === 'approval' && item.proposal ? <ApprovalLine proposal={item.proposal} /> : taskStatus && <StatusLine status={taskStatus} />}
-        {!!sub && <Text style={[styles.sub, { color: theme.textSecondary }]} numberOfLines={1}>{sub}</Text>}
+        <NeedStatus item={item} />
       </View>
-      {kind === 'handover' ? (
+      {kind === 'handover' && (
         <Pressable
           accessibilityRole="button"
           hitSlop={8}
@@ -51,17 +31,22 @@ export function NeedsRow({ item }: { item: NeedsItem }) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             attempt(() => repo.arrived(task.id));
           }}
-          style={({ pressed }) => [styles.action, { backgroundColor: theme.tint, opacity: pressed ? 0.7 : 1 }]}>
-          <Text style={[styles.actionText, { color: theme.onTint }]}>Arrived</Text>
+          style={({ pressed }) => [styles.action, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
+          <Text style={[styles.actionText, { color: theme.text }]}>Arrived</Text>
         </Pressable>
-      ) : (
-        <Icon sf="chevron.right" md="chevron_right" size={12} color={theme.textTertiary} weight="medium" />
       )}
-    </Pressable>
+    </TeamRow>
   );
 }
 
-/** "Maya in 24 s": who the AI will assign, ticking down. Status copy has no proposal line, so it's built here. */
+/** The status line for a "Needs you" item: the approval countdown, else the task's status as I see it. */
+export function NeedStatus({ item }: { item: NeedsItem }) {
+  const status = useTaskStatus(item.task);
+  if (item.kind === 'approval' && item.proposal) return <ApprovalLine proposal={item.proposal} />;
+  return status ? <StatusLine status={status} /> : null;
+}
+
+/** "Approve Maya · 24 s": who the AI will assign, ticking down. Status copy has no proposal line, so it's built here. */
 function ApprovalLine({ proposal }: { proposal: Proposal }) {
   const now = useLiveNow();
   const { volunteers } = useLookups();
@@ -72,11 +57,8 @@ function ApprovalLine({ proposal }: { proposal: Proposal }) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 10, minHeight: 60 },
-  signal: { alignSelf: 'flex-start', paddingTop: 3 },
-  body: { flex: 1, gap: 3 },
-  title: { fontSize: Type.body - 1, fontWeight: '500' },
-  sub: { fontSize: Type.footnote - 1 },
+  body: { flex: 1, gap: 2 },
+  title: { fontSize: Type.body, fontWeight: '500' },
   action: { paddingHorizontal: 12, height: 30, borderRadius: Radius.pill, justifyContent: 'center' },
   actionText: { fontSize: Type.footnote, fontWeight: '600' },
 });

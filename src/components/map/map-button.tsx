@@ -29,7 +29,7 @@ export function MapButton({ label, sf, md, badge, onPress, style }: {
       <Icon sf={sf} md={md} size={18} color={theme.text} />
       {!!badge && (
         <View style={[styles.badge, { backgroundColor: theme.danger, borderColor: theme.card }]}>
-          <Text style={styles.badgeText}>{badge}</Text>
+          <Text style={[styles.badgeText, { color: theme.onTint }]}>{badge}</Text>
         </View>
       )}
     </Pressable>
@@ -60,5 +60,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  badgeText: { fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] },
 });

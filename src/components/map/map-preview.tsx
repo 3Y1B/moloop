@@ -47,7 +47,7 @@ export function MapPreview({ task }: { task: Task }) {
         </View>
         <View style={[styles.go, { backgroundColor: theme.tint }]}>
           <Icon sf="arrow.triangle.turn.up.right.diamond.fill" md="directions" size={12} color="#fff" />
-          <Text style={styles.goText}>Directions</Text>
+          <Text style={[styles.goText, { color: theme.onTint }]}>Directions</Text>
         </View>
       </View>
     </Pressable>
@@ -61,5 +61,5 @@ const styles = StyleSheet.create({
   eta: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, height: 26, borderRadius: Radius.pill, borderWidth: StyleSheet.hairlineWidth * 2 },
   etaText: { fontSize: Type.caption, fontWeight: '600', fontVariant: ['tabular-nums'] },
   go: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 26, borderRadius: Radius.pill },
-  goText: { color: '#fff', fontSize: Type.caption, fontWeight: '600' },
+  goText: { fontSize: Type.caption, fontWeight: '600' },
 });

@@ -13,17 +13,13 @@ import { useTheme } from '@/hooks/use-theme';
  * A helper (backup) only gets Done; asking for help stays with the owner. Tasks from a festival-goer get Reply.
  */
 export function ReplyBar({ task, helping = false }: { task: Task; helping?: boolean }) {
-  const repo = useRepo();
   const theme = useTheme();
   const { primary, secondary } = availableReplies(task.status);
-  // Done and Need help open the voice/type sheet so the reply carries what happened; accept/decline are instant.
-  const send = (r: ReplyKind) =>
-    r === 'done' || r === 'need_help'
-      ? router.push({ pathname: '/reply/[id]', params: { id: task.id, kind: r } })
-      : repo.reply(task.id, r);
+  const send = useSendReply(task);
 
+  // The main reply is the screen's one filled (tint) button; colour on the alternatives carries meaning.
   const colorFor = (r: ReplyKind) =>
-    r === 'need_help' ? theme.danger : r === 'done' ? theme.success : r === 'decline' ? theme.textSecondary : theme.tint;
+    r === 'need_help' ? theme.danger : r === 'decline' ? theme.textSecondary : theme.tint;
   const hapticFor = (r: ReplyKind) => (r === 'need_help' || r === 'decline' ? 'warning' : r === 'done' ? 'success' : 'light');
 
   // "Still on it" lives in the status line ("Send an update") and in voice, not as a permanent button.
@@ -37,7 +33,6 @@ export function ReplyBar({ task, helping = false }: { task: Task; helping?: bool
           size="large"
           label={REPLY_LABEL[primary]}
           sf={REPLY_SF[primary]}
-          color={colorFor(primary)}
           haptic={hapticFor(primary)}
           onPress={() => send(primary)}
         />
@@ -64,7 +59,7 @@ export function ReplyBar({ task, helping = false }: { task: Task; helping?: bool
               label="Reply"
               sf="arrowshape.turn.up.left.fill"
               color={theme.tint}
-              onPress={() => router.push({ pathname: '/reply/[id]', params: { id: task.id, kind: 'guest_reply' } })}
+              onPress={() => openGuestReply(task)}
               style={styles.flex}
             />
           )}
@@ -73,6 +68,19 @@ export function ReplyBar({ task, helping = false }: { task: Task; helping?: bool
     </View>
   );
 }
+
+/** Done and Need help open the voice/type sheet so the reply carries what happened; accept/decline are instant. */
+export function useSendReply(task: Task) {
+  const repo = useRepo();
+  return (r: ReplyKind) =>
+    r === 'done' || r === 'need_help'
+      ? router.push({ pathname: '/reply/[id]', params: { id: task.id, kind: r } })
+      : repo.reply(task.id, r);
+}
+
+/** Reply to the festival-goer once you've taken it (a typed or voice note into their thread). */
+export const openGuestReply = (task: Task) =>
+  router.push({ pathname: '/reply/[id]', params: { id: task.id, kind: 'guest_reply' } });
 
 const styles = StyleSheet.create({
   wrap: { gap: 8 },

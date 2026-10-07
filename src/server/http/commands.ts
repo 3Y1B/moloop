@@ -2,9 +2,15 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 
+import type { VoiceResponse } from '@/data/repo';
 import { CommandError, type Batch } from '@/lib/batch';
+import { rankCandidates } from '@/lib/candidates';
 import * as C from '@/lib/commands';
-import { ReplyKind, TeamSlug, type Task } from '@/lib/schema';
+import { availableResponses, HANDOVER_NAME, isBusy, isQuiet, needsResponse, type RespondInput as RespondInputType } from '@/lib/lifecycle';
+import { walkFrom } from '@/lib/presence';
+import type { RespondCommand } from '@/lib/respond-words';
+import { routeBetween } from '@/lib/route';
+import { ReplyKind, TeamSlug, type Task, type Volunteer } from '@/lib/schema';
 import { interpreter } from '../models/interpreter';
 import { judgeReport } from '../retriage';
 import { understandLater } from '../understand';
@@ -138,6 +144,81 @@ route('respond', 'lead', z.object({ taskId: Id, response: RespondInput }), async
   await transact({ taskIds: [a.taskId] }, (b) => C.respond(b, caller.id, a.taskId, a.response));
 });
 
+/** "Pass to Mo" fits: a team lead's own "need help" that hasn't gone up yet. */
+const canPassUp = (t: Task, caller: Caller) =>
+  caller.kind === 'crew' && caller.role === 'team_lead' && needsResponse(t) && t.escalation?.level === 'lead';
+
+const firstName = (v: Volunteer | undefined) => v?.name.split(' ')[0] ?? 'them';
+
+/**
+ * Hold on the Respond screen: the AI reads what the lead said as one of the responses that fit, and it's done
+ * straight away, the same command the buttons send. What needs the screen comes back as a step to open: the picker
+ * when nobody was named, and 000, which the lead always holds to confirm there; nothing here dials or marks it called.
+ */
+route('respondByVoice', 'lead', z.object({ taskId: Id, text: Text }), async (a, caller): Promise<VoiceResponse> => {
+  // Read before the model is asked: it takes a second or two.
+  const { task, people } = await read({ taskIds: [a.taskId] }, ({ world }) => {
+    const t = world.tasks[a.taskId];
+    if (!t) throw new CommandError('not_found', `No task ${a.taskId}`);
+    const all = Object.values(world.tasks);
+    const now = Date.now();
+    const ranked = rankCandidates(t, Object.values(world.volunteers), all, { limit: 20, positions: world.positions, now });
+    return {
+      task: t,
+      people: ranked.flatMap(({ volunteerId }) => {
+        const v = world.volunteers[volunteerId];
+        if (!v) return [];
+        const walk = routeBetween(walkFrom(world.positions, v.id, v.zoneSlug, now), t.zoneSlug);
+        return [{ id: v.id, name: v.name, free: !isBusy(all, v.id), ...(walk ? { minutes: Math.max(1, Math.round(walk.minutes)) } : {}) }];
+      }),
+    };
+  });
+  const { value: command } = await interpreter.respond({
+    task, text: a.text, available: availableResponses(task), canPass: canPassUp(task, caller), people, quiet: isQuiet(task),
+  });
+  if (!command) return { done: false };
+  if (command.kind === 'handover' && command.target === 'emergency') return { done: false, open: '000' };
+  if ((command.kind === 'backup' || command.kind === 'reassign') && !command.volunteerId) return { done: false, open: command.kind };
+
+  const confirmation = await transact({ taskIds: [a.taskId] }, (b) => {
+    const t = taskOf(b, a.taskId);
+    if (command.kind === 'pass') {
+      // It may have changed while the model read it.
+      if (!canPassUp(t, caller)) throw new CommandError('conflict', `Cannot pass task ${a.taskId} to Mo`);
+      C.passToCoordinator(b, caller.id, a.taskId);
+    } else {
+      C.respond(b, caller.id, a.taskId, inputOf(command));
+    }
+    return confirmationOf(command, b.volunteers, t);
+  });
+  return { done: true, kind: command.kind, confirmation };
+});
+
+function inputOf(c: Exclude<RespondCommand, { kind: 'pass' }>): RespondInputType {
+  switch (c.kind) {
+    case 'backup':
+    case 'reassign': return { kind: c.kind, volunteerId: c.volunteerId };
+    case 'handover': return { kind: c.kind, target: c.target };
+    case 'close': return { kind: c.kind, note: c.note };
+    case 'call':
+    case 'carry_on': return { kind: c.kind };
+  }
+}
+
+/** What the screen flashes once it's done. */
+function confirmationOf(c: RespondCommand, volunteers: Record<string, Volunteer>, t: Task): string {
+  const owner = t.assigneeId ? volunteers[t.assigneeId] : undefined;
+  switch (c.kind) {
+    case 'backup': return `Sent ${firstName(volunteers[c.volunteerId ?? ''])}`;
+    case 'reassign': return `Moved to ${firstName(volunteers[c.volunteerId ?? ''])}`;
+    case 'handover': return `Handing to ${HANDOVER_NAME[c.target]}`;
+    case 'call': return `Calling ${firstName(owner)}`;
+    case 'close': return 'Closed';
+    case 'carry_on': return isQuiet(t) ? 'They’re fine' : 'Carry on';
+    case 'pass': return 'Passed to Mo';
+  }
+}
+
 route('passToCoordinator', 'lead', z.object({ taskId: Id }), async (a, caller) => {
   await transact({ taskIds: [a.taskId] }, (b) => C.passToCoordinator(b, caller.id, a.taskId));
 });
@@ -146,12 +227,12 @@ route('arrived', 'lead', z.object({ taskId: Id }), async (a, caller) => {
   await transact({ taskIds: [a.taskId] }, (b) => C.arrived(b, caller.id, a.taskId));
 });
 
-route('assign', 'lead', z.object({ taskId: Id, volunteerId: Id }), async (a, caller) => {
-  await transact({ taskIds: [a.taskId] }, (b) => C.assign(b, caller.id, a.taskId, a.volunteerId));
+route('assign', 'lead', z.object({ taskId: Id, volunteerId: Id, helperIds: z.array(Id).max(8).optional() }), async (a, caller) => {
+  await transact({ taskIds: [a.taskId] }, (b) => C.assign(b, caller.id, a.taskId, a.volunteerId, 'assigned', a.helperIds));
 });
 
-route('approve', 'lead', z.object({ proposalId: Id, volunteerId: Id.optional() }), async (a, caller) => {
-  await transact({ proposalIds: [a.proposalId] }, (b) => C.approve(b, caller.id, a.proposalId, a.volunteerId));
+route('approve', 'lead', z.object({ proposalId: Id, volunteerId: Id.optional(), helperIds: z.array(Id).max(8).optional() }), async (a, caller) => {
+  await transact({ proposalIds: [a.proposalId] }, (b) => C.approve(b, caller.id, a.proposalId, a.volunteerId, a.helperIds));
 });
 
 const Scope = z.object({ teamSlug: TeamSlug.optional(), zoneSlug: z.string().optional() });

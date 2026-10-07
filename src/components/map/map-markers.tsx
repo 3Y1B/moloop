@@ -39,10 +39,13 @@ function markerView(m: MapMarker, danger: string, priorityColor: Record<string, 
 
 /** A person: a dot in their colour with initials, ringed when busy, faded where they were last seen. */
 function Dot({ color, initials, ring, stale }: { color: string; initials?: string; ring?: boolean; stale?: boolean }) {
+  const theme = useTheme();
+  // An ink dot (the crew) inverts with the scheme, so its initials take the background colour.
+  const ink = color === theme.text ? theme.background : theme.onTint;
   return (
     <View style={[styles.ringBox, ring && { borderColor: color }, stale && styles.stale]}>
       <View style={[styles.dot, { backgroundColor: color }]}>
-        {!!initials && <Text style={styles.initials}>{initials}</Text>}
+        {!!initials && <Text style={[styles.initials, { color: ink }]}>{initials}</Text>}
       </View>
     </View>
   );
@@ -75,7 +78,7 @@ const ME = 32;
 const styles = StyleSheet.create({
   ringBox: { width: DOT + 8, height: DOT + 8, borderRadius: (DOT + 8) / 2, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   dot: { width: DOT, height: DOT, borderRadius: DOT / 2, borderWidth: 1.5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  initials: { color: '#fff', fontSize: 9, fontWeight: '700' },
+  initials: { fontSize: 9, fontWeight: '700' },
   stale: { opacity: 0.45 },
   meBox: { width: ME, height: ME, alignItems: 'center', justifyContent: 'center' },
   meHalo: { position: 'absolute', width: ME, height: ME, borderRadius: ME / 2, borderWidth: StyleSheet.hairlineWidth },

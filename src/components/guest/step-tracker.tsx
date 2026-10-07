@@ -1,8 +1,6 @@
-import { Fragment, useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 
-import { Icon } from '@/components/ui/icon';
 import { Type } from '@/constants/theme';
 import type { GuestRequestStage } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
@@ -15,11 +13,10 @@ const LAST: Partial<Record<GuestRequestStage, string>> = {
   coming: 'On the way',
   with_you: 'With you',
 };
-const NODE = 22;
 
 /**
  * Where the request is in the pipeline: route (Heard) → triage (Understanding) → assign until done (Sorted).
- * `done` steps are filled, the `active` one pulses. `reached` is how far a cancelled request got.
+ * `reached` is how far a cancelled request got.
  */
 function progress(stage: GuestRequestStage, reached: number): { done: number; active: number | null } {
   switch (stage) {
@@ -39,81 +36,61 @@ function progress(stage: GuestRequestStage, reached: number): { done: number; ac
   }
 }
 
-/** `matched`: someone's lined up while the stage is still `finding`. */
-export function StepTracker({ stage, reached = 1, matched = false }: { stage: GuestRequestStage; reached?: number; matched?: boolean }) {
+/**
+ * The steps as one line in three segments. Done segments are full; the live one fills by `live` (0–1: the walk,
+ * or the clock against how long the stage usually takes), so progress moves even when nothing new has happened.
+ * `matched`: someone's lined up while the stage is still `finding`.
+ */
+export function StepTracker({ stage, reached = 1, matched = false, live = 1 }: {
+  stage: GuestRequestStage;
+  reached?: number;
+  matched?: boolean;
+  live?: number;
+}) {
   const theme = useTheme();
   const { done, active } = progress(stage, reached);
-  const color = stage === 'cancelled' ? theme.textTertiary : done === STEPS.length ? theme.success : theme.tint;
+  const cancelled = stage === 'cancelled';
+  const fill = cancelled ? theme.textTertiary : done === STEPS.length ? theme.success : theme.tint;
+  const track = cancelled ? theme.border : theme.tintSoft;
 
   return (
-    <View accessibilityRole="progressbar" accessibilityLabel={`Step ${Math.min(done + 1, STEPS.length)} of ${STEPS.length}`} style={styles.wrap}>
-      <View style={styles.track}>
-        {STEPS.map((s, i) => (
-          <Fragment key={s}>
-            {i > 0 && <View style={[styles.line, { backgroundColor: i < done || i === active ? color : theme.border }]} />}
-            <Node state={i === active ? 'active' : i < done ? 'done' : 'pending'} color={color} />
-          </Fragment>
-        ))}
-      </View>
-      <View style={styles.track}>
-        {STEPS.map((s, i) => (
-          <Fragment key={s}>
-            {i > 0 && <View style={styles.flex} />}
-            <View style={styles.labelBox}>
-              <Text
-                style={[styles.label, { color: i === active ? color : i < done ? theme.text : theme.textTertiary }]}>
-                {i === STEPS.length - 1 ? (matched && stage === 'finding' ? 'Matched' : LAST[stage] ?? s) : s}
-              </Text>
+    <View
+      accessibilityRole="progressbar"
+      accessibilityLabel={`Step ${Math.min(done + 1, STEPS.length)} of ${STEPS.length}`}
+      style={styles.row}>
+      {STEPS.map((s, i) => {
+        const state = i === active ? 'active' : i < done ? 'done' : 'pending';
+        const name = i === STEPS.length - 1 ? (matched && stage === 'finding' ? 'Matched' : LAST[stage] ?? s) : s;
+        return (
+          <View key={s} style={styles.step}>
+            <View style={[styles.track, { backgroundColor: track }]}>
+              <Fill fraction={state === 'done' ? 1 : state === 'active' ? live : 0} color={fill} />
             </View>
-          </Fragment>
-        ))}
-      </View>
+            <Text
+              numberOfLines={1}
+              style={[styles.label, { color: state === 'pending' ? theme.textTertiary : state === 'active' ? theme.text : theme.textSecondary }]}>
+              {name}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
 
-function Node({ state, color }: { state: 'done' | 'active' | 'pending'; color: string }) {
-  const theme = useTheme();
-  const pulse = useSharedValue(0);
-  const on = state === 'active';
-
-  useEffect(() => {
-    if (on) pulse.set(withRepeat(withTiming(1, { duration: 1400, easing: Easing.out(Easing.quad) }), -1, false));
-    else cancelAnimation(pulse);
-    return () => cancelAnimation(pulse);
-  }, [on, pulse]);
-
-  const ring = useAnimatedStyle(() => ({ transform: [{ scale: 1 + pulse.get() * 0.7 }], opacity: on ? 0.35 * (1 - pulse.get()) : 0 }));
-
-  if (state === 'done') {
-    return (
-      <View style={[styles.node, { backgroundColor: color }]}>
-        <Icon sf="checkmark" md="check" size={11} color={theme.onTint} weight="bold" />
-      </View>
-    );
-  }
-  return (
-    <View style={styles.nodeBox}>
-      <Animated.View style={[styles.node, styles.halo, { backgroundColor: color }, ring]} />
-      <View style={[styles.node, styles.ringed, { borderColor: on ? color : theme.border, backgroundColor: theme.card }]}>
-        {on && <View style={[styles.core, { backgroundColor: color }]} />}
-      </View>
-    </View>
-  );
+function Fill({ fraction, color }: { fraction: number; color: string }) {
+  const f = Math.min(1, Math.max(0, fraction));
+  const style = useAnimatedStyle(() => ({ transform: [{ scaleX: withTiming(f, { duration: 600 }) }] }));
+  return <Animated.View style={[styles.fill, { backgroundColor: color }, style]} />;
 }
+
+/** Height of the line and its labels, for sizing the sheet's peek. */
+export const STEP_TRACKER_HEIGHT = 28;
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  // Side padding leaves room for the first and last labels, which are wider than their node.
-  wrap: { gap: 8, paddingHorizontal: 40 },
-  track: { flexDirection: 'row', alignItems: 'center' },
-  line: { flex: 1, height: 2, marginHorizontal: 4, borderRadius: 1 },
-  nodeBox: { width: NODE, height: NODE },
-  node: { width: NODE, height: NODE, borderRadius: NODE / 2, alignItems: 'center', justifyContent: 'center' },
-  halo: { position: 'absolute' },
-  ringed: { borderWidth: 2 },
-  core: { width: 8, height: 8, borderRadius: 4 },
-  labelBox: { width: NODE, height: 18, overflow: 'visible' },
-  // Absolutely centred under the node, so a label wider than its node isn't squeezed (web caps truncating text at the parent's width).
-  label: { position: 'absolute', width: 120, left: (NODE - 120) / 2, textAlign: 'center', fontSize: Type.footnote, fontWeight: '600' },
+  row: { flexDirection: 'row', gap: 8 },
+  step: { flex: 1, gap: 8 },
+  track: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  fill: { height: 4, transformOrigin: 'left' },
+  label: { fontSize: Type.footnote, lineHeight: 16 },
 });

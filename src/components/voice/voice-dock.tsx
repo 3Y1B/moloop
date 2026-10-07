@@ -39,8 +39,10 @@ export function useDockHeight() {
  * the pill to check before it goes. Typed words go straight out: there's nothing to mishear. Sending hands
  * the words to the AI, which triages and acts; what it did comes back as the confirmation.
  */
-export function VoiceDock({ placeholder, onSend }: {
+export function VoiceDock({ placeholder, onSend, onDismiss }: {
   placeholder: string;
+  /** Shows a × after the keyboard button that closes the dock (e.g. back to "Problem solved?"). */
+  onDismiss?: () => void;
   /** Send what was said, with the clips it was said in. A returned string is shown briefly as the confirmation. */
   onSend: (text: string, clips: string[]) => Promise<string | void>;
 }) {
@@ -165,12 +167,12 @@ export function VoiceDock({ placeholder, onSend }: {
               </Caption>
               <View style={styles.actions}>
                 <Button
-                  variant="tinted"
+                  variant="plain"
                   size="small"
                   label="Try again"
-                  color={theme.textSecondary}
+                  color={theme.text}
                   onPress={() => setPhase({ kind: 'idle' })}
-                  style={styles.flex}
+                  style={[styles.flex, { backgroundColor: theme.backgroundElement }]}
                 />
                 <Button
                   size="small"
@@ -214,6 +216,18 @@ export function VoiceDock({ placeholder, onSend }: {
         <CircleButton size={PILL_HEIGHT} label={typing ? 'Talk instead' : 'Type instead'} onPress={() => setTyping((t) => !t)}>
           <Icon sf={typing ? 'mic' : 'keyboard'} md={typing ? 'mic' : 'keyboard'} size={19} color={theme.textSecondary} />
         </CircleButton>
+        {onDismiss && (
+          <CircleButton
+            size={PILL_HEIGHT}
+            label="Dismiss"
+            onPress={() => {
+              if (phase.kind === 'sending' || phase.kind === 'hearing' || listening) return;
+              setTyping(false);
+              onDismiss();
+            }}>
+            <Icon sf="xmark" md="close" size={17} color={theme.textSecondary} weight="medium" />
+          </CircleButton>
+        )}
       </View>
     </Animated.View>
   );

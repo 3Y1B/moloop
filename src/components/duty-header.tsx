@@ -71,12 +71,9 @@ export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
               Haptics.selectionAsync();
               repo.setDuty(onDuty ? 'on_break' : 'on_duty');
             }}
-            style={({ pressed }) => [
-              styles.pill,
-              { backgroundColor: `${onDuty ? theme.warning : theme.success}14`, opacity: pressed ? 0.6 : 1 },
-            ]}>
+            style={({ pressed }) => [styles.pill, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.6 : 1 }]}>
             <Icon sf={onDuty ? 'cup.and.saucer.fill' : 'figure.walk'} md={onDuty ? 'coffee' : 'directions_walk'} size={13} color={onDuty ? theme.warning : theme.success} />
-            <Text style={[styles.pillText, { color: onDuty ? theme.warning : theme.success }]}>
+            <Text style={[styles.pillText, { color: theme.text }]}>
               {onDuty ? 'Take a break' : 'Back on duty'}
             </Text>
           </Pressable>

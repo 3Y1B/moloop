@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 
 import { VenueMap, zoneSpot, type MapMarker } from '@/components/map/venue-map';
 import type { Point } from '@/data/venue';
-import { useLookups, useMyPlace, useNow, usePlaceOf, type RequestView } from '@/data/hooks';
+import { useMyPlace, useNow, usePlaceOf, type RequestView } from '@/data/hooks';
 import { initials } from '@/lib/format';
 import { meetingPoint } from '@/lib/presence';
 import { routeBetween, type Route } from '@/lib/route';
@@ -31,7 +31,6 @@ function along(points: Point[], t: number): { at: Point; next: number } {
 export function RequestMap({ view, frame }: { view: RequestView; frame: { top: number; bottom: number } }) {
   const theme = useTheme();
   const now = useNow();
-  const { teams } = useLookups();
   const { request, task, status, volunteer } = view;
   const mine = useMyPlace();
   const theirs = usePlaceOf(volunteer?.id);
@@ -47,7 +46,6 @@ export function RequestMap({ view, frame }: { view: RequestView; frame: { top: n
   let route: Route | null = null;
 
   if (volunteer) {
-    const color = (volunteer.teamSlug && teams[volunteer.teamSlug]?.color) || theme.tint;
     const walk = status.stage === 'coming' && status.arriveAt ? routeBetween(volunteer.zoneSlug, zone) : null;
     // Matched but not walking over yet (finishing a task): wherever they are now. Otherwise, with the festival-goer.
     let at = (status.stage === 'finding' ? zoneSpot(volunteer.zoneSlug, 1) : null) ?? zoneSpot(zone, 1) ?? here;
@@ -63,9 +61,13 @@ export function RequestMap({ view, frame }: { view: RequestView; frame: { top: n
       at = p.at;
       route = { ...walk, points: [p.at, ...walk.points.slice(p.next)] };
     }
-    markers.push({ kind: 'volunteer', id: volunteer.id, at, color, initials: initials(volunteer.name), onTask: true, stale: theirs?.stale });
+    // One accent: whoever is coming is the tint, matching their disc on the sheet. Hollow until they're on the way.
+    markers.push({
+      kind: 'volunteer', id: volunteer.id, at, color: theme.tint, initials: initials(volunteer.name),
+      onTask: status.stage !== 'finding', stale: theirs?.stale,
+    });
   }
-  markers.push({ kind: 'person', id: 'me', at: here, color: theme.tint });
+  markers.push({ kind: 'person', id: 'me', at: here, color: theme.text });
 
   return (
     <VenueMap route={route} me={null} markers={markers} fit="route" frame={frame} style={StyleSheet.absoluteFill} />

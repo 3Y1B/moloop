@@ -4,7 +4,7 @@ import type { Database } from '@/lib/database.types';
 import type { Fix } from '@/lib/presence';
 import { applyReply } from '@/lib/lifecycle';
 import type { Duty, GuestRequest, Message, Proposal, ReplyKind, Task, TaskEvent, Volunteer } from '@/lib/schema';
-import type { BroadcastScope, Heard, Interpretation, Recording, Repo, RespondInput, Snapshot } from './repo';
+import type { BroadcastScope, Heard, Interpretation, Recording, Repo, RespondInput, Snapshot, VoiceResponse } from './repo';
 import {
   DELIVERY_SELECT, PROFILE_SELECT, PROPOSAL_ACTION_SELECT, PROPOSAL_CANDIDATE_SELECT, refsFrom, TASK_SELECT,
   toGuestRequest, toMessage, toPosition, toProposal, toTask, toTaskEvent, toTeam, toVolunteer, toZone, emptyRefs,
@@ -194,6 +194,10 @@ export class SupabaseRepo implements Repo {
     await this.post('respond', { taskId, response });
   }
 
+  respondByVoice(taskId: string, text: string) {
+    return this.post<VoiceResponse>('respondByVoice', { taskId, text });
+  }
+
   async passToCoordinator(taskId: string) {
     await this.post('passToCoordinator', { taskId });
   }
@@ -202,12 +206,12 @@ export class SupabaseRepo implements Repo {
     await this.post('arrived', { taskId });
   }
 
-  async assign(taskId: string, volunteerId: string) {
-    await this.post('assign', { taskId, volunteerId });
+  async assign(taskId: string, volunteerId: string, helperIds?: string[]) {
+    await this.post('assign', { taskId, volunteerId, helperIds });
   }
 
-  async approve(proposalId: string, volunteerId?: string) {
-    await this.post('approve', { proposalId, volunteerId });
+  async approve(proposalId: string, volunteerId?: string, helperIds?: string[]) {
+    await this.post('approve', { proposalId, volunteerId, helperIds });
   }
 
   async broadcast(body: string, scope?: BroadcastScope) {

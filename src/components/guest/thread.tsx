@@ -1,44 +1,30 @@
 import { StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
-import { Radius, Type } from '@/constants/theme';
-import { clockTime } from '@/lib/format';
+import { Type } from '@/constants/theme';
 import type { GuestThreadEntry } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
 const WHO: Record<GuestThreadEntry['from'], string> = { guest: 'You', ai: 'Moloop', staff: 'Staff' };
 
-/** The request as a conversation: theirs on the right, Moloop and staff replies on the left. */
+/** What was said, by whom, oldest first. A plain list: no bubbles. */
 export function Thread({ entries }: { entries: GuestThreadEntry[] }) {
+  const theme = useTheme();
   return (
     <View style={styles.list}>
-      {entries.map((e, i) => <Bubble key={`${e.at}-${i}`} entry={e} />)}
+      {entries.map((e, i) => (
+        <Animated.View key={`${e.at}-${i}`} entering={FadeIn.duration(200)} style={styles.entry}>
+          <Text style={[styles.who, { color: theme.textSecondary }]}>{e.name ?? WHO[e.from]}</Text>
+          <Text style={[styles.text, { color: theme.text }]} selectable>{e.text}</Text>
+        </Animated.View>
+      ))}
     </View>
   );
 }
 
-function Bubble({ entry }: { entry: GuestThreadEntry }) {
-  const theme = useTheme();
-  const mine = entry.from === 'guest';
-  return (
-    <Animated.View entering={FadeInDown.duration(220)} style={[styles.item, mine ? styles.right : styles.left]}>
-      <Text style={[styles.meta, { color: theme.textTertiary }, mine && styles.metaRight]}>
-        {mine ? clockTime(entry.at) : `${entry.name ?? WHO[entry.from]} · ${clockTime(entry.at)}`}
-      </Text>
-      <View style={[styles.bubble, { backgroundColor: mine ? `${theme.tint}14` : theme.backgroundElement }]}>
-        <Text style={[styles.text, { color: theme.text }]} selectable>{entry.text}</Text>
-      </View>
-    </Animated.View>
-  );
-}
-
 const styles = StyleSheet.create({
-  list: { gap: 12 },
-  item: { maxWidth: '86%', gap: 4 },
-  left: { alignSelf: 'flex-start' },
-  right: { alignSelf: 'flex-end' },
-  meta: { fontSize: Type.caption, fontWeight: '500', paddingHorizontal: 4 },
-  metaRight: { textAlign: 'right' },
-  bubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: Radius.card, borderCurve: 'continuous' },
+  list: { gap: 16 },
+  entry: { gap: 4 },
+  who: { fontSize: Type.footnote, lineHeight: 16 },
   text: { fontSize: Type.body, lineHeight: 21 },
 });

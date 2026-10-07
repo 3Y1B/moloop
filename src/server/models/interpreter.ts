@@ -5,11 +5,12 @@ import {
   heuristicDetail, heuristicTriage, soundsCritical, soundsUrgent, TEAM_CATEGORY,
 } from '@/lib/heuristics';
 import { activeTaskOf, interpretHeuristic } from '@/lib/commands';
-import { ReplyKind, type Priority, type Task, type TeamSlug } from '@/lib/schema';
+import { namedIn, readRespondWords, soundsEmergency, type Named, type RespondCommand } from '@/lib/respond-words';
+import { ReplyKind, type EscalationResponseKind, type Priority, type Task, type TeamSlug } from '@/lib/schema';
 import type { Interpretation } from '@/data/repo';
 import { callTool, choice, decide, decideModelId, noul, toolModelId, type CallOptions } from '.';
 import { CreateTaskArgs, EscalateArgs, INTAKE_SYSTEM, intakeTools, TEAMS, type AnswerArgs } from './intake-tools';
-import { zones, type Zone } from './venue';
+import { venueFacts, zones, type Zone } from './venue';
 
 /**
  * Reads what people say and decides what to do with it: answer a routine question, pick a team and priority, create a
@@ -51,7 +52,15 @@ export interface Interpreter {
   match(i: Heard & { candidates: Task[]; urgent?: boolean }): Promise<Judged<Match>>;
   /** Speech or text from a volunteer: a reply to their task, or a new report. */
   interpret(i: { tasks: Task[]; meId: string; text: string }): Promise<Interpretation>;
+  /** A lead's words on the Respond screen: one of the responses that fit, or null when it can't tell. */
+  respond(i: RespondHeard): Promise<Judged<RespondCommand | null>>;
 }
+
+/** Who could be sent, as the Respond screen shows them: free or busy, and minutes away on foot. */
+export type Teammate = Named & { free: boolean; minutes?: number };
+
+/** What a lead said, about which task, and what fits: `available` responses, "Pass to Mo" if `canPass`. */
+export type RespondHeard = { task: Task; text: string; available: EscalationResponseKind[]; canPass: boolean; people: Teammate[]; quiet?: boolean };
 
 const URGENCY: Priority[] = ['P1', 'P2', 'P3'];
 const moreUrgent = (a: Priority, b: Priority) => (URGENCY.indexOf(a) <= URGENCY.indexOf(b) ? a : b);
@@ -71,6 +80,10 @@ const PRIORITIES = {
   P3: 'Routine: a question, an inconvenience or a facility problem; nothing urgent',
 } satisfies Record<Priority, string>;
 
+/** Can the venue facts settle it, with nobody sent? A need they can walk to counts, not only a question. */
+const ROUTINE = 'Is this only a routine question or need that the person can sort out themselves once told where to go '
+  + '(water, toilets, food, Info, lost property, set times, directions), with nothing urgent, unsafe or medical in it?';
+
 const REPLIES = {
   accept: 'Agrees to take the task or says they are on their way',
   decline: 'Says they cannot or will not take the task',
@@ -79,6 +92,47 @@ const REPLIES = {
   still_on_it: 'Says they are still working on it, delayed or running late',
   new_report: 'Reports something new, or says anything that is not a reply to the task',
 } satisfies Record<ReplyKind | 'new_report', string>;
+
+/** The responses a lead can pick, as the model is offered them. Only those that fit right now are offered. */
+const ACTIONS = {
+  backup: 'Send a teammate to help the volunteer',
+  reassign: 'Take the task off the volunteer and give it to a teammate',
+  handover_medics: 'Hand it over to the medics or first aid',
+  handover_security: 'Hand it over to security',
+  handover_emergency: 'Call 000: an ambulance, the police or the fire brigade',
+  call: 'Phone the volunteer',
+  close: 'Close the task: not needed, a false alarm, stand down',
+  carry_on: 'The volunteer is fine and carries on as they are',
+  pass: 'Pass it up to Mo, the event coordinator',
+  unclear: 'None of these, or it is not clear what the lead wants',
+} as const;
+type Action = keyof typeof ACTIONS;
+
+const toCommand = (a: Action, said: string): RespondCommand | null => {
+  switch (a) {
+    case 'backup':
+    case 'reassign': return { kind: a };
+    case 'handover_medics': return { kind: 'handover', target: 'medics' };
+    case 'handover_security': return { kind: 'handover', target: 'security' };
+    case 'handover_emergency': return { kind: 'handover', target: 'emergency' };
+    case 'close': return { kind: 'close', note: said.trim() };
+    case 'call':
+    case 'carry_on':
+    case 'pass': return { kind: a };
+    case 'unclear': return null;
+  }
+};
+
+/** The actions that fit right now. */
+function offered({ available, canPass }: Pick<RespondHeard, 'available' | 'canPass'>): Partial<Record<Action, string>> {
+  const can = (k: EscalationResponseKind) => available.includes(k);
+  const keep: Action[] = [
+    ...(['backup', 'reassign', 'call', 'close', 'carry_on'] as const).filter(can),
+    ...(can('handover') ? (['handover_medics', 'handover_security', 'handover_emergency'] as const) : []),
+    ...(canPass ? (['pass'] as const) : []),
+  ];
+  return Object.fromEntries([...keep, 'unclear'].map((k) => [k, ACTIONS[k as Action]]));
+}
 
 const dropUnknownZone = (slug: string | null, zs: Zone[]) => (slug && zs.some((z) => z.slug === slug) ? slug : null);
 
@@ -116,12 +170,14 @@ async function assess(i: Heard, { canAnswer = false }, o: CallOptions) {
   const zs = await zones();
   const where = [zs.find((z) => z.slug === i.zoneSlug)?.name, i.locationHint].filter(Boolean).join(', ');
   const about = [i.from && `From: ${describe(i.from)}.`, where && `Sent from: ${where}.`].filter(Boolean).join(' ');
+  const sender = i.from ? describe(i.from) : canAnswer ? 'a festival-goer' : null;
   const [called, decided] = await Promise.allSettled([
     callTool({ system: INTAKE_SYSTEM(zs, canAnswer), prompt: about ? `${i.text}\n(${about})` : i.text, tools: intakeTools(canAnswer) }, o),
-    decide(where ? { message: i.text, location: where } : i.text, {
+    // The classifier sees what the agent sees: without who sent it and what's on site, "i need water" was a coin flip.
+    decide({ message: i.text, ...(where && { location: where }), ...(sender && { sent_by: sender }), ...(canAnswer && { venue_facts: venueFacts(zs) }) }, {
       team: choice('Which team should handle this message?', TEAMS),
       priority: choice('How urgent is this message?', PRIORITIES),
-      routine: noul('Is this only a routine question about directions, times or facilities, with nothing urgent or unsafe in it?'),
+      routine: noul(ROUTINE),
     }, o),
   ]);
 
@@ -136,8 +192,10 @@ async function assess(i: Heard, { canAnswer = false }, o: CallOptions) {
 
   // Priority: the classifier's calibrated reading (a step up when it's unsure). The agent's counts when it says P1,
   // or when the classifier failed. Never below the red-flag words. Taking the higher of the two every time inflated
-  // routine reports to P2 (scripts/check-intake.ts).
-  let priority: Priority = d ? modelPriority(d.priority) : moreUrgent(agent?.priority ?? kw.priority, 'P2');
+  // routine reports to P2 (scripts/check-intake.ts). When the agent answered and the classifier leans P3, that's two
+  // routine readings: no step up. "I need water" leans P3 unsurely, and the step up sent it to a lead or Mo for approval.
+  const bothRoutine = !!replied && d?.priority.choice === 'P3';
+  let priority: Priority = d ? (bothRoutine ? 'P3' : modelPriority(d.priority)) : moreUrgent(agent?.priority ?? kw.priority, 'P2');
   if (agent?.priority === 'P1') priority = 'P1';
   priority = floor(priority, i.text);
 
@@ -278,6 +336,56 @@ export class SparkInterpreter implements Interpreter {
       return interpretHeuristic(tasks, meId, text);
     }
   }
+
+  /**
+   * One typed call: which response the lead means, and who, when they name someone. Only the responses that fit
+   * are offered. When the classifier is down, slow or under 0.6 sure, keywords decide (src/lib/respond-words.ts).
+   * Code has the last word: words that say 000 only ever read as the 000 handover, which the screen still has the
+   * lead hold to confirm; a teammate is only one of `people`.
+   */
+  async respond(i: RespondHeard): Promise<Judged<RespondCommand | null>> {
+    const t0 = Date.now();
+    const said = i.text.trim();
+    const words = () => readRespondWords(said, i);
+    const log = (value: RespondCommand | null, over: Partial<Run>): Judged<RespondCommand | null> => {
+      const r = run({ reason: value?.kind ?? null, models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, ...over });
+      return { value: floorEmergency(value, said, i.available), run: r };
+    };
+    if (!i.available.length && !i.canPass) return { value: null, run: run() };
+
+    const actions = offered(i);
+    const people = Object.fromEntries(i.people.map((p, n) => [
+      `person_${n + 1}`, [p.name, p.free ? 'free' : 'busy', p.minutes != null ? `${p.minutes} min walk` : null].filter(Boolean).join(', '),
+    ]));
+    const ms = Number(process.env.AI_RESPOND_MS ?? 2_500);
+    try {
+      const d = await decide({
+        lead_said: said,
+        task: { title: i.task.title, summary: i.task.summary, situation: i.quiet ? 'the volunteer went quiet' : 'the volunteer asked for help' },
+        ...(i.people.length ? { teammates: people } : {}),
+      }, {
+        action: choice('What does the team lead want done about this task?', actions),
+        ...(i.people.length ? { who: choice('Which teammate does the lead name, if any?', { ...people, nobody: 'Nobody by name' }) } : {}),
+      }, { urgent: true, signal: AbortSignal.timeout(ms) });
+      console.log(`respond ${d.action.choice} (${d.action.confidence.toFixed(2)}) ${Date.now() - t0} ms`);
+      if (d.action.confidence < 0.6) return log(words(), { confidence: d.action.confidence, models: { interpreter: 'keywords', classifier: decideModelId() } });
+      const command = toCommand(d.action.choice as Action, said);
+      if (command?.kind === 'backup' || command?.kind === 'reassign') {
+        const who = 'who' in d ? (d.who as Choice) : null;
+        const picked = who && who.confidence >= 0.6 ? i.people[Number(who.choice.replace('person_', '')) - 1]?.id : undefined;
+        command.volunteerId = picked ?? namedIn(said, i.people);
+      }
+      return log(command, { route: command ? 'ai_resolved' : 'escalated_to_triage', confidence: d.action.confidence });
+    } catch (e) {
+      console.warn(`respond fell back to keywords after ${Date.now() - t0} ms: ${(e as Error).message}`);
+      return log(words(), { models: { interpreter: 'keywords' }, error: String((e as Error).message) });
+    }
+  }
+}
+
+/** Words that say 000 never read as anything but the 000 handover (which the lead still holds to confirm). */
+function floorEmergency(c: RespondCommand | null, said: string, available: EscalationResponseKind[]): RespondCommand | null {
+  return available.includes('handover') && soundsEmergency(said) ? { kind: 'handover', target: 'emergency' } : c;
 }
 
 /** The models behind every decision: OPENAI_API_KEY, or SPARK_API_KEY with MODEL_PROVIDER=spark (main.ts checks). */

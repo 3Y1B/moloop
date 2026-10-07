@@ -1,5 +1,6 @@
 import type { RespondInput } from '@/lib/lifecycle';
 import type { Fix } from '@/lib/presence';
+import type { RespondCommand } from '@/lib/respond-words';
 import type { Duty, GuestRequest, Message, Position, Proposal, ReplyKind, Task, TaskEvent, Team, TeamSlug, Volunteer, Zone } from '@/lib/schema';
 
 export type { RespondInput };
@@ -39,6 +40,15 @@ export type Interpretation = {
   intent: { kind: 'reply'; taskId: string; reply: ReplyKind } | { kind: 'report' };
 };
 
+/**
+ * What a lead's hold on the Respond screen did. `done`: the response was sent (`kind`), flash `confirmation`.
+ * Not done: `open` that step (the picker when nobody was named; 000, which is always held to confirm), or nothing
+ * was understood.
+ */
+export type VoiceResponse =
+  | { done: true; kind: RespondCommand['kind']; confirmation: string }
+  | { done: false; open?: 'backup' | 'reassign' | '000' };
+
 /** One hold of the pill, recorded on the phone. `name` carries the format (`clip.m4a`). */
 export type Recording = { audio: Blob; name: string; durationMs: number };
 
@@ -68,14 +78,17 @@ export interface Repo {
 
   /** Respond to "need help" or "went quiet": backup, handover, reassign, call, close, carry on. */
   respond(taskId: string, response: RespondInput): Promise<void>;
+  /** What the lead said on the Respond screen: the AI reads it and does it, or says which step to open. */
+  respondByVoice(taskId: string, text: string): Promise<VoiceResponse>;
   /** "Pass to Mo" by hand. */
   passToCoordinator(taskId: string): Promise<void>;
   /** After a handover: they've arrived, the volunteer is freed and the task resolves as handed over. */
   arrived(taskId: string): Promise<void>;
   /** Give a task to someone (unassigned, queued, or moving it). Settles a pending proposal for it. */
-  assign(taskId: string, volunteerId: string): Promise<void>;
+  /** `helperIds` go along as helpers, same as backup. */
+  assign(taskId: string, volunteerId: string, helperIds?: string[]): Promise<void>;
   /** Approve the AI's proposal: its top pick, or `volunteerId` instead. */
-  approve(proposalId: string, volunteerId?: string): Promise<void>;
+  approve(proposalId: string, volunteerId?: string, helperIds?: string[]): Promise<void>;
   broadcast(body: string, scope?: BroadcastScope): Promise<void>;
   sendDirect(volunteerId: string, body: string): Promise<void>;
 

@@ -1,104 +1,145 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
-import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
-import { StatusLine } from '@/components/ui/status-line';
 import { Type } from '@/constants/theme';
-import { useLookups, useRouteTo, useSnapshot, useTaskStatus } from '@/data/hooks';
-import { formatMeters } from '@/lib/route';
+import { useLookups, useMe, useRouteTo, useSnapshot, useTaskEvents, useTaskStatus } from '@/data/hooks';
+import { clockTime, languageName } from '@/lib/format';
 import type { Task } from '@/lib/schema';
-import { usePriorityColors, useTheme } from '@/hooks/use-theme';
-import { Details, Owner } from './active-task-card';
-import { PriorityBadge } from './badges';
-import { ReplyBar } from './reply-bar';
+import { taskStatusFor } from '@/lib/status';
+import { useTheme } from '@/hooks/use-theme';
+import { Owner } from './active-task-card';
+import { Head, LogLines, LogSheet, NowLine, type LogEntry } from './task-log';
+
+type SheetProps = {
+  /** The head's height, so the collapsed sheet shows exactly it. */
+  onHeadLayout?: (height: number) => void;
+  /** What's visible at the resting stop; the log fills it from the bottom. */
+  minHeight?: number;
+};
 
 /**
- * My task, as the top of the sheet: status, what, where, how far, and the next tap. That much fits
- * at the middle stop. Pull the sheet up for the story behind it; the map behind already shows the way.
+ * My task as a running log. The head is what and where (all the collapsed sheet shows); under it, the reporter's
+ * words, Moloop's read, then every change, oldest first; the status is the last line, set large. The replies are
+ * pinned under the sheet (TaskActions), the voice field under them.
  */
-export function TaskSheet({ task }: { task: Task }) {
+export function TaskSheet({ task, onHeadLayout, minHeight }: { task: Task } & SheetProps) {
   const theme = useTheme();
-  const accent = usePriorityColors()[task.priority];
   const status = useTaskStatus(task);
   const route = useRouteTo(task);
+  const events = useTaskEvents(task.id);
   const { meId } = useSnapshot();
   const { zones } = useLookups();
   const zone = task.zoneSlug ? zones[task.zoneSlug] : undefined;
   const helping = !!meId && task.helperIds.includes(meId);
+  const hint = task.locationHint ? task.locationHint.charAt(0).toLowerCase() + task.locationHint.slice(1) : null;
+  // The hint only when it adds something: "Water 2, by the second tap", not "Water 2, water 2".
+  const extra = hint && hint.toLowerCase() !== zone?.name.toLowerCase() ? hint : null;
+  const place = zone ? (extra ? `${zone.name}, ${extra}` : zone.name) : task.locationHint;
+
+  const entries = useMemo((): LogEntry[] => {
+    const r = task.reporter;
+    const by = r.name ?? (r.kind === 'festivalgoer' ? 'Festival-goer' : 'Reporter');
+    return [
+      {
+        id: 'quote',
+        at: task.createdAt,
+        who: r.language !== 'en' ? `${by} · translated from ${languageName(r.language)}` : by,
+        text: `“${r.quote}”`,
+        quote: true,
+      },
+      { id: 'summary', at: task.createdAt, who: 'Moloop', text: task.summary },
+      ...events
+        .filter((e) => e.kind !== 'created')
+        .map((e): LogEntry => ({ id: e.id, at: e.at, text: e.text, note: e.note })),
+    ];
+  }, [task.createdAt, task.reporter, task.summary, events]);
 
   return (
-    <Animated.View key={task.id} entering={FadeIn.duration(220)} style={styles.wrap}>
-      <View style={styles.head}>
-        <View style={styles.topRow}>
-          {status ? <StatusLine status={status} size="callout" style={styles.status} /> : <View />}
-          <PriorityBadge priority={task.priority} />
-        </View>
-        <Text style={[styles.title, { color: theme.text }]}>{task.title}</Text>
-        {zone && (
-          <Text style={[styles.where, { color: theme.text }]} numberOfLines={2}>
-            {zone.name}
-            {task.locationHint && <Text style={{ color: theme.textSecondary, fontWeight: '400' }}> · {task.locationHint}</Text>}
-          </Text>
-        )}
-        {route && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={route.here ? 'You’re here. Directions' : `${route.minutes} minute walk. Directions`}
-            hitSlop={8}
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push({ pathname: '/navigate/[id]', params: { id: task.id } });
-            }}
-            style={({ pressed }) => [styles.walk, { opacity: pressed ? 0.6 : 1 }]}>
-            <Icon sf={route.here ? 'location.fill' : 'figure.walk'} md={route.here ? 'my_location' : 'directions_walk'} size={13} color={accent} />
-            <Text style={[styles.walkText, { color: theme.textSecondary }]}>
-              {route.here ? 'You’re here' : `${route.minutes} min · ${formatMeters(route.meters)}`}
-            </Text>
-            <Text style={[styles.walkText, { color: theme.tint }]}>Directions</Text>
-          </Pressable>
-        )}
-      </View>
-
-      {helping && <Owner task={task} />}
-      <ReplyBar task={task} helping={helping} />
-      {/* A festival-goer's request: their phone runs the same finder, so the last few metres are by Bluetooth. */}
-      {task.requestId && (
-        <Button
-          label="Find them"
-          sf="dot.radiowaves.left.and.right"
-          variant="tinted"
-          onPress={() => router.push({ pathname: '/find/[id]', params: { id: task.id, name: task.reporter.name ?? 'Festival-goer' } })}
-        />
-      )}
-
-      <View style={[styles.rule, { backgroundColor: theme.separator }]} />
-      <Details task={task} />
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id, focus: 'timeline' } })}
-        style={({ pressed }) => [styles.link, { opacity: pressed ? 0.6 : 1 }]}>
-        <Icon sf="clock" md="schedule" size={14} color={theme.textSecondary} />
-        <Text style={[styles.linkText, { color: theme.text }]}>Timeline</Text>
-        <Icon sf="chevron.right" md="chevron_right" size={11} color={theme.textTertiary} weight="semibold" />
-      </Pressable>
+    <Animated.View key={task.id} entering={FadeIn.duration(220)}>
+      <LogSheet
+        onHeadLayout={onHeadLayout}
+        minHeight={minHeight}
+        head={
+          <>
+            <Head title={task.title}>
+              <View style={styles.where}>
+                <Text style={[styles.text, styles.flex, { color: theme.textSecondary }]} numberOfLines={1}>{place}</Text>
+                {route && (
+                  <Text style={[styles.text, styles.minutes, { color: theme.textSecondary }]}>
+                    {route.here ? 'You’re here' : `${route.minutes} min`}
+                  </Text>
+                )}
+                {route && !route.here && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${route.minutes} minute walk. Directions`}
+                    hitSlop={10}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      router.push({ pathname: '/navigate/[id]', params: { id: task.id } });
+                    }}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+                    <Text style={[styles.text, styles.strong, { color: theme.tint }]}>Directions</Text>
+                  </Pressable>
+                )}
+              </View>
+            </Head>
+            {helping && (
+              <View style={styles.owner}>
+                <Owner task={task} />
+              </View>
+            )}
+          </>
+        }>
+        <LogLines id={task.id} entries={entries} />
+        {status && <NowLine status={status} />}
+      </LogSheet>
     </Animated.View>
   );
 }
 
+/**
+ * No task: the head says so; the log is the shift so far, each finished task one line (tap for its page).
+ * Done tasks come newest first; the log reads oldest first.
+ */
+export function FreeSheet({ done, onHeadLayout, minHeight }: { done: Task[] } & SheetProps) {
+  const theme = useTheme();
+  const me = useMe();
+  const { teams } = useLookups();
+  const onBreak = me?.duty !== 'on_duty';
+  const team = me?.teamSlug ? teams[me.teamSlug] : undefined;
+  const sub = [team?.name, me?.shiftEndsAt ? `until ${clockTime(me.shiftEndsAt)}` : null].filter(Boolean).join(' · ');
+  const snapshot = useSnapshot();
+  const entries = [...done].reverse().map((t): LogEntry => ({
+    id: t.id,
+    at: t.resolvedAt ?? t.lastActivityAt,
+    // How it ended, as the status says it ("Done", "Handed to medics").
+    text: `${taskStatusFor(snapshot.meId, t, snapshot, snapshot.now).label} · ${t.title}`,
+    onPress: () => router.push({ pathname: '/task/[id]', params: { id: t.id } }),
+  }));
+
+  return (
+    <LogSheet
+      onHeadLayout={onHeadLayout}
+      minHeight={minHeight}
+      head={
+        <Head title={onBreak ? 'On break' : 'Free'}>
+          {!!sub && <Text style={[styles.text, { color: theme.textSecondary }]} numberOfLines={1}>{sub}</Text>}
+        </Head>
+      }>
+      <LogLines id="shift" entries={entries} />
+    </LogSheet>
+  );
+}
+
 const styles = StyleSheet.create({
-  wrap: { gap: 14 },
-  head: { gap: 6 },
-  // Long status lines drop under the badge instead of truncating early.
-  topRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 10, rowGap: 6 },
-  status: { flexShrink: 1 },
-  title: { fontSize: Type.hero, lineHeight: 27, fontWeight: '700', letterSpacing: -0.4, marginTop: 2 },
-  where: { fontSize: Type.callout, fontWeight: '500', lineHeight: 19 },
-  walk: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 2 },
-  walkText: { fontSize: Type.footnote, fontWeight: '500', fontVariant: ['tabular-nums'] },
-  rule: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
-  link: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  linkText: { flex: 1, fontSize: Type.callout, fontWeight: '500' },
+  flex: { flex: 1 },
+  where: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  text: { fontSize: Type.body, lineHeight: 21 },
+  strong: { fontWeight: '600' },
+  minutes: { fontVariant: ['tabular-nums'] },
+  owner: { marginTop: 10 },
 });

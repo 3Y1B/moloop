@@ -1,5 +1,5 @@
 import { zoneSpot, type MapMarker } from '@/components/map/venue-map';
-import { useLookups, useSnapshot, type TeamMember } from '@/data/hooks';
+import { useSnapshot, type TeamMember } from '@/data/hooks';
 import { initials } from '@/lib/format';
 import { needsResponse } from '@/lib/lifecycle';
 import { placeOf } from '@/lib/presence';
@@ -7,14 +7,13 @@ import type { Task } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * The team on the site, as map markers: a dot per member (ring when on a task, red when they asked for help) and a
+ * The team on the site, as map markers: an ink dot per member (ring when on a task, red when they asked for help) and a
  * pin per open task. A member is where their phone says, faded once it has gone quiet; without one they stand at
  * their zone, and markers sharing a zone fan out around it. The screen's one map draws them, so switching to the
  * team doesn't rebuild the map.
  */
-export function useTeamMarkers(members: TeamMember[], tasks: Task[], color: string): MapMarker[] {
+export function useTeamMarkers(members: TeamMember[], tasks: Task[]): MapMarker[] {
   const theme = useTheme();
-  const { teams } = useLookups();
   const { positions, now } = useSnapshot();
 
   // Index 0 is the zone's centre, where I'm drawn; everyone else spreads around it.
@@ -40,7 +39,8 @@ export function useTeamMarkers(members: TeamMember[], tasks: Task[], color: stri
       kind: 'volunteer',
       id: v.id,
       at,
-      color: v.duty === 'on_break' ? theme.textTertiary : (v.teamSlug && teams[v.teamSlug]?.color) || color,
+      // Ink, not team colours: on the map, colour means help (red) or a task's priority.
+      color: v.duty === 'on_break' ? theme.textTertiary : theme.text,
       initials: initials(v.name),
       onTask: !!m.task || !!m.helping,
       needsHelp: !!m.task && needsResponse(m.task),
