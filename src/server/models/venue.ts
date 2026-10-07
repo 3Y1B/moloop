@@ -14,7 +14,7 @@ export async function zones(): Promise<Zone[]> {
   return cache.zones;
 }
 
-/** Everything the AI knows about the venue. If it isn't here, it says where the Info Tent is. */
+/** Everything the AI knows about the venue. If it isn't here, it says where Info is. */
 export const venueFacts = (zs: Zone[]) =>
   [
     ...GUEST_ANSWERS.map((a) => `- ${a.answer}`),

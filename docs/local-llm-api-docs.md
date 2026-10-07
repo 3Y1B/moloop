@@ -11,7 +11,9 @@ Self-hosted AI models on a DGX Spark, available from anywhere. Most endpoints ar
 
 ## Setup
 
-**Base URL:** `https://spark-2053.taild1460f.ts.net/v1`
+**Base URL:** `https://distinguished-directory-infrastructure-wife.trycloudflare.com/v1`
+
+This is a Cloudflare quick tunnel, so the address changes if the tunnel restarts. If requests start failing with DNS errors or Cloudflare `530`, ask the organiser for the current URL. Keep it in one environment variable (e.g. `SPARK_BASE_URL`) so it's a one-line change.
 
 **Auth:** send your API key as a bearer token on every request:
 
@@ -31,7 +33,7 @@ Client setup used by the SDK examples:
 // Node.js 20+ — npm install openai
 import OpenAI from "openai";
 const client = new OpenAI({
-  baseURL: "https://spark-2053.taild1460f.ts.net/v1",
+  baseURL: "https://distinguished-directory-infrastructure-wife.trycloudflare.com/v1",
   apiKey: process.env.SPARK_API_KEY,
 });
 ```
@@ -40,7 +42,7 @@ const client = new OpenAI({
 # Python — pip install openai
 import os
 from openai import OpenAI
-client = OpenAI(base_url="https://spark-2053.taild1460f.ts.net/v1",
+client = OpenAI(base_url="https://distinguished-directory-infrastructure-wife.trycloudflare.com/v1",
                 api_key=os.environ["SPARK_API_KEY"])
 ```
 
@@ -51,7 +53,7 @@ client = OpenAI(base_url="https://spark-2053.taild1460f.ts.net/v1",
 Standard OpenAI chat completions with `model: "qwen3.5:4b"`. Streaming (`stream: true`) works.
 
 ```bash
-curl https://spark-2053.taild1460f.ts.net/v1/chat/completions \
+curl https://distinguished-directory-infrastructure-wife.trycloudflare.com/v1/chat/completions \
   -H "Authorization: Bearer $SPARK_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -96,7 +98,7 @@ Three question types:
 | `score` | rate on an ordered scale | `score` (can land between levels), `legend`, `probabilities`, `confidence` |
 
 ```bash
-curl https://spark-2053.taild1460f.ts.net/v1/systemone \
+curl https://distinguished-directory-infrastructure-wife.trycloudflare.com/v1/systemone \
   -H "Authorization: Bearer $SPARK_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -140,7 +142,7 @@ Response:
 **With TypeSafe's SDKs:** set two environment variables, and the code is unchanged:
 
 ```bash
-export TYPESAFE_BASE_URL=https://spark-2053.taild1460f.ts.net
+export TYPESAFE_BASE_URL=https://distinguished-directory-infrastructure-wife.trycloudflare.com
 export TYPESAFE_API_KEY=$SPARK_API_KEY
 ```
 
@@ -189,7 +191,7 @@ print(r.nouls["billing"].noul, r.choices["tone"].choice)
 OpenAI-compatible transcription with `model: "qwen3-asr-1.7b"` (`whisper-1` also works as the model name). It detects the language automatically and supports 30 languages.
 
 ```bash
-curl https://spark-2053.taild1460f.ts.net/v1/audio/transcriptions \
+curl https://distinguished-directory-infrastructure-wife.trycloudflare.com/v1/audio/transcriptions \
   -H "Authorization: Bearer $SPARK_API_KEY" \
   -F file=@audio.mp3 \
   -F model=qwen3-asr-1.7b
@@ -230,7 +232,7 @@ Optional fields:
 OpenAI-compatible speech with `model: "qwen3-tts"`. **You choose the voice by describing it.**
 
 ```bash
-curl https://spark-2053.taild1460f.ts.net/v1/audio/speech \
+curl https://distinguished-directory-infrastructure-wife.trycloudflare.com/v1/audio/speech \
   -H "Authorization: Bearer $SPARK_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -312,9 +314,12 @@ Optional fields:
 | `413` | upload too large | keep audio under 25 MB |
 | `429` | rate limit, or server busy | wait a second and retry with backoff |
 | `502` | a model service is restarting | retry shortly |
+| `524` | no response within 100 s (Cloudflare's limit) | ask for shorter output, or split long audio |
+| `530` / DNS error | the tunnel restarted and the URL changed | ask the organiser for the new URL |
 
 Errors come back as JSON: `{"error": "…"}`.
 
 **Tips:**
 - The models share one GPU, so long chat replies or big transcriptions slow down everyone's requests a little. Keep requests small where you can.
-- If a connection fails before you get any response, just retry. The server sits behind a relay that occasionally drops a connection.
+- If a connection fails before you get any response, just retry. The server is on Wi-Fi that occasionally drops for a few seconds.
+- Errors from `/v1/*` paths come back as JSON. Cloudflare-level errors (`524`, `530`) come back as an HTML page, so check the status code before parsing.

@@ -6,7 +6,7 @@ import { CommandError, type Batch } from '@/lib/batch';
 import * as C from '@/lib/commands';
 import { ReplyKind, TeamSlug, type Task } from '@/lib/schema';
 import { interpreter } from '../models/interpreter';
-import { matchOpen } from '../retriage';
+import { judgeReport } from '../retriage';
 import { understandLater } from '../understand';
 import { ownClip } from '../voice';
 import { read, sql, transact, type Loaded } from '../world';
@@ -104,13 +104,10 @@ route('interpret', 'crew', z.object({ text: Text }), async (a, caller) =>
 route('commit', 'crew', z.object({ interpretation: Interpretation }), async ({ interpretation: i }, caller) => {
   const taskIds = i.intent.kind === 'reply' ? [i.intent.taskId] : [];
   const clips = ownClips(i.clips, caller);
-  // A new report is triaged before the lock is taken: the model takes seconds. A volunteer's report goes ahead of
-  // festival-goers' requests in the model queue.
-  const judged = i.intent.kind === 'report' ? await interpreter.triage({ text: i.heard, zoneSlug: null, locationHint: null, urgent: true }) : undefined;
-  // Then: is it about something already open where it's happening (else where the reporter is)?
-  const matched = judged && await read({}, ({ world }) => world).then((w) => matchOpen(Object.values(w.tasks), {
-    text: i.heard, zoneSlug: judged.value.zoneSlug ?? w.volunteers[caller.id]?.zoneSlug ?? null, locationHint: judged.value.locationHint, urgent: true,
-  }));
+  // A new report is judged before the lock is taken: the models take seconds.
+  const { judged, matched } = i.intent.kind === 'report'
+    ? await judgeReport(caller.id, caller.kind === 'crew' ? caller.role : 'volunteer', i.heard)
+    : { judged: undefined, matched: undefined };
   return transact({ taskIds: matched?.value ? [...taskIds, matched.value.taskId] : taskIds }, (b) => {
     if (i.intent.kind === 'reply') mustBeOn(taskOf(b, i.intent.taskId), caller);
     const { confirmation, later } = C.commit(b, caller.id, i, judged?.value, matched?.value);
@@ -191,7 +188,9 @@ async function ownRequest(requestId: string, caller: Caller) {
 
 route('guestRequestHuman', 'any', RequestArgs, async (a, caller) => {
   const { request } = await ownRequest(a.requestId, caller);
-  const judged = request.taskId ? undefined : await interpreter.person({ text: request.heard, zoneSlug: request.zoneSlug, locationHint: request.locationHint });
+  const judged = request.taskId ? undefined : await interpreter.person({
+    text: request.heard, zoneSlug: request.zoneSlug, locationHint: request.locationHint, from: { kind: 'festivalgoer' },
+  });
   await transact({ requestIds: [a.requestId] }, (b, w) => {
     mustOwn(w, a.requestId, caller);
     C.guestRequestHuman(b, a.requestId, judged?.value);
@@ -203,6 +202,7 @@ route('guestAddDetail', 'any', z.object({ requestId: Id, text: Text }), async (a
   const open = !!task && !['resolved', 'cancelled'].includes(task.status);
   const judged = await interpreter.detail({
     text: a.text, before: task?.summary ?? request.heard, open, zoneSlug: request.zoneSlug, locationHint: request.locationHint,
+    from: { kind: 'festivalgoer' },
   });
   return transact({ requestIds: [a.requestId] }, (b, w) => {
     mustOwn(w, a.requestId, caller);

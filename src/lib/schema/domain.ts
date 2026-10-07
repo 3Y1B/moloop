@@ -118,6 +118,11 @@ export type Escalation = {
   ownerId: string | null;
   bumpedAt: number | null;
   response: EscalationResponse | null;
+  /**
+   * 'intake': the intake agent escalated a new report before anyone was sent. The task stays open and unassigned,
+   * the allocator leaves it alone, and `reason` is the agent's. Absent: a volunteer asked for help.
+   */
+  source?: 'intake';
 };
 
 export type GuestRequestStage = 'understanding' | 'answered' | 'finding' | 'coming' | 'with_you' | 'sorted' | 'cancelled';

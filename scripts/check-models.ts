@@ -5,12 +5,13 @@
  *   npm run models:check
  *
  * The assertions are the safety ones: emergencies are never answered by the AI and never below P2, routine
- * questions are answered in the asker's language, and a reply to your task is not filed as a new report.
+ * questions are answered in the asker's language, a reply to your task is not filed as a new report, and the intake
+ * agent escalates what a volunteer mustn't act on alone (to Mo for whole-event calls) and nothing routine.
  */
 process.env.USE_LIVE_MODELS = '1';
 
 const { SparkInterpreter } = await import('../src/server/models/interpreter');
-const { chatModelId } = await import('../src/server/models');
+const { chatModelId, toolModelId } = await import('../src/server/models');
 const { sql } = await import('../src/server/world');
 import type { Task } from '../src/lib/schema';
 
@@ -18,6 +19,10 @@ const interpreter = new SparkInterpreter();
 const none = { zoneSlug: null, locationHint: null };
 let failures = 0;
 const lat: number[] = [];
+
+function escalation(e: { level: string; reason: string } | null) {
+  return e ? ` ESCALATE(${e.level}: ${e.reason})` : ' create_task';
+}
 
 function expect(label: string, ok: boolean, detail?: unknown) {
   if (!ok) failures++;
@@ -30,7 +35,7 @@ async function timed<T>(f: () => Promise<T>) {
   return [v, Date.now() - t0] as const;
 }
 
-console.log(`chat model: ${chatModelId()}\n`);
+console.log(`chat model: ${chatModelId()}, intake agent: ${toolModelId()}\n`);
 
 // ── festival-goers ──
 
@@ -49,8 +54,40 @@ const asks: [string, (u: Awaited<ReturnType<typeof interpreter.understand>>['val
 const zoned: Record<string, string> = { 'the band in the green room needs more water': 'backstage' };
 for (const [text, ok] of asks) {
   const [{ value, run }, ms] = await timed(() => interpreter.understand({ text, zoneSlug: zoned[text.toLowerCase()] ?? null, locationHint: null }));
-  const shown = value.kind === 'answer' ? `answer(${value.language}) ${value.answer}` : `${value.team} ${value.priority} ${value.language} "${value.title}"`;
+  const shown = value.kind === 'answer' ? `answer(${value.language}) ${value.answer}` : `${value.team} ${value.priority} ${value.language} "${value.title}"${escalation(value.escalate)}`;
   expect(`ask "${text}" -> ${shown} [${ms} ms]`, ok(value) && !run.error, { value, error: run.error });
+}
+
+// ── intake: create_task or escalate ──
+
+const routed: [string, (t: Awaited<ReturnType<typeof interpreter.triage>>['value']) => boolean][] = [
+  ['the PA at the Oval Stage is sparking, stop the set', (t) => t.escalate?.level === 'coordinator'],
+  ['someone is threatening people with a knife and we need police at gate A', (t) => t.escalate?.level === 'coordinator' && t.priority === 'P1'],
+  ['the headliner wants to swap set times with the support act', (t) => !!t.escalate],
+  ['a vendor is demanding a refund for their stall fee', (t) => !!t.escalate],
+  ['there is a photographer from a newspaper backstage without a pass', (t) => !!t.escalate],
+  ["guy collapsed at the Oval Stage, he isn't moving", (t) => t.team === 'first-aid' && t.priority === 'P1'],
+  ['bin overflowing at Food Alley', (t) => !t.escalate && t.priority === 'P3'],
+  ['the band in the green room ran out of ice', (t) => !t.escalate],
+];
+for (const [text, ok] of routed) {
+  const [{ value, run }, ms] = await timed(() => interpreter.triage({ text, ...none }));
+  expect(`route "${text}" -> ${value.team} ${value.priority}${escalation(value.escalate)} [${ms} ms]`, ok(value) && !run.error, { value, error: run.error });
+}
+
+// Who sent it: a volunteer's own place fills in "over here", and nobody escalates to themselves.
+const volunteer = { kind: 'staff' as const, role: 'volunteer', teamSlug: 'ops' as const };
+const senders: [string, Parameters<typeof interpreter.triage>[0], (t: Awaited<ReturnType<typeof interpreter.triage>>['value']) => boolean][] = [
+  ['volunteer at Food Alley: "spill over here"', { text: 'big spill over here, someone could slip', zoneSlug: 'food-alley', locationHint: null, from: volunteer },
+    (t) => t.zoneSlug === 'food-alley' && t.team === 'ops' && !t.escalate],
+  ['Mo: "stop the set at the Oval Stage, the PA is sparking"', { text: 'stop the set at the Oval Stage, the PA is sparking', zoneSlug: null, locationHint: null, from: { kind: 'staff', role: 'coordinator', teamSlug: null } },
+    (t) => !t.escalate],
+  ['ops lead: "we need to evacuate the oval, the stage roof is failing"', { text: 'we need to evacuate the oval, the stage roof is failing', zoneSlug: null, locationHint: null, from: { kind: 'staff', role: 'team_lead', teamSlug: 'ops' } },
+    (t) => t.escalate?.level === 'coordinator'],
+];
+for (const [label, heard, ok] of senders) {
+  const [{ value, run }, ms] = await timed(() => interpreter.triage(heard));
+  expect(`from ${label} -> ${value.team} ${value.priority} zone=${value.zoneSlug}${escalation(value.escalate)} [${ms} ms]`, ok(value) && !run.error, { value, error: run.error });
 }
 
 // ── volunteers ──

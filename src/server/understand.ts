@@ -16,7 +16,7 @@ export async function understandRequest(requestId: string) {
   try {
     const r = await read({ requestIds: [requestId] }, ({ world }) => world.requests[requestId]);
     if (!r || r.stage !== 'understanding') return;
-    const { value, run } = await interpreter.understand({ text: r.heard, zoneSlug: r.zoneSlug, locationHint: r.locationHint });
+    const { value, run } = await interpreter.understand({ text: r.heard, zoneSlug: r.zoneSlug, locationHint: r.locationHint, from: { kind: 'festivalgoer' } });
     // A report (not a question) may be about something already open nearby.
     const matched = value.kind === 'task'
       ? await read({}, ({ world }) => Object.values(world.tasks)).then((tasks) => matchOpen(tasks, {

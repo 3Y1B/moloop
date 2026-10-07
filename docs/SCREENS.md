@@ -79,7 +79,7 @@ Both land in the lead's **Needs you** list.
 | Response | Effect | Task after |
 | --- | --- | --- |
 | **Send backup** | Pick a volunteer (suggested: nearest free on the same team). They get it as their active task, as a helper. The original volunteer stays on it. | `escalated` → `accepted`, with `helperIds` and `escalation.response` set |
-| **Hand over** | Pick a target: First Aid Post medics, Security, or Emergency services. The volunteer stays until they arrive; then the lead taps "Arrived" and the volunteer is freed. | `escalated` → `resolved` with `resolution: 'handed_over'` on "Arrived" |
+| **Hand over** | Pick a target: First Aid medics, Security, or Emergency services. The volunteer stays until they arrive; then the lead taps "Arrived" and the volunteer is freed. | `escalated` → `resolved` with `resolution: 'handed_over'` on "Arrived" |
 | **Reassign** | Pick a volunteer. The original volunteer is freed and their next queued task is promoted. | `assigned` to the new volunteer |
 | **Call** | Opens the dialer to the volunteer. Afterwards the lead picks another response, or **Carry on**. | stays `escalated` until the follow-up |
 | **Close** | Not needed. Optional reason. | `cancelled` |

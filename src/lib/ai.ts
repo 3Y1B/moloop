@@ -5,6 +5,9 @@ import type { IncidentCategory, Priority, TeamSlug } from '@/lib/schema';
  * model call can't happen inside one: the server asks first, outside the world lock, and hands the answer in.
  */
 
+/** The intake agent's `escalate`: a lead or Mo decides before anyone is sent. `reason` is what they read. */
+export type EscalateTo = { level: 'lead' | 'coordinator'; reason: string };
+
 /** A report or request, understood: where it goes, how urgent, and how to say it to a lead on a phone. */
 export type Triage = {
   team: TeamSlug;
@@ -18,6 +21,8 @@ export type Triage = {
   locationHint: string | null;
   /** ISO 639-1 of what the reporter wrote ("es"), since volunteers are matched on languages spoken. */
   language: string;
+  /** Set when the intake agent escalated instead of creating a task for the allocator. */
+  escalate: EscalateTo | null;
 };
 
 /** A festival-goer's request: a routine question the AI answers itself, or a task for people. */

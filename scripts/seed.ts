@@ -1,6 +1,6 @@
 /**
  * Fills the festival world after `supabase db reset` (which loads teams, skills and zones from seed.sql):
- *  - zone lat/lng from the site plan (src/data/venue.ts), so the database and the map agree
+ *  - zone names and lat/lng from the site plan (src/data/venue.ts), so the database and the map agree
  *  - crew accounts from supabase/crew.json (falls back to crew.example.json): auth user, profile, skills
  * Safe to re-run. Works against local or hosted: reads SUPABASE_URL and SUPABASE_SECRET_KEY.
  *
@@ -38,7 +38,7 @@ function ok(res: { error: { message: string } | null }, what: string) {
 async function seedZones() {
   for (const z of Object.values(VENUE_ZONES)) {
     const [lng, lat] = toLngLat(NODES[z.node]);
-    const rows = must(await db.from('zones').update({ lat, lng }).eq('slug', z.slug).select('slug'), `zone ${z.slug}`);
+    const rows = must(await db.from('zones').update({ name: z.label, lat, lng }).eq('slug', z.slug).select('slug'), `zone ${z.slug}`);
     if (!rows.length) throw new Error(`zone ${z.slug} is on the site plan but not in seed.sql`);
   }
   console.log(`zones: ${Object.keys(VENUE_ZONES).length} placed`);

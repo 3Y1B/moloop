@@ -46,7 +46,7 @@ async function vocabulary() {
 const norm = (s: string) => s.toLowerCase().replace(/^vocabulary:\s*/, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 /**
- * Given silence or noise, the recogniser can read its hint back ("Backstage, First Aid Post, Food Alley, ...").
+ * Given silence or noise, the recogniser can read its hint back ("Backstage, First Aid, Food Alley, ...").
  * That's nothing said: a transcript that is mostly a run of hint words counts as empty.
  */
 export function echoesHint(text: string, words: string[]) {

@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 
 import { rankCandidates } from '@/lib/candidates';
-import { isActive, isOnTask, isQuiet, needsResponse, quietSince } from '@/lib/lifecycle';
+import { isActive, isHeld, isOnTask, isQuiet, needsResponse, quietSince } from '@/lib/lifecycle';
 import { meetingPoint, onSite, placeOf, PRESENCE, type Place } from '@/lib/presence';
 import { routeBetween } from '@/lib/route';
 import type { GuestRequest, Proposal, Task, Team, TeamSlug, Volunteer, VolunteerRole } from '@/lib/schema';
@@ -145,7 +145,7 @@ export function useRouteTo(task: Task | undefined) {
 
 // ── Leads and Mo ──
 
-export type NeedsKind = 'help' | 'quiet' | 'approval' | 'handover' | 'unassigned';
+export type NeedsKind = 'help' | 'escalated' | 'quiet' | 'approval' | 'handover' | 'unassigned';
 export type NeedsItem = {
   kind: NeedsKind;
   task: Task;
@@ -155,12 +155,12 @@ export type NeedsItem = {
   since: number;
 };
 
-const NEEDS_ORDER: NeedsKind[] = ['help', 'quiet', 'approval', 'handover', 'unassigned'];
+const NEEDS_ORDER: NeedsKind[] = ['help', 'escalated', 'quiet', 'approval', 'handover', 'unassigned'];
 
 /**
- * The lead's or Mo's "Needs you" list. Lead: their team's help requests (still shown after a bump),
- * quiet tasks, pending approvals, handovers waiting on "Arrived", unassigned tasks.
- * Mo: what was bumped (or has no lead), P1 approvals, unassigned P1/P2. Volunteers get nothing.
+ * The lead's or Mo's "Needs you" list. Lead: their team's help requests and AI escalations (still shown after a
+ * bump), quiet tasks, pending approvals, handovers waiting on "Arrived", unassigned tasks.
+ * Mo: what was bumped or escalated to Mo (or has no lead), P1 approvals, unassigned P1/P2. Volunteers get nothing.
  */
 export function useNeedsMe(): NeedsItem[] {
   const s = useSnapshot();
@@ -177,6 +177,8 @@ export function useNeedsMe(): NeedsItem[] {
       const e = t.escalation;
       if (needsResponse(t) && (lead ? mine(t) : e?.level === 'coordinator')) {
         items.push({ kind: 'help', task: t, since: e?.at ?? t.lastActivityAt });
+      } else if (isHeld(t)) {
+        if (lead ? mine(t) : e?.level === 'coordinator') items.push({ kind: 'escalated', task: t, since: e?.at ?? t.createdAt });
       } else if (t.status === 'escalated' && e?.response?.kind === 'handover' && (lead ? mine(t) : e.response.byId === me.id)) {
         items.push({ kind: 'handover', task: t, since: e.response.at });
       } else if (isQuiet(t) && mine(t)) {

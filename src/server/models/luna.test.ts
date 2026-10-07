@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { fakeHttp, type FakeReply } from './fake-http';
 import { LunaLlm } from './luna';
 
 const Incident = z.object({ title: z.string(), urgent: z.boolean() });
@@ -100,5 +101,57 @@ describe('LunaLlm.generate', () => {
 
     await expect(llm.generate(ask)).resolves.toEqual({ title: 'Man collapsed', urgent: true });
     expect(requests).toHaveLength(2);
+  });
+});
+
+describe('LunaLlm.callTool', () => {
+  const Escalate = z.object({ level: z.enum(['lead', 'coordinator']), reason: z.string() });
+  const tools = [
+    { name: 'create_task', description: 'A volunteer can handle it', args: z.object({ title: z.string() }) },
+    { name: 'escalate', description: 'A lead or Mo decides', args: Escalate },
+  ];
+  const called = (name: string, args: unknown) => ({
+    json: { choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }] },
+  });
+  const said = (content: string) => ({ json: { choices: [{ message: { role: 'assistant', content } }] } });
+  const agent = (...replies: FakeReply[]) => {
+    const fake = fakeHttp(...replies);
+    return { llm: new LunaLlm({ baseUrl: 'https://api.test/v1', apiKey: 'k', model: 'gpt-6-luna', fetch: fake.fetch, retryDelayMs: 0 }), requests: fake.requests };
+  };
+  const ask = { system: 'You are the intake desk.', prompt: 'stop the set', tools };
+
+  it('offers the tools as strict functions and returns the call', async () => {
+    const { llm, requests } = agent(called('escalate', { level: 'coordinator', reason: 'Stop a performance' }));
+
+    await expect(llm.callTool(ask)).resolves.toEqual({ tool: 'escalate', args: { level: 'coordinator', reason: 'Stop a performance' } });
+    expect(requests[0].json).toMatchObject({
+      tool_choice: 'auto',
+      parallel_tool_calls: false,
+      tools: [
+        { type: 'function', function: { name: 'create_task', strict: true } },
+        { type: 'function', function: { name: 'escalate', strict: true, parameters: { required: ['level', 'reason'], additionalProperties: false } } },
+      ],
+    });
+  });
+
+  it('returns plain text when the model answers without a tool', async () => {
+    const { llm } = agent(said('Toilets are by the tennis courts.'));
+
+    await expect(llm.callTool(ask)).resolves.toEqual({ text: 'Toilets are by the tennis courts.' });
+  });
+
+  it('sends a bad call back as the tool result once, then takes the corrected call', async () => {
+    const { llm, requests } = agent(called('escalate', { level: 'boss', reason: 'x' }), called('escalate', { level: 'lead', reason: 'x' }));
+
+    await expect(llm.callTool(ask)).resolves.toEqual({ tool: 'escalate', args: { level: 'lead', reason: 'x' } });
+    const retry = requests[1].json.messages;
+    expect(retry[2]).toMatchObject({ role: 'assistant', tool_calls: [{ id: 'call_1' }] });
+    expect(retry[3]).toMatchObject({ role: 'tool', tool_call_id: 'call_1', content: expect.stringContaining('level') });
+  });
+
+  it('gives up after the repair also fails, so the report goes to a person', async () => {
+    const { llm } = agent(called('page_everyone', {}), called('page_everyone', {}));
+
+    await expect(llm.callTool(ask)).rejects.toThrow(/invalid tool call/);
   });
 });
