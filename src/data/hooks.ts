@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 
 import { rankCandidates } from '@/lib/candidates';
+import { crewFor, teamStats, type TeamStat } from '@/lib/crew';
 import { isActive, isOnTask } from '@/lib/lifecycle';
 import { needsFor, type NeedsItem } from '@/lib/needs';
 import { meetingPoint, onSite, placeOf, PRESENCE, type Place } from '@/lib/presence';
@@ -9,6 +10,7 @@ import type { GuestRequest, Proposal, Task, Team, TeamSlug, Volunteer, Volunteer
 import { NODES, toPlan, VENUE_ZONES, type Point } from './venue';
 import { getLatest, getPinned, subscribe as onFix } from './location';
 import { guestStage, memberStatus, taskStatusFor, type GuestStatus, type Status } from '@/lib/status';
+import { chosenTeam, onTeamChange } from '@/lib/team-pill';
 import { useSnapshot } from './provider';
 
 export { useRepo, useSnapshot } from './provider';
@@ -154,51 +156,42 @@ export function useNeedsMe(): NeedsItem[] {
   return useMemo(() => needsFor(s, s.meId), [s.tasks, s.proposals, s.volunteers, s.meId]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-export type TeamMember = { volunteer: Volunteer; status: Status; task?: Task; helping?: Task };
-
-const TONE_RANK: Record<Status['tone'], number> = { danger: 0, warning: 1, tint: 2, neutral: 3, success: 3 };
+export type { TeamMember } from '@/lib/crew';
+export type { TeamStat } from '@/lib/crew';
 
 /** A team at a glance: members (most urgent first, not me), their tasks, and the team's open and active tasks. Defaults to my team. */
 export function useTeam(teamSlug?: TeamSlug | null) {
   const s = useSnapshot();
   const slug = teamSlug === undefined ? (s.meId ? s.volunteers[s.meId]?.teamSlug ?? null : null) : teamSlug;
   return useMemo(() => {
-    const all = Object.values(s.tasks);
-    const teamTasks = all.filter((t) => t.teamSlug === slug);
-    const members: TeamMember[] = Object.values(s.volunteers)
-      .filter((v) => v.teamSlug === slug && v.id !== s.meId)
-      .map((v) => ({
-        volunteer: v,
-        status: memberStatus(v, all, s.now, s),
-        task: all.filter((t) => t.assigneeId === v.id && isActive(t)).sort(byPriorityThenAge)[0],
-        helping: all.find((t) => isActive(t) && t.helperIds.includes(v.id)),
-      }))
-      .sort((a, b) => TONE_RANK[a.status.tone] - TONE_RANK[b.status.tone] || a.volunteer.name.localeCompare(b.volunteer.name));
+    const { members, openTasks } = slug ? crewFor(s, s.meId, slug) : { members: [], openTasks: [] };
     return {
       team: slug ? (s.teams[slug] as Team | undefined) : undefined,
       members,
       /** Unassigned and queued, most urgent first. */
-      openTasks: teamTasks.filter((t) => t.status === 'open' || t.status === 'queued').sort(byPriorityThenAge),
-      activeTasks: teamTasks.filter(isActive).sort(byPriorityThenAge),
+      openTasks,
+      activeTasks: Object.values(s.tasks).filter((t) => t.teamSlug === slug && isActive(t)).sort(byPriorityThenAge),
     };
   }, [s, slug]);
 }
 
-/** Everyone on the crew but me, as team members, and every unassigned or queued task: Mo's map. */
-export function useCrew() {
+/** Everyone on the crew but me (or one team's people), most urgent first, and their unassigned or queued tasks: Mo's list and map. */
+export function useCrew(team: TeamSlug | null = null) {
   const s = useSnapshot();
-  return useMemo(() => {
-    const all = Object.values(s.tasks);
-    const members: TeamMember[] = Object.values(s.volunteers)
-      .filter((v) => v.id !== s.meId)
-      .map((v) => ({
-        volunteer: v,
-        status: memberStatus(v, all, s.now, s),
-        task: all.filter((t) => t.assigneeId === v.id && isActive(t)).sort(byPriorityThenAge)[0],
-        helping: all.find((t) => isActive(t) && t.helperIds.includes(v.id)),
-      }));
-    return { members, openTasks: all.filter((t) => t.status === 'open' || t.status === 'queued').sort(byPriorityThenAge) };
-  }, [s]);
+  return useMemo(() => crewFor(s, s.meId, team), [s, team]);
+}
+
+/** Per team: on duty, on a task, free, on break, and the lead. For Mo's team pills. */
+export function useTeamStats(): TeamStat[] {
+  const s = useSnapshot();
+  return useMemo(() => teamStats(s, s.meId), [s]);
+}
+
+/** The team pill Mo has picked, shared by the Crew list and the maps. All (`null`) once nobody is rostered on it. */
+export function useChosenTeam(): TeamSlug | null {
+  const chosen = useSyncExternalStore(onTeamChange, chosenTeam);
+  const stats = useTeamStats();
+  return chosen && stats.some((t) => t.slug === chosen) ? chosen : null;
 }
 
 /** The whole event, for Mo and the map: every active task, every unassigned one, everyone on duty. */

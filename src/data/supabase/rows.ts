@@ -59,6 +59,7 @@ export function toTeam(row: Pick<Row<'teams'>, 'slug' | 'name' | 'color'>): Team
   return {
     slug: row.slug as TeamSlug,
     name: row.name,
+    short: icon?.short ?? row.name,
     color: row.color ?? icon?.color ?? '#8E8E93',
     sf: icon?.sf ?? 'person.3.fill',
     md: icon?.md ?? 'groups',

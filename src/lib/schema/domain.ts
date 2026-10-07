@@ -8,6 +8,8 @@ import type { IncidentCategory, Priority, ReplyKind, TaskStatus, TeamSlug } from
 export type Team = {
   slug: TeamSlug;
   name: string;
+  /** For tight spaces like Mo's team pills: "First Aid", not "First Aid & Heat". */
+  short: string;
   color: string;
   /** SF Symbol name; Android falls back to `md`. */
   sf: string;
