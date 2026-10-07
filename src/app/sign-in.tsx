@@ -13,7 +13,17 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import Animated, { FadeIn, FadeInDown, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  LinearTransition,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LoopMark } from '@/components/brand/loop-mark';
@@ -27,7 +37,8 @@ import { useTheme } from '@/hooks/use-theme';
 type Step = 'choose' | 'email' | 'code';
 
 const CODE_LENGTH = 6;
-const EASE = LinearTransition.duration(380);
+/** One calm curve for the whole hero: no overshoot, no stretch. */
+const EASE = { duration: 420, easing: Easing.bezier(0.25, 0.1, 0.25, 1) };
 
 /** Supabase auth errors → one short line. */
 function problem(e: unknown): string {
@@ -52,6 +63,16 @@ export default function SignInScreen() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState<'guest' | 'crew' | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 1 = open (choose), 0 = collapsed (form). Drives height, mark size and tagline together.
+  const open = step === 'choose';
+  const progress = useSharedValue(open ? 1 : 0);
+  useEffect(() => {
+    progress.value = withTiming(open ? 1 : 0, EASE);
+  }, [open, progress]);
+  const tall = Math.max(insets.top + 300, height * 0.56);
+  const short = insets.top + 168;
+  const heroStyle = useAnimatedStyle(() => ({ height: interpolate(progress.value, [0, 1], [short, tall]) }));
 
   if (s.meId) return <Redirect href="/" />;
   // Signed in, world still loading.
@@ -89,16 +110,13 @@ export default function SignInScreen() {
   const send = () => validEmail && !busy && run('crew', () => sendCode(email), 'code');
   const verify = () => validCode && !busy && run('crew', () => verifyCode(email, code));
 
-  const open = step === 'choose';
-  const heroHeight = open ? Math.max(insets.top + 300, height * 0.56) : insets.top + 168;
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={[styles.screen, { backgroundColor: theme.background }]}>
       <StatusBar style="light" />
 
-      <Animated.View layout={EASE} style={[styles.hero, { height: heroHeight, paddingTop: insets.top }]}>
+      <Animated.View style={[styles.hero, { paddingTop: insets.top }, heroStyle]}>
         {/* A big faint loop behind the mark, so the blue isn't a flat slab. */}
         <View pointerEvents="none" style={styles.backdrop}>
           <LoopMark width={640} color="#FFFFFF" />
@@ -118,10 +136,10 @@ export default function SignInScreen() {
           </Animated.View>
         )}
 
-        <Brandmark open={open} />
+        <Brandmark progress={progress} />
       </Animated.View>
 
-      <Animated.View layout={EASE} style={[styles.body, { paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.body, { paddingBottom: insets.bottom + 16 }]}>
         {step === 'choose' && (
           <Animated.View key="choose" entering={FadeInDown.duration(320)} style={styles.stack}>
             <Choice
@@ -185,28 +203,24 @@ export default function SignInScreen() {
         )}
 
         <Text style={[styles.error, { color: theme.danger }]}>{error ?? ' '}</Text>
-      </Animated.View>
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
 /** Loop + wordmark. Shrinks out of the way once there's a form to fill. */
-function Brandmark({ open }: { open: boolean }) {
-  const scale = useSharedValue(open ? 1 : 0.62);
-  useEffect(() => {
-    scale.value = withTiming(open ? 1 : 0.62, { duration: 380 });
-  }, [open, scale]);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+function Brandmark({ progress }: { progress: SharedValue<number> }) {
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: interpolate(progress.value, [0, 1], [0.62, 1]) }] }));
+  // Stays mounted so the stack never jumps; it just fades with the hero.
+  const tagline = useAnimatedStyle(() => ({ opacity: interpolate(progress.value, [0.6, 1], [0, 1], 'clamp') }));
 
   return (
     <Animated.View style={[styles.brand, style]}>
       <LoopMark width={132} alive />
       <Text style={styles.wordmark}>moloop</Text>
-      {open && (
-        <Animated.Text entering={FadeIn.delay(500).duration(400)} style={styles.tagline}>
-          Everyone in the loop
-        </Animated.Text>
-      )}
+      <Animated.View entering={FadeIn.delay(500).duration(400)}>
+        <Animated.Text style={[styles.tagline, tagline]}>Everyone in the loop</Animated.Text>
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -308,7 +322,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backdrop: { position: 'absolute', left: -150, bottom: -120, opacity: 0.07 },
+  // Pinned to the top so collapsing just crops it instead of dragging it around.
+  backdrop: { position: 'absolute', left: -150, top: 150, opacity: 0.045 },
   backWrap: { position: 'absolute', left: 16, zIndex: 1 },
   back: {
     width: 38,
@@ -358,7 +373,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 10,
   },
-  fieldInput: { flex: 1, height: '100%', fontSize: Type.body + 2 },
+  fieldInput: { flex: 1, height: '100%', fontSize: Type.body + 2, outlineWidth: 0, outlineColor: 'transparent' },
 
   cells: { flexDirection: 'row', gap: 8 },
   cell: {
@@ -371,7 +386,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cellText: { fontSize: 24, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  hiddenInput: { ...StyleSheet.absoluteFill, opacity: 0.011, color: 'transparent' },
+  hiddenInput: { ...StyleSheet.absoluteFill, opacity: 0.011, color: 'transparent', outlineWidth: 0, outlineColor: 'transparent' },
 
   error: { fontSize: Type.callout, minHeight: 20, textAlign: 'center' },
 });

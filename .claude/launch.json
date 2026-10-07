@@ -1,0 +1,97 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "expo",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--port",
+        "8081",
+        "--clear"
+      ],
+      "port": 8081
+    },
+    {
+      "name": "expo-alt",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--port",
+        "8082"
+      ],
+      "port": 8082
+    },
+    {
+      "name": "expo-8083",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--port",
+        "8083"
+      ],
+      "port": 8083
+    },
+    {
+      "name": "server-check",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "POLICY_SCALE=0.05",
+        "POLICY_AUTO_ASSIGN_MS=3000",
+        "SCHEDULER_MS=500",
+        "USE_LIVE_MODELS=0",
+        "bun",
+        "src/server/main.ts"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "server-check-live",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "POLICY_SCALE=0.05",
+        "POLICY_AUTO_ASSIGN_MS=3000",
+        "SCHEDULER_MS=500",
+        "USE_LIVE_MODELS=1",
+        "bun",
+        "src/server/main.ts"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "server-live",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "USE_LIVE_MODELS=1",
+        "bun",
+        "src/server/main.ts"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "speech-local",
+      "runtimeExecutable": "/Users/tanatchanwangsa/.local/bin/mlx_audio.server",
+      "runtimeArgs": [
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8790"
+      ],
+      "port": 8790
+    },
+    {
+      "name": "server-live-local-speech",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "USE_LIVE_MODELS=1",
+        "SPEECH_BASE_URL=http://127.0.0.1:8790/v1",
+        "bun",
+        "src/server/main.ts"
+      ],
+      "port": 8787
+    }
+  ]
+}

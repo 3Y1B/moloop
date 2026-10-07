@@ -52,7 +52,10 @@ const must = <T>(res: { data: T | null; error: { message: string } | null }, wha
   return res.data ?? ([] as unknown as T);
 };
 
-type Change<T extends keyof Database['public']['Tables']> = RealtimePostgresChangesPayload<Row<T>>;
+/** Repos made so far in this process: each one's realtime channels carry its number. */
+let repoCount = 0;
+
+type Change<T extends keyof Database['public']['Tables']> =RealtimePostgresChangesPayload<Row<T>>;
 
 /**
  * The live Repo. Reads straight from Supabase (RLS decides what this caller sees) and stays fresh over
@@ -68,6 +71,7 @@ export class SupabaseRepo implements Repo {
   /** task id → report id, so a realtime row (no embed) keeps its reporter unless the report changed. */
   private reportOf = new Map<string, string>();
 
+  private readonly id = ++repoCount;
   private userId: string | null | undefined = undefined;
   private anonymous = false;
   /** Bumped on every session change: async work for an older session drops its result. */
@@ -302,6 +306,7 @@ export class SupabaseRepo implements Repo {
   private connect(gen: number) {
     const uid = this.userId;
     if (!uid) return;
+    console.warn('[DBG] connect', this.id, gen, new Error().stack?.split('\n').slice(2,5).join(' | '));
     this.hydrating = true;
     const pg = <T extends keyof Database['public']['Tables']>(table: T, handle: (p: Change<T>) => void, filter?: string) =>
       (channel: RealtimeChannel) =>
@@ -313,7 +318,9 @@ export class SupabaseRepo implements Repo {
 
     // Every table the phone reads that's in the supabase_realtime publication, minus shift_assignments (not in
     // the snapshot). `messages` arrive through the caller's own deliveries.
-    let channel = this.db.channel(`repo:${uid}:${gen}`, { config: { postgres_changes_options: { wait: true } } });
+    // supabase-js hands back the existing channel for a topic that's already open on the client, so the topic
+    // is unique per repo as well as per session: two repos on one client must never share a channel.
+    let channel = this.db.channel(`repo:${this.id}:${uid}:${gen}`, { config: { postgres_changes_options: { wait: true } } });
     for (const add of [
       pg('tasks', (p) => this.onTask(p)),
       pg('task_assignments', (p) => this.onAssignment(p)),
