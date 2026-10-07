@@ -56,6 +56,9 @@ export const Colors = {
   },
 } as const;
 
+/** The loop mark: mist on blue. Same in light and dark so the icon, splash and sign-in match. */
+export const Brand = { blue: '#2F6BF5', mist: '#C9DCFF' } as const;
+
 /** The voice gradient: sky → azure → cobalt. Used by the orb, transcripts and routes. */
 export const VoiceGradient = ['#4FB2FF', '#3B86F7', '#2A5FE0'] as const;
 
