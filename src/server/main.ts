@@ -7,10 +7,16 @@
  * lifecycle timings (./policy.ts).
  */
 import { app } from './http/app';
+import { warmSpeech } from './models/speech';
 import { applyPolicyFromEnv } from './policy';
 import { startScheduler } from './scheduler';
+import { speakBriefs } from './voice';
+import { afterCommit } from './world';
 
 applyPolicyFromEnv();
+// Only the server speaks: a script that runs a second scheduler in-process mustn't render briefs twice.
+afterCommit(speakBriefs);
+warmSpeech().catch((e) => console.error('[voice] warming the speech models failed', e));
 
 const port = Number(process.env.PORT ?? 8787);
 const schedulerMs = Number(process.env.SCHEDULER_MS ?? 5_000);

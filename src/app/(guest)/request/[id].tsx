@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -20,13 +20,6 @@ import { VENUE_ZONES } from '@/data/venue';
 import { useLookups, useNow, useRepo, useRequest, type RequestView } from '@/data/hooks';
 import { useTheme } from '@/hooks/use-theme';
 
-// Demo lines until real STT: one plain update, one that sounds worse (the AI alerts the lead).
-const LINES = [
-  'we’ve moved into the shade, um, right by the {fins|bins}',
-  'she’s, uh, she’s getting worse, she just {vomited|vomited}',
-];
-const MORE = 'and she’s {drinking|drinking} some water now';
-
 /**
  * The "Uber" view: who's coming on the map, the status and steps on the sheet, and the assistant
  * at the bottom for anything that's changed. The AI decides whether a detail is a note or alerts the lead.
@@ -36,7 +29,6 @@ export default function RequestScreen() {
   const repo = useRepo();
   const { id } = useLocalSearchParams<{ id: string }>();
   const view = useRequest(id);
-  const turn = useRef(0);
   const stage = view?.status.stage;
   const open = stage === 'finding' || stage === 'coming' || stage === 'with_you';
   const layout = useMapLayout(open ? 190 : 150, { dock: open });
@@ -84,7 +76,6 @@ export default function RequestScreen() {
       {open && (
         <VoiceDock
           placeholder="Add detail"
-          script={(before) => (before ? MORE : LINES[turn.current++ % LINES.length])}
           onSend={async (text) => ((await repo.guestAddDetail(request.id, text)).escalated ? 'Lead alerted.' : 'Note added.')}
         />
       )}

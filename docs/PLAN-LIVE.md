@@ -12,7 +12,7 @@ Everything below is the gap between today and that video. The site plan is alrea
 | Lifecycle | Pure functions in `src/lib/lifecycle.ts`, driven by `MockRepo` | The same functions, driven by one server |
 | Pipeline | `src/server/pipeline`: route → triage → assign, each report handled once | The same pipeline plus re-triage of follow-ups, writing to Supabase |
 | Models | Keyword stand-ins by default; with `USE_LIVE_MODELS=1`, Spark (typed decisions) and GPT-6 Luna (chat) decide everything the server decides | Add Spark `qwen3-asr` for speech-to-text and `qwen3-tts` for text-to-speech (phase 4) |
-| Voice | `useSimulatedTranscript` plays a script | Mic → Spark ASR → "Heard: …" → interpret |
+| Voice | Hold the pill → `expo-audio` → `/api/transcribe` → Qwen3-ASR → "Heard: …"; spoken briefs through Qwen3-TTS (phase 4) | Spark reachable on the day |
 | Location | Volunteers sit at their zone's node | GPS stream → presence → map, routes and assignment distance |
 | Alerts | In-app messages only | Push notification when the phone is locked; spoken brief when the app is open |
 | Schema | `supabase/migrations/…_init.sql` covers reports, tasks, assignments, events, messages | Add guest requests, presence, escalation and helpers on tasks |
@@ -161,6 +161,39 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - Earbuds or bone-conduction headsets for volunteers on the day. Phone speakers on an open oval are hard to hear and hard to film.
 
 **Done when:** someone holds the pill, says "there's a guy who's collapsed by the food stalls", and a P1 proposal appears on Mo's screen.
+
+**Status:** done locally, on the server and in the app build. Checked end to end with real speech by `npm run voice:check`, on the same Qwen3 models running on a Mac (Spark was unreachable that day).
+
+- **In.**
+  - Holding the pill records mono AAC at 16 kHz with `expo-audio` (`src/components/voice/use-hold-to-talk.ts`), about 8 KB a second. The waveform follows the real mic level.
+  - Letting go POSTs the clip to `/api/transcribe` (multipart, any signed-in caller). The answer is `{ text, clip }`, and the "Heard" tray shows the text for every dock, festival-goers' included.
+  - A tap shorter than 0.4 s, or a hold that never got louder than −45 dBFS, isn't sent: the recogniser invents words from silence.
+  - The first hold asks for the microphone.
+- **Clips are kept.**
+  - Every clip goes in the private `voice` bucket at `<caller>/<clip>.<ext>`, uploaded alongside the transcription so it never delays "Heard".
+  - A report made from speech lists its clips in `reports.voice_clips`, one per hold ("hold to add more" makes two). For festival-goers they go in `guest_requests.voice_clips` and are copied onto the report when a task is made.
+  - The server only accepts your own clips. Migration `…_voice.sql`.
+- **Vocabulary.** ASR gets a hint with the zone names and crew first names (`Tin Alley`, `Priya`).
+- **Out.**
+  - After a transaction commits, each spoken message (a new task when you're free, backup, next up) is rendered by TTS. It goes in the `speech` bucket at `<recipient>/<message>.mp3`, and `message_deliveries.audio_path` points at it.
+  - The phone sees that update over realtime. If the app is open and the message is under 2 minutes old and unread, it plays (`use-spoken-briefs.ts`).
+  - Holding the pill cuts a brief off; it starts again after "Heard". Only the recipient can read their own audio (storage RLS).
+  - Briefs are on with `USE_LIVE_MODELS=1`.
+- **Speech server.**
+  - Spark by default, sharing its queue.
+  - `SPEECH_BASE_URL` moves ASR and TTS to any OpenAI-shaped server, such as `mlx_audio.server` on a Mac with the same Qwen3-ASR 1.7B and Qwen3-TTS 1.7B weights (`.env.example`). Typed decisions stay on Spark.
+  - A local server loads the models at boot.
+- **Measured** (M5 Max, local models, warm):
+
+  | Step | Time |
+  | --- | --- |
+  | Transcribe a 3–5 s hold | 0.2–0.6 s |
+  | Render a brief | about 2.4 s |
+  | Approval → brief playable | 2.5 s |
+- **Not done:**
+  - The lock-screen push (phase 7).
+  - The same measurements on Spark over 4G.
+  - The mock can't hear: a hold there returns a canned line.
 
 ### 5. Live location
 

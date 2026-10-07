@@ -271,9 +271,9 @@ export function toProposal(action: ProposalActionRow, candidates: ProposalCandid
 
 /** A delivery row with its message and the sender's name embedded. */
 export const DELIVERY_SELECT =
-  'message_id, recipient_id, body_local, delivery, read_at, message:messages!message_deliveries_message_id_fkey(id, kind, body, task_id, created_at, sender:profiles!messages_sender_id_fkey(full_name))';
+  'message_id, recipient_id, body_local, delivery, audio_path, read_at, message:messages!message_deliveries_message_id_fkey(id, kind, body, task_id, created_at, sender:profiles!messages_sender_id_fkey(full_name))';
 
-export type DeliveryRow = Pick<Row<'message_deliveries'>, 'message_id' | 'recipient_id' | 'body_local' | 'delivery' | 'read_at'> & {
+export type DeliveryRow = Pick<Row<'message_deliveries'>, 'message_id' | 'recipient_id' | 'body_local' | 'delivery' | 'audio_path' | 'read_at'> & {
   message: (Pick<Row<'messages'>, 'id' | 'kind' | 'body' | 'task_id' | 'created_at'> & { sender: { full_name: string } | null }) | null;
 };
 
@@ -290,6 +290,7 @@ export function toMessage(delivery: DeliveryRow): Message | null {
     body: delivery.body_local ?? m.body,
     ...(m.task_id ? { taskId: m.task_id } : {}),
     ...(delivery.delivery === 'spoken' || delivery.delivery === 'ping' ? { delivery: delivery.delivery } : {}),
+    ...(delivery.audio_path ? { audio: delivery.audio_path } : {}),
     read: delivery.read_at !== null,
   };
 }

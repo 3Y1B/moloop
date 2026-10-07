@@ -3,7 +3,7 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload, Session, Supabase
 import type { Database } from '@/lib/database.types';
 import { applyReply } from '@/lib/lifecycle';
 import type { Duty, GuestRequest, Message, Proposal, ReplyKind, Task, TaskEvent, Volunteer } from '@/lib/schema';
-import type { BroadcastScope, Interpretation, Repo, RespondInput, Snapshot } from './repo';
+import type { BroadcastScope, Heard, Interpretation, Recording, Repo, RespondInput, Snapshot } from './repo';
 import {
   DELIVERY_SELECT, PROFILE_SELECT, PROPOSAL_ACTION_SELECT, PROPOSAL_CANDIDATE_SELECT, refsFrom, TASK_SELECT,
   toGuestRequest, toMessage, toProposal, toTask, toTaskEvent, toTeam, toVolunteer, toZone, emptyRefs,
@@ -140,6 +140,19 @@ export class SupabaseRepo implements Repo {
     await this.command('setDuty', { duty }, () => (me ? this.refetchVolunteers([me.id]) : undefined));
   }
 
+  /** Multipart: the clip goes up as a file, so a phone on 4G sends kilobytes, not base64. */
+  async transcribe(recording: Recording) {
+    const form = new FormData();
+    form.append('audio', recording.audio, recording.name);
+    return this.send<Heard>('transcribe', form);
+  }
+
+  async speechUrl(path: string) {
+    const { data, error } = await this.db.storage.from('speech').createSignedUrl(path, 300);
+    if (error || !data) throw new Error(`speech ${path}: ${error?.message ?? 'no url'}`);
+    return data.signedUrl;
+  }
+
   interpret(text: string) {
     return this.post<Interpretation>('interpret', { text });
   }
@@ -191,8 +204,8 @@ export class SupabaseRepo implements Repo {
 
   // ── festival-goer ──
 
-  async guestAsk(text: string, zoneSlug: string | null, locationHint?: string | null) {
-    const { requestId } = await this.post<{ requestId: string }>('guestAsk', { text, zoneSlug, locationHint });
+  async guestAsk(text: string, zoneSlug: string | null, locationHint?: string | null, clips?: string[]) {
+    const { requestId } = await this.post<{ requestId: string }>('guestAsk', { text, zoneSlug, locationHint, clips: clips?.length ? clips : undefined });
     // The screen opens the request straight away: make sure it's here before saying where it is.
     if (!this.state.requests[requestId]) await this.refetchRequests([requestId]);
     return requestId;
@@ -216,7 +229,11 @@ export class SupabaseRepo implements Repo {
 
   // ── commands: POST /api/<method> ──
 
-  private async post<T = Record<string, never>>(method: string, body: Record<string, unknown>): Promise<T> {
+  private post<T = Record<string, never>>(method: string, body: Record<string, unknown>): Promise<T> {
+    return this.send<T>(method, JSON.stringify(body), { 'content-type': 'application/json' });
+  }
+
+  private async send<T>(method: string, body: string | FormData, headers: Record<string, string> = {}): Promise<T> {
     const { data } = await this.db.auth.getSession();
     const token = data.session?.access_token;
     if (!token) throw new CommandError(401, 'unauthenticated');
@@ -224,8 +241,8 @@ export class SupabaseRepo implements Repo {
     try {
       res = await this.fetch(`${this.serverUrl}/api/${method}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
+        headers: { ...headers, authorization: `Bearer ${token}` },
+        body,
       });
     } catch (e) {
       throw new CommandError(0, `server unreachable: ${e instanceof Error ? e.message : String(e)}`);
@@ -628,7 +645,10 @@ export class SupabaseRepo implements Repo {
       return;
     }
     const delivery = row.delivery === 'spoken' || row.delivery === 'ping' ? row.delivery : undefined;
-    const next: Message = { ...known, read: row.read_at !== null, ...(row.body_local ? { body: row.body_local } : {}) };
+    // The spoken version lands a moment after the message: that's this update.
+    const next: Message = {
+      ...known, read: row.read_at !== null, ...(row.body_local ? { body: row.body_local } : {}), ...(row.audio_path ? { audio: row.audio_path } : {}),
+    };
     if (delivery) next.delivery = delivery;
     else delete next.delivery;
     this.set({ messages: this.state.messages.map((m) => (m.id === next.id ? next : m)) });

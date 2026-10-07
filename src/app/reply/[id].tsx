@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
-import { LiveTranscript, useSimulatedTranscript } from '@/components/voice/live-transcript';
+import { useHoldToTalk } from '@/components/voice/use-hold-to-talk';
 import { VoicePill } from '@/components/voice/voice-pill';
 import { Radius, Type } from '@/constants/theme';
 import { useRepo, useSnapshot } from '@/data/hooks';
@@ -15,36 +15,11 @@ type NoteReply = Extract<ReplyKind, 'done' | 'need_help' | 'still_on_it'>;
 /** A reply to the volunteer's own task, or `guest_reply`: a note into the festival-goer's thread. */
 type SheetKind = NoteReply | 'guest_reply';
 
-// `demo`/`more` stand in for STT until audio lands (same `{guess|final}` format as the voice dock).
-const COPY: Record<SheetKind, { prompt: string; send: string; sf: string; demo: string; more: string }> = {
-  done: {
-    prompt: 'What did you do?',
-    send: 'Mark done',
-    sf: REPLY_SF.done,
-    demo: 'gave him some water and, um, sat him in the shade. he’s {filling|feeling} better now',
-    more: 'his friends are, uh, staying with him',
-  },
-  need_help: {
-    prompt: 'What’s going on?',
-    send: 'Ask for help',
-    sf: REPLY_SF.need_help,
-    demo: 'he’s, uh, getting worse, can a {medical|medic} come over',
-    more: 'he’s by the, um, the blue {tend|tent}',
-  },
-  still_on_it: {
-    prompt: 'How’s it going?',
-    send: 'Send update',
-    sf: REPLY_SF.still_on_it,
-    demo: 'still with him, waiting for him to cool down a {bet|bit}',
-    more: 'should be, um, five more {mins|minutes}',
-  },
-  guest_reply: {
-    prompt: 'Reply',
-    send: 'Send reply',
-    sf: 'paperplane.fill',
-    demo: 'hi, I’m on my {weigh|way}, about two minutes',
-    more: 'look for the, um, the blue {vast|vest}',
-  },
+const COPY: Record<SheetKind, { prompt: string; send: string; sf: string }> = {
+  done: { prompt: 'What did you do?', send: 'Mark done', sf: REPLY_SF.done },
+  need_help: { prompt: 'What’s going on?', send: 'Ask for help', sf: REPLY_SF.need_help },
+  still_on_it: { prompt: 'How’s it going?', send: 'Send update', sf: REPLY_SF.still_on_it },
+  guest_reply: { prompt: 'Reply', send: 'Send reply', sf: 'paperplane.fill' },
 };
 
 /**
@@ -57,12 +32,12 @@ export default function ReplySheet() {
   const repo = useRepo();
   const task = useSnapshot().tasks[id];
   const [note, setNote] = useState('');
-  const [script, setScript] = useState<string | null>(null);
-  const stream = useSimulatedTranscript(script);
+  const [problem, setProblem] = useState<string | null>(null);
+  const hold = useHoldToTalk();
   const copy = COPY[kind];
   if (!task || !copy) return null;
 
-  const listening = script != null;
+  const listening = hold.state !== 'idle';
   // Asking for help never waits on words; the others are what the lead reads back later.
   const canSend = kind === 'need_help' || note.trim().length > 0;
   const color = kind === 'need_help' ? theme.danger : kind === 'done' ? theme.success : theme.tint;
@@ -91,7 +66,10 @@ export default function ReplySheet() {
 
       <View style={[styles.card, { backgroundColor: theme.card, borderColor: listening ? theme.tint : theme.border }]}>
         {listening ? (
-          <LiveTranscript tokens={stream.tokens} before={note} style={styles.text} />
+          <Text style={styles.text}>
+            {!!note.trim() && <Text style={{ color: theme.text }}>{note.trim()} </Text>}
+            <Text style={{ color: theme.textTertiary }}>{hold.state === 'hearing' ? '…' : note.trim() ? '' : 'Go ahead…'}</Text>
+          </Text>
         ) : (
           <TextInput
             multiline
@@ -104,16 +82,28 @@ export default function ReplySheet() {
         )}
       </View>
 
+      {!!problem && <Text style={[styles.problem, { color: theme.textSecondary }]}>{problem}</Text>}
+
       <View style={styles.pill}>
         <VoicePill
-          listening={listening}
+          listening={hold.state === 'recording'}
+          level={hold.level}
           placeholder={note.trim() ? 'Hold to add more' : 'Hold to talk'}
-          onHoldStart={() => setScript(note.trim() ? copy.more : copy.demo)}
-          onHoldEnd={() => {
-            // Whatever was heard by the time you let go joins what's already there, and stays editable.
-            const heard = stream.text.trim();
-            if (heard) setNote((n) => (n.trim() ? `${n.trim()} ${heard}` : heard));
-            setScript(null);
+          disabled={hold.state === 'hearing'}
+          onHoldStart={() => {
+            setProblem(null);
+            hold.start();
+          }}
+          onHoldEnd={async () => {
+            // What was heard joins what's already there, and stays editable.
+            try {
+              const heard = (await hold.stop())?.text.trim();
+              if (heard) setNote((n) => (n.trim() ? `${n.trim()} ${heard}` : heard));
+              else setProblem('Didn’t catch that');
+            } catch (e) {
+              console.warn('[voice] transcribe failed', e);
+              setProblem('Voice is down. Type instead.');
+            }
           }}
         />
       </View>
@@ -139,6 +129,7 @@ const styles = StyleSheet.create({
   text: { fontSize: Type.body, lineHeight: 21 },
   input: { flex: 1, padding: 0, textAlignVertical: 'top' },
   pill: { flexDirection: 'row' },
+  problem: { fontSize: Type.footnote, textAlign: 'center' },
   quote: { borderRadius: Radius.control - 2, borderCurve: 'continuous', padding: 10 },
   quoteText: { fontSize: Type.callout - 1, lineHeight: 18, fontStyle: 'italic' },
 });

@@ -56,10 +56,11 @@ export type Loaded = {
 };
 
 /**
- * Where new rows come from: the festival-goer behind a new request, the volunteer behind a new report, and the
- * model run that decided it (a triage_runs row, tied to the new task's report, or to the request if no task came of it).
+ * Where new rows come from: the festival-goer behind a new request, the volunteer behind a new report, the voice
+ * clips it was said in (storage paths in the `voice` bucket), and the model run that decided it (a triage_runs row,
+ * tied to the new task's report, or to the request if no task came of it).
  */
-export type Owners = { guestId?: string; reporterId?: string; run?: Run & { requestId?: string } };
+export type Owners = { guestId?: string; reporterId?: string; clips?: string[]; run?: Run & { requestId?: string } };
 
 type Q = Sql | TransactionSql;
 type Enums = Database['public']['Enums'];
@@ -156,6 +157,7 @@ async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch, owners
     const r = b.requests[id];
     await tx`insert into guest_requests ${tx({
       id, guest_id: owners.guestId, ...requestRow(r, ids), task_id: null, thread: json(r.thread), created_at: new Date(r.createdAt),
+      voice_clips: owners.clips ?? [],
     })}`;
   }
 
@@ -167,8 +169,10 @@ async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch, owners
       await tx`update tasks set ${tx(row)} where id = ${id}`;
       continue;
     }
-    const report = reportRow(t, ids, t.reporter.kind === 'festivalgoer' ? null : owners.reporterId ?? null);
+    const report = { ...reportRow(t, ids, t.reporter.kind === 'festivalgoer' ? null : owners.reporterId ?? null), voice_clips: owners.clips ?? [] };
     await tx`insert into reports ${tx(report)}`;
+    // A request's task: the report is what the festival-goer said, clips included.
+    if (t.requestId) await tx`update reports set voice_clips = r.voice_clips from guest_requests r where r.id = ${t.requestId} and reports.id = ${report.id}`;
     const triageRunId = owners.run && !runWritten ? await insertRun(tx, owners.run, report.id) : null;
     runWritten ||= !!owners.run;
     await tx`insert into tasks ${tx({ id, report_id: report.id, triage_run_id: triageRunId, created_at: new Date(t.createdAt), ...row })}`;
@@ -262,8 +266,17 @@ async function follow(tx: TransactionSql, taskId: string, volunteerId: string, s
   }
 }
 
+type Committed = (b: Batch) => void;
+const committed: Committed[] = [];
+
+/** Run `fn` after every transaction that commits, with what it wrote (the server speaks new briefs). */
+export function afterCommit(fn: Committed) {
+  committed.push(fn);
+}
+
 /** Run one shared command atomically against the shared world. Throws roll everything back. */
 export async function transact<T>(spec: Load, run: (b: Batch, loaded: Loaded) => T, owners: Owners = {}): Promise<T> {
+  let batch: Batch | undefined;
   const result = await sql().begin(async (tx) => {
     await tx`set local lock_timeout = '10s'`;
     await tx`set local statement_timeout = '10s'`;
@@ -273,8 +286,16 @@ export async function transact<T>(spec: Load, run: (b: Batch, loaded: Loaded) =>
     const b = new Batch(loaded.world, { now: Date.now(), id: () => crypto.randomUUID() });
     const out = run(b, loaded);
     await save(tx, loaded, b, owners);
+    batch = b;
     return [out] as const;
   });
+  for (const fn of committed) {
+    try {
+      fn(batch!);
+    } catch (e) {
+      console.error('afterCommit failed', e);
+    }
+  }
   return result[0] as T;
 }
 

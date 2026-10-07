@@ -146,6 +146,7 @@ export type Database = {
           task_id: string | null
           thread: Json
           updated_at: string
+          voice_clips: string[]
           zone_id: string | null
         }
         Insert: {
@@ -161,6 +162,7 @@ export type Database = {
           task_id?: string | null
           thread?: Json
           updated_at?: string
+          voice_clips?: string[]
           zone_id?: string | null
         }
         Update: {
@@ -176,6 +178,7 @@ export type Database = {
           task_id?: string | null
           thread?: Json
           updated_at?: string
+          voice_clips?: string[]
           zone_id?: string | null
         }
         Relationships: [
@@ -204,6 +207,7 @@ export type Database = {
       }
       message_deliveries: {
         Row: {
+          audio_path: string | null
           body_local: string | null
           delivered_at: string | null
           delivery: string | null
@@ -213,6 +217,7 @@ export type Database = {
           recipient_id: string
         }
         Insert: {
+          audio_path?: string | null
           body_local?: string | null
           delivered_at?: string | null
           delivery?: string | null
@@ -222,6 +227,7 @@ export type Database = {
           recipient_id: string
         }
         Update: {
+          audio_path?: string | null
           body_local?: string | null
           delivered_at?: string | null
           delivery?: string | null
@@ -485,6 +491,7 @@ export type Database = {
           reporter_id: string | null
           reporter_kind: Database["public"]["Enums"]["reporter_kind"]
           text_en: string | null
+          voice_clips: string[]
           zone_id: string | null
         }
         Insert: {
@@ -501,6 +508,7 @@ export type Database = {
           reporter_id?: string | null
           reporter_kind?: Database["public"]["Enums"]["reporter_kind"]
           text_en?: string | null
+          voice_clips?: string[]
           zone_id?: string | null
         }
         Update: {
@@ -517,6 +525,7 @@ export type Database = {
           reporter_id?: string | null
           reporter_kind?: Database["public"]["Enums"]["reporter_kind"]
           text_en?: string | null
+          voice_clips?: string[]
           zone_id?: string | null
         }
         Relationships: [

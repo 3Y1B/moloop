@@ -7,6 +7,7 @@ import * as C from '@/lib/commands';
 import { ReplyKind, TeamSlug, type Task } from '@/lib/schema';
 import { interpreter } from '../models/interpreter';
 import { understandLater } from '../understand';
+import { ownClip } from '../voice';
 import { read, sql, transact, type Loaded } from '../world';
 import type { AuthEnv, Caller } from './auth';
 
@@ -27,8 +28,11 @@ const RespondInput = z.object({
   etaAt: z.number().int().positive().optional(),
   note: z.string().trim().max(500).optional(),
 });
+/** Voice clips from /api/transcribe, one per hold. */
+const Clips = z.array(z.string().max(200)).max(10).optional();
 const Interpretation = z.object({
   heard: Text,
+  clips: Clips,
   intent: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('reply'), taskId: Id, reply: ReplyKind }),
     z.object({ kind: z.literal('report') }),
@@ -69,6 +73,11 @@ function taskOf(b: Batch, id: string): Task {
 function mustBeOn(t: Task, caller: Caller) {
   if (t.assigneeId !== caller.id && !t.helperIds.includes(caller.id)) throw new CommandError('forbidden', 'Not your task');
 }
+/** Only your own clips go on what you report. */
+function ownClips(clips: string[] | undefined, caller: Caller) {
+  if (clips?.some((p) => !ownClip(caller.id, p))) throw new CommandError('forbidden', 'Not your clip');
+  return clips;
+}
 /** Festival-goers touch only their own requests. */
 function mustOwn(w: Loaded, id: string, caller: Caller) {
   if (!w.world.requests[id]) throw new CommandError('not_found', `No request ${id}`);
@@ -93,6 +102,7 @@ route('interpret', 'crew', z.object({ text: Text }), async (a, caller) =>
 
 route('commit', 'crew', z.object({ interpretation: Interpretation }), async ({ interpretation: i }, caller) => {
   const taskIds = i.intent.kind === 'reply' ? [i.intent.taskId] : [];
+  const clips = ownClips(i.clips, caller);
   // A new report is triaged before the lock is taken: the model takes seconds. A volunteer's report goes ahead of
   // festival-goers' requests in the model queue.
   const judged = i.intent.kind === 'report' ? await interpreter.triage({ text: i.heard, zoneSlug: null, locationHint: null, urgent: true }) : undefined;
@@ -102,7 +112,7 @@ route('commit', 'crew', z.object({ interpretation: Interpretation }), async ({ i
     // The mock waits to mimic triage; here it has already run.
     if (later) b.send(later.recipientId, 'system', later.body, { taskId: later.taskId });
     return { confirmation };
-  }, { reporterId: caller.id, run: judged?.run });
+  }, { reporterId: caller.id, clips, run: judged?.run });
 });
 
 route('markRead', 'any', z.object({ messageIds: z.array(Id).max(500) }), async (a, caller) => {
@@ -153,11 +163,12 @@ route('sendDirect', 'lead', z.object({ volunteerId: Id, body: Text }), async (a,
 
 // ── festival-goers ──
 
-route('guestAsk', 'any', z.object({ text: Text, zoneSlug: z.string().nullable(), locationHint: z.string().trim().max(200).nullish() }), async (a, caller) => {
+route('guestAsk', 'any', z.object({ text: Text, zoneSlug: z.string().nullable(), locationHint: z.string().trim().max(200).nullish(), clips: Clips }), async (a, caller) => {
+  const clips = ownClips(a.clips, caller);
   const requestId = await transact({}, (b, w) => {
     if (a.zoneSlug && !w.ids.zones.has(a.zoneSlug)) throw new CommandError('invalid', `No zone ${a.zoneSlug}`);
     return C.guestAsk(b, a.text, a.zoneSlug, a.locationHint || null).id;
-  }, { guestId: caller.id });
+  }, { guestId: caller.id, clips });
   understandLater(requestId);
   return { requestId };
 });

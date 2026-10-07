@@ -3,7 +3,7 @@ import { rankCandidates } from '@/lib/candidates';
 import * as C from '@/lib/commands';
 import { isActive, isBusy, needsResponse, type RespondInput } from '@/lib/lifecycle';
 import type { Duty, Priority, ReplyKind } from '@/lib/schema';
-import type { BroadcastScope, DevControls, Interpretation, Repo, Snapshot } from '../repo';
+import type { BroadcastScope, DevControls, Heard, Interpretation, Recording, Repo, Snapshot } from '../repo';
 import { GUEST_SCRIPTS, INCOMING, initialSnapshot, ME_ID, MO_ID } from './fixtures';
 
 const SCHEDULER_MS = 5_000;
@@ -11,6 +11,14 @@ const SCHEDULER_MS = 5_000;
 const UNDERSTANDING_MS = 1_500;
 /** The reporter hears back once triage has had time to run. */
 const REPORT_OUTCOME_MS = 4_000;
+
+/** The mock has no ears: a hold "says" a plausible line for where your task is. */
+const HEARD: Record<string, string> = {
+  assigned: 'yep got it, heading over now',
+  accepted: 'all sorted, done',
+  escalated: 'paramedics have taken over, done',
+  none: 'there’s a spill near the track stage bar, it’s pretty slippery',
+};
 
 const PREFIX: Record<IdKind, string> = { task: 't', event: 'e', message: 'm', proposal: 'p', request: 'r' };
 
@@ -46,6 +54,11 @@ export class MockRepo implements Repo {
 
   async setDuty(duty: Duty) {
     if (this.state.meId) this.run((b) => C.setDuty(b, this.meId(), duty));
+  }
+
+  async transcribe(_: Recording): Promise<Heard> {
+    const active = Object.values(this.state.tasks).find((t) => t.assigneeId === this.state.meId && isActive(t));
+    return { text: HEARD[active?.status ?? 'none'] ?? HEARD.none, clip: null };
   }
 
   async interpret(text: string): Promise<Interpretation> {

@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { RequestRow } from '@/components/guest/request-row';
@@ -14,20 +14,12 @@ import { Type } from '@/constants/theme';
 import { useMyRequests, useRepo } from '@/data/hooks';
 import { useTheme } from '@/hooks/use-theme';
 
-// Demo lines until real STT, one per hold: a report that sends someone, then a question the AI answers.
-const LINES = [
-  'hi um, my friend’s feeling really {busy|dizzy}, I think it’s the heat',
-  'where can I, um, {fill|refill} my water bottle?',
-];
-const MORE = 'and we’re right by the big {tea|tree}';
-
 /** Ask: the site with you on it, where you are, and the assistant. Their requests in the sheet. */
 export default function AskScreen() {
   const theme = useTheme();
   const repo = useRepo();
   const requests = useMyRequests();
   const [zone, setZone] = useState(NEAR_ME);
-  const turn = useRef(0);
   const layout = useMapLayout(150);
   const here = resolveZone(zone);
   const at = zoneSpot(here);
@@ -68,9 +60,8 @@ export default function AskScreen() {
 
       <VoiceDock
         placeholder="Ask or report"
-        script={(before) => (before ? MORE : LINES[turn.current++ % LINES.length])}
-        onSend={async (text) => {
-          const id = await repo.guestAsk(text, here);
+        onSend={async (text, clips) => {
+          const id = await repo.guestAsk(text, here, null, clips);
           router.push({ pathname: '/request/[id]', params: { id } });
         }}
       />
