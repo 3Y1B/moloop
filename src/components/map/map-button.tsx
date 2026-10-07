@@ -6,12 +6,16 @@ import { useTheme } from '@/hooks/use-theme';
 
 export const MAP_BUTTON = 44;
 
-/** Round control floating over the map. Same soft lift as the sheet, so it reads above the plan. */
-export function MapButton({ label, sf, md, badge, onPress, style }: {
+/**
+ * Round control floating over the map. Same soft lift as the sheet, so it reads above the plan. `flat` is the same
+ * control on a plain page: no lift, a hairline instead.
+ */
+export function MapButton({ label, sf, md, badge, flat = false, onPress, style }: {
   label: string;
   sf: string;
   md: string;
   badge?: number;
+  flat?: boolean;
   onPress: () => void;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -25,7 +29,12 @@ export function MapButton({ label, sf, md, badge, onPress, style }: {
         Haptics.selectionAsync();
         onPress();
       }}
-      style={({ pressed }) => [styles.button, { backgroundColor: theme.card, opacity: pressed ? 0.7 : 1 }, style]}>
+      style={({ pressed }) => [
+        styles.button,
+        flat ? { borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border } : floating,
+        { backgroundColor: theme.card, opacity: pressed ? 0.7 : 1 },
+        style,
+      ]}>
       <Icon sf={sf} md={md} size={18} color={theme.text} />
       {!!badge && (
         <View style={[styles.badge, { backgroundColor: theme.danger, borderColor: theme.card }]}>
@@ -46,7 +55,6 @@ const styles = StyleSheet.create({
     borderRadius: MAP_BUTTON / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    ...floating,
   },
   badge: {
     position: 'absolute',

@@ -12,8 +12,8 @@ import { useTheme } from '@/hooks/use-theme';
 
 export const DUTY_CHIP_HEIGHT = MAP_BUTTON;
 
-/** Collapsed identity: avatar with a duty dot and first name. Tap to open the duty panel. */
-export function DutyChip({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+/** Collapsed identity: avatar with a duty dot and first name. Tap to open the duty panel. `flat` on a plain page. */
+export function DutyChip({ open, onToggle, flat = false }: { open: boolean; onToggle: () => void; flat?: boolean }) {
   const theme = useTheme();
   const me = useMe();
   const { teams } = useLookups();
@@ -30,7 +30,11 @@ export function DutyChip({ open, onToggle }: { open: boolean; onToggle: () => vo
         Haptics.selectionAsync();
         onToggle();
       }}
-      style={({ pressed }) => [styles.chip, { backgroundColor: theme.card, opacity: pressed ? 0.7 : 1 }]}>
+      style={({ pressed }) => [
+        styles.chip,
+        flat ? { borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border } : floating,
+        { backgroundColor: theme.card, opacity: pressed ? 0.7 : 1 },
+      ]}>
       <Avatar name={me.name} color={team?.color} dot={onDuty ? theme.success : theme.warning} />
       <View>
         <Text style={[styles.chipName, { color: theme.text }]} numberOfLines={1}>{me.name.split(' ')[0]}</Text>
@@ -85,7 +89,7 @@ export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
 const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 8, height: DUTY_CHIP_HEIGHT, paddingLeft: 4, paddingRight: 12,
-    borderRadius: Radius.pill, alignSelf: 'flex-start', ...floating,
+    borderRadius: Radius.pill, alignSelf: 'flex-start',
   },
   chipName: { fontSize: Type.footnote, fontWeight: '600' },
   chipSub: { fontSize: Type.caption - 1, fontWeight: '500' },

@@ -1,13 +1,14 @@
 import { Redirect, Stack } from 'expo-router';
 
 import { useRole, useSnapshot } from '@/data/hooks';
+import { homeFor } from '@/lib/home';
 
-/** The festival-goer's app. Anyone else signed in goes to the volunteer tabs. */
+/** The festival-goer's app. Crew signed in here go to their own. */
 export default function GuestLayout() {
   const s = useSnapshot();
-  const role = useRole();
+  const home = homeFor(useRole());
   if (!s.meId) return s.status === 'ready' ? <Redirect href="/sign-in" /> : null;
-  if (role && role !== 'guest') return <Redirect href="/(staff)" />;
+  if (home && home !== '(guest)') return <Redirect href={`/${home}`} />;
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" options={{ title: 'Ask' }} />

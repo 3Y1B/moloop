@@ -34,8 +34,9 @@ export default function RootLayout() {
       <RepoProvider>
         <AnimatedSplashOverlay />
         <LocationSharing />
-        {/* Every route is registered here; (staff) and (guest) redirect to each other by role, and to sign-in when nobody is. */}
+        {/* Every route is registered here; (mo), (staff) and (guest) redirect to each other by role, and to sign-in when nobody is. */}
         <Stack>
+          <Stack.Screen name="(mo)" options={{ headerShown: false }} />
           <Stack.Screen name="(staff)" options={{ headerShown: false }} />
           <Stack.Screen name="(guest)" options={{ headerShown: false }} />
           <Stack.Screen name="sign-in" options={{ headerShown: false, animation: 'fade' }} />
