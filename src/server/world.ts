@@ -58,9 +58,10 @@ export type Loaded = {
 /**
  * Where new rows come from: the festival-goer behind a new request, the volunteer behind a new report, the voice
  * clips it was said in (storage paths in the `voice` bucket), and the model run that decided it (a triage_runs row,
- * tied to the new task's report, or to the request if no task came of it).
+ * tied to the new task's report, to the report of the open task it joined (`taskId`), or to the request if no task
+ * came of it).
  */
-export type Owners = { guestId?: string; reporterId?: string; clips?: string[]; run?: Run & { requestId?: string } };
+export type Owners = { guestId?: string; reporterId?: string; clips?: string[]; run?: Run & { requestId?: string; taskId?: string } };
 
 type Q = Sql | TransactionSql;
 type Enums = Database['public']['Enums'];
@@ -179,8 +180,11 @@ async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch, owners
     if (t.requestId) await tx`update guest_requests set report_id = coalesce(report_id, ${report.id}) where id = ${t.requestId}`;
   }
 
-  // A run that made no task (the AI answered) hangs off the request.
-  if (owners.run?.requestId && !runWritten) await insertRun(tx, owners.run, null);
+  // A run that made no task hangs off the task it joined (re-triage), or off the request (the AI answered).
+  if (owners.run?.taskId && !runWritten) {
+    const [joined] = await tx<{ report_id: string }[]>`select report_id from tasks where id = ${owners.run.taskId}`;
+    await insertRun(tx, owners.run, joined?.report_id ?? null);
+  } else if (owners.run?.requestId && !runWritten) await insertRun(tx, owners.run, null);
 
   for (const id of d.requests) {
     const r = b.requests[id];

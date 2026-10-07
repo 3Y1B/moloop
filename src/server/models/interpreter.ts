@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { DetailRead, Triage, Understood } from '@/lib/ai';
+import type { DetailRead, Match, Triage, Understood } from '@/lib/ai';
 import {
   heuristicDetail, heuristicPerson, heuristicTriage, heuristicUnderstanding, soundsCritical, soundsUrgent, TEAM_CATEGORY,
 } from '@/lib/heuristics';
@@ -44,6 +44,8 @@ export interface Interpreter {
   person(i: Heard): Promise<Judged<Triage>>;
   /** Added detail on an open task: is it worse? On a closed one: triage the whole account instead. */
   detail(i: Heard & { before: string; open: boolean }): Promise<Judged<DetailRead & { triage?: Triage }>>;
+  /** A new report against open tasks nearby: the one it's about, read again with what's new, or null for a new incident. */
+  match(i: Heard & { candidates: Task[]; urgent?: boolean }): Promise<Judged<Match>>;
   /** Speech or text from a volunteer: a reply to their task, or a new report. */
   interpret(i: { tasks: Task[]; meId: string; text: string }): Promise<Interpretation>;
 }
@@ -74,6 +76,10 @@ export class KeywordInterpreter implements Interpreter {
       value: { ...heuristicDetail(i.text), ...(i.open ? {} : { triage: heuristicTriage(`${i.before}. ${i.text}`, i.zoneSlug, i.locationHint) }) },
       run: run(),
     };
+  }
+  /** Keywords can't tell one incident from two, and a duplicate task is safer than a wrong merge. */
+  async match() {
+    return { value: null, run: run() };
   }
   async interpret({ tasks, meId, text }: { tasks: Task[]; meId: string; text: string }) {
     return interpretHeuristic(tasks, meId, text);
@@ -201,6 +207,15 @@ async function assess(i: Heard, { canAnswer = false, answered = false }, o: Call
 
 const OPTS: CallOptions = {};
 
+/** The model's priority, a step more urgent if it isn't sure, and never below what the red-flag words say. */
+function safePriority(p: { choice: string; confidence: number; probabilities: Record<string, number> }, text: string): Priority {
+  const ranked = Object.entries(p.probabilities).sort((a, b) => b[1] - a[1]);
+  let priority = p.choice as Priority;
+  if (p.confidence < 0.5) priority = moreUrgent(priority, ranked[1][0] as Priority);
+  if (soundsCritical(text)) return 'P1';
+  return soundsUrgent(text) ? moreUrgent(priority, 'P2') : priority;
+}
+
 export class SparkInterpreter implements Interpreter {
   async understand(i: Heard) {
     const { triage, answer, run } = await assess(i, { canAnswer: true }, OPTS);
@@ -238,6 +253,28 @@ export class SparkInterpreter implements Interpreter {
       error = String((e as Error).message);
     }
     return { value: { worse }, run: run({ confidence: p, models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, error }) };
+  }
+
+  /** One typed call: which open task this is about (or none), how urgent that is now, and whether it says it's sorted. */
+  async match({ candidates, urgent, ...i }: Heard & { candidates: Task[]; urgent?: boolean }): Promise<Judged<Match>> {
+    if (!candidates.length) return { value: null, run: run() };
+    const t0 = Date.now();
+    const labels = Object.fromEntries(candidates.map((t, n) => [`task_${n + 1}`, `${t.title}. ${t.summary}`]));
+    const log = (over: Partial<Run>) => run({ models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, ...over });
+    try {
+      const d = await decide({ new_report: i.text, open_tasks: labels }, {
+        about: choice('Which open task is the new report about?', { ...labels, new: 'None of them: a different incident' }),
+        priority: choice('Taking the open task and the new report together, how urgent is it now?', PRIORITIES),
+        sorted: noul('Does the new report say the problem is over or sorted?'),
+      }, { ...OPTS, urgent });
+      const task = candidates[Number(d.about.choice.replace('task_', '')) - 1];
+      // Merging two incidents hides one of them: only a sure answer joins a task.
+      if (!task || d.about.confidence < 0.6) return { value: null, run: log({ confidence: d.about.confidence }) };
+      const value: Match = { taskId: task.id, read: { priority: safePriority(d.priority, i.text), resolved: d.sorted.noul >= 0.5 } };
+      return { value, run: log({ confidence: d.about.confidence }) };
+    } catch (e) {
+      return { value: null, run: log({ error: String((e as Error).message) }) };
+    }
   }
 
   /**
