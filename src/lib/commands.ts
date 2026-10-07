@@ -966,6 +966,15 @@ export function schedulerStep(b: Batch, taskIds?: readonly string[]) {
           });
       } else if (a.kind === "remind") {
         if (mo) b.send(mo.id, "escalation", a.body, { taskId: a.taskId });
+      } else if (a.kind === "helper_released") {
+        const helper = b.volunteers[a.volunteerId];
+        b.ev(a.taskId, "lead_alerted", `${first(helper)} didn't answer. Released.`, SCHEDULER);
+        b.send(a.volunteerId, "system", `You're off “${task.title}”.`, { taskId: a.taskId });
+        const lead = b.leadFor(task.teamSlug) ?? mo;
+        if (lead)
+          b.send(lead.id, "escalation", `${first(helper)} didn't answer: ${task.title}. Released.`, {
+            taskId: a.taskId,
+          });
       } else {
         b.ev(a.taskId, "bumped", a.body, SCHEDULER);
         const lead = b.leadFor(task.teamSlug);

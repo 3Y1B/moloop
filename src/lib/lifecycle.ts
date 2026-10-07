@@ -234,7 +234,8 @@ export type Alert =
   | { kind: "nudge"; taskId: string; volunteerId: string; body: string }
   | { kind: "lead_alert"; taskId: string; volunteerId: string; body: string }
   | { kind: "bump"; taskId: string; volunteerId: string; body: string }
-  | { kind: "remind"; taskId: string; body: string };
+  | { kind: "remind"; taskId: string; body: string }
+  | { kind: "helper_released"; taskId: string; volunteerId: string; body: string };
 
 /** The intake agent escalated it: open, unassigned, waiting on a lead or Mo. The allocator never assigns it. */
 export const isHeld = (t: Task) => t.status === 'open' && t.escalation?.source === 'intake';
@@ -250,6 +251,38 @@ export function tick(
   task: Task,
   now: number,
   coordinatorId: string | null = null,
+): { task: Task; alerts: Alert[] } | null {
+  const released = releaseSilentHelpers(task, now);
+  const r = ownerTick(released?.task ?? task, now, coordinatorId);
+  if (!released) return r;
+  return { task: r?.task ?? released.task, alerts: [...released.alerts, ...(r?.alerts ?? [])] };
+}
+
+/**
+ * A helper who never answers would count as busy forever. After the same window an owner gets before the lead hears
+ * (ack timeout + nudge gap), they're let go and the lead is told.
+ */
+function releaseSilentHelpers(task: Task, now: number): { task: Task; alerts: Alert[] } | null {
+  if (!isActive(task)) return null;
+  const silent = task.helpers.filter(
+    (h) => h.status === "notified" && now - h.assignedAt > POLICY.ackTimeoutMs + POLICY.nudgeGapMs,
+  );
+  if (!silent.length) return null;
+  return {
+    task: { ...task, helpers: task.helpers.filter((h) => !silent.includes(h)) },
+    alerts: silent.map((h) => ({
+      kind: "helper_released",
+      taskId: task.id,
+      volunteerId: h.volunteerId,
+      body: `No answer from a helper on "${task.title}". Released.`,
+    })),
+  };
+}
+
+function ownerTick(
+  task: Task,
+  now: number,
+  coordinatorId: string | null,
 ): { task: Task; alerts: Alert[] } | null {
   if (task.status === "escalated") return bump(task, now, coordinatorId);
   if (isHeld(task)) return holdTick(task, now, coordinatorId);
