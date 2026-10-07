@@ -1,7 +1,8 @@
 import { useMemo, useSyncExternalStore } from 'react';
 
 import { rankCandidates } from '@/lib/candidates';
-import { isActive, isHeld, isOnTask, isQuiet, needsResponse, quietSince } from '@/lib/lifecycle';
+import { isActive, isOnTask } from '@/lib/lifecycle';
+import { needsFor, type NeedsItem } from '@/lib/needs';
 import { meetingPoint, onSite, placeOf, PRESENCE, type Place } from '@/lib/presence';
 import { routeBetween } from '@/lib/route';
 import type { GuestRequest, Proposal, Task, Team, TeamSlug, Volunteer, VolunteerRole } from '@/lib/schema';
@@ -145,53 +146,12 @@ export function useRouteTo(task: Task | undefined) {
 
 // ── Leads and Mo ──
 
-export type NeedsKind = 'help' | 'escalated' | 'quiet' | 'approval' | 'handover' | 'unassigned';
-export type NeedsItem = {
-  kind: NeedsKind;
-  task: Task;
-  /** For approvals. */
-  proposal?: Proposal;
-  /** When it started needing someone (help asked, went quiet, proposed, handover sent, reported). */
-  since: number;
-};
+export type { NeedsItem, NeedsKind } from '@/lib/needs';
 
-const NEEDS_ORDER: NeedsKind[] = ['help', 'escalated', 'quiet', 'approval', 'handover', 'unassigned'];
-
-/**
- * The lead's or Mo's "Needs you" list. Lead: their team's help requests and AI escalations (still shown after a
- * bump), quiet tasks, pending approvals, handovers waiting on "Arrived", unassigned tasks.
- * Mo: what was bumped or escalated to Mo (or has no lead), P1 approvals, unassigned P1/P2. Volunteers get nothing.
- */
+/** The lead's or Mo's "Needs you" list (lib/needs). */
 export function useNeedsMe(): NeedsItem[] {
   const s = useSnapshot();
-  return useMemo(() => {
-    const me = s.meId ? s.volunteers[s.meId] : undefined;
-    if (!me || me.role === 'volunteer') return [];
-    const lead = me.role === 'team_lead';
-    const hasLead = (team: TeamSlug | null) => Object.values(s.volunteers).some((v) => v.role === 'team_lead' && v.teamSlug === team);
-    const mine = (t: Task) => (lead ? t.teamSlug === me.teamSlug : !hasLead(t.teamSlug));
-    const pending = new Map(Object.values(s.proposals).filter((p) => p.status === 'pending').map((p) => [p.taskId, p]));
-    const items: NeedsItem[] = [];
-
-    for (const t of Object.values(s.tasks)) {
-      const e = t.escalation;
-      if (needsResponse(t) && (lead ? mine(t) : e?.level === 'coordinator')) {
-        items.push({ kind: 'help', task: t, since: e?.at ?? t.lastActivityAt });
-      } else if (isHeld(t)) {
-        if (lead ? mine(t) : e?.level === 'coordinator') items.push({ kind: 'escalated', task: t, since: e?.at ?? t.createdAt });
-      } else if (t.status === 'escalated' && e?.response?.kind === 'handover' && (lead ? mine(t) : e.response.byId === me.id)) {
-        items.push({ kind: 'handover', task: t, since: e.response.at });
-      } else if (isQuiet(t) && mine(t)) {
-        items.push({ kind: 'quiet', task: t, since: quietSince(t) });
-      } else if (t.status === 'open') {
-        const p = pending.get(t.id);
-        if (p && (lead ? mine(t) : t.priority === 'P1' || mine(t))) items.push({ kind: 'approval', task: t, proposal: p, since: p.createdAt });
-        else if (!p && (lead ? mine(t) : t.priority !== 'P3')) items.push({ kind: 'unassigned', task: t, since: t.createdAt });
-      }
-    }
-    return items.sort((a, b) =>
-      NEEDS_ORDER.indexOf(a.kind) - NEEDS_ORDER.indexOf(b.kind) || a.task.priority.localeCompare(b.task.priority) || a.since - b.since);
-  }, [s.tasks, s.proposals, s.volunteers, s.meId]);
+  return useMemo(() => needsFor(s, s.meId), [s.tasks, s.proposals, s.volunteers, s.meId]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 export type TeamMember = { volunteer: Volunteer; status: Status; task?: Task; helping?: Task };
