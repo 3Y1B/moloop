@@ -59,5 +59,7 @@ export const initials = (name: string) =>
 
 const LANGUAGE_NAME: Record<string, string> = {
   vi: 'Vietnamese', hi: 'Hindi', es: 'Spanish', ko: 'Korean', zh: 'Chinese', ar: 'Arabic', en: 'English',
+  th: 'Thai', fr: 'French', de: 'German', it: 'Italian', pt: 'Portuguese', ja: 'Japanese', id: 'Indonesian', tl: 'Tagalog',
+  ru: 'Russian', el: 'Greek', tr: 'Turkish', pa: 'Punjabi', ur: 'Urdu', bn: 'Bengali', ta: 'Tamil',
 };
 export const languageName = (code: string) => LANGUAGE_NAME[code] ?? code;

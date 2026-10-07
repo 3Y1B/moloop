@@ -51,3 +51,11 @@ describe('soundsCritical', () => {
   });
 });
 
+
+describe('heuristicTriage while the AI is down', () => {
+  it("doesn't claim a report is English: its language is unknown, and nothing translated it", () => {
+    const thai = heuristicTriage('หิวน้ำน้ำอยู่ที่ไหน');
+    expect(thai.language).toBe('und');
+    expect(thai.english).toBeUndefined();
+  });
+});

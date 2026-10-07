@@ -19,8 +19,10 @@ export type Triage = {
   summary: string;
   zoneSlug: string | null;
   locationHint: string | null;
-  /** ISO 639-1 of what the reporter wrote ("es"), since volunteers are matched on languages spoken. */
+  /** ISO 639-1 of what the reporter wrote ("es"), since volunteers are matched on languages spoken. "und": unknown. */
   language: string;
+  /** What the reporter wrote, in English, when the AI read it. Absent from the keyword fallback. */
+  english?: string;
   /** Set when the intake agent escalated instead of creating a task for the allocator. */
   escalate: EscalateTo | null;
 };
@@ -30,8 +32,8 @@ export type Understood =
   | { kind: 'answer'; answer: string; language: string }
   | ({ kind: 'task' } & Triage);
 
-/** Did the festival-goer's added detail make it worse? */
-export type DetailRead = { worse: boolean };
+/** Did the festival-goer's added detail make it worse? `english`: the detail in English, when the AI read it. */
+export type DetailRead = { worse: boolean; english?: string };
 
 /** A new report read together with the task it's about: how urgent it is now, and whether it says it's sorted. */
 export type Reread = { priority: Priority; resolved: boolean };

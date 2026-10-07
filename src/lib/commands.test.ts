@@ -297,3 +297,31 @@ describe('"Problem solved?" on an AI answer', () => {
     expect(b.requests.asked.stage).toBe('finding');
   });
 });
+
+describe('guestAddDetail: a festival-goer adds detail in their own language', () => {
+  const following = () => festival(
+    [task({ requestId: 'asked', reporter: { kind: 'festivalgoer', quote: 'Mi amigo se desmayó', language: 'es', english: 'My friend fainted' } })],
+    [{ ...asked, taskId: 'collapsed', stage: 'finding' }],
+  );
+
+  it('reaches the summary, the log and the volunteer in English, with their own words kept on the log', () => {
+    const b = following();
+    C.guestAddDetail(b, 'asked', 'Lleva una camiseta roja', { worse: false, english: 'He is wearing a red shirt' });
+
+    expect(b.tasks.collapsed.summary).toMatch(/Update: He is wearing a red shirt$/);
+    expect(b.events).toContainEqual(expect.objectContaining({
+      taskId: 'collapsed', kind: 'note', text: 'Detail from the festival-goer: “He is wearing a red shirt”', note: 'Lleva una camiseta roja',
+    }));
+    expect(b.messages).toContainEqual(expect.objectContaining({ recipientId: 'priya', body: 'Update: “He is wearing a red shirt”' }));
+    expect(b.requests.asked.thread).toContainEqual(expect.objectContaining({ from: 'guest', text: 'Lleva una camiseta roja' }));
+  });
+
+  it('goes in as typed when nothing translated it', () => {
+    const b = following();
+    C.guestAddDetail(b, 'asked', 'Lleva una camiseta roja', { worse: false });
+
+    expect(b.tasks.collapsed.summary).toMatch(/Update: Lleva una camiseta roja$/);
+    expect(b.events).toContainEqual(expect.objectContaining({ kind: 'note', text: 'Detail from the festival-goer', note: 'Lleva una camiseta roja' }));
+    expect(b.messages).toContainEqual(expect.objectContaining({ recipientId: 'priya', body: 'Update: “Lleva una camiseta roja”' }));
+  });
+});

@@ -58,7 +58,10 @@ export type Reporter = {
   name?: string;
   /** What they actually said, in their language. */
   quote: string;
+  /** ISO 639-1 of `quote`; "und" when the AI was down and nobody could tell. */
   language: string;
+  /** `quote` in English, when the AI read it. Shown first to staff (see lib/quote). */
+  english?: string;
 };
 
 export type Task = {

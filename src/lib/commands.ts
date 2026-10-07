@@ -130,7 +130,7 @@ export function fileReport(b: Batch, reporterId: string, text: string, ai?: Tria
     id: b.id('task'), title: t.title, summary: t.summary, category: t.category, priority, teamSlug: team,
     // Where they said it's happening, else where they are.
     zoneSlug: t.zoneSlug ?? me?.zoneSlug ?? null, locationHint: t.locationHint, status: 'open', assigneeId: null, handledBy: 'human',
-    reporter: { kind: 'volunteer', name: me?.name, quote: text, language: t.language },
+    reporter: { kind: 'volunteer', name: me?.name, quote: text, language: t.language, ...(t.english ? { english: t.english } : {}) },
     createdAt: b.now, assignedAt: null, etaAt: null, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null,
     escalation: null, helperIds: [], resolution: null, requestId: null,
   };
@@ -432,10 +432,14 @@ export function guestAddDetail(b: Batch, requestId: string, text: string, ai?: D
   }
 
   const worse = (ai ?? heuristicDetail(text)).worse;
+  // Staff read it in English when the AI translated it; the festival-goer's own words stay on the event and their thread.
+  const english = ai?.english?.trim() && ai.english.trim() !== text.trim() ? ai.english.trim() : null;
+  const said = english ?? text;
   const updated: Task = worse ? { ...task, priority: BUMP[task.priority] } : task;
-  b.task({ ...updated, summary: `${task.summary} Update: ${text}` });
-  b.ev(task.id, 'note', worse ? `Festival-goer says it’s worse. Now ${updated.priority}` : 'Detail from the festival-goer', TRIAGE_AGENT, { note: text });
-  for (const id of b.onIt(task)) b.send(id, 'guest_reply', `Update: “${text}”`, { taskId: task.id, fromName: 'Festival-goer' });
+  b.task({ ...updated, summary: `${task.summary} Update: ${said}` });
+  const what = worse ? `Festival-goer says it’s worse. Now ${updated.priority}` : 'Detail from the festival-goer';
+  b.ev(task.id, 'note', english ? `${what}: “${english}”` : what, TRIAGE_AGENT, { note: text });
+  for (const id of b.onIt(task)) b.send(id, 'guest_reply', `Update: “${said}”`, { taskId: task.id, fromName: 'Festival-goer' });
   if (worse) {
     const lead = b.leadFor(task.teamSlug) ?? b.coordinator();
     if (lead) b.send(lead.id, 'escalation', `Worse: ${task.title}. Now ${updated.priority}.`, { taskId: task.id });
@@ -488,7 +492,7 @@ function createGuestTask(b: Batch, r: GuestRequest, t: Triage) {
   const task: Task = {
     id: b.id('task'), title: t.title, summary: t.summary, priority: t.priority, teamSlug: t.team, category: t.category,
     zoneSlug: r.zoneSlug ?? t.zoneSlug, locationHint: r.locationHint ?? t.locationHint, status: 'open', assigneeId: null, handledBy: 'ai',
-    reporter: { kind: 'festivalgoer', quote: r.heard, language: t.language },
+    reporter: { kind: 'festivalgoer', quote: r.heard, language: t.language, ...(t.english ? { english: t.english } : {}) },
     createdAt: b.now, assignedAt: null, etaAt: null, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null,
     resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: r.id,
   };

@@ -118,10 +118,16 @@ export function authorityFor(text: string): EscalateTo | null {
 }
 
 /** Keyword triage as a full Triage: what the server falls back on when a model is down. */
+/**
+ * Keywords can't tell a language, so a report read without the AI says "und" (ISO 639 for undetermined), not English,
+ * and carries no translation: screens show it as written, marked as not translated.
+ */
+export const UNKNOWN_LANGUAGE = 'und';
+
 export function heuristicTriage(text: string, zoneSlug: string | null = null, locationHint: string | null = null): Triage {
   const { team, priority } = triage(text);
   const category = team === 'welfare' && /child|kid|son|daughter/i.test(text) ? 'lost_child' : TEAM_CATEGORY[team];
-  return { team, priority, category, title: titleFrom(text), summary: text, zoneSlug, locationHint, language: 'en', escalate: authorityFor(text) };
+  return { team, priority, category, title: titleFrom(text), summary: text, zoneSlug, locationHint, language: UNKNOWN_LANGUAGE, escalate: authorityFor(text) };
 }
 
 export function heuristicUnderstanding(text: string, zoneSlug: string | null = null, locationHint: string | null = null): Understood {
