@@ -13,11 +13,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { CommandError, SupabaseRepo } from '../src/data/supabase-repo';
 import type { Snapshot } from '../src/data/repo';
 import type { Database } from '../src/lib/database.types';
+import type { SimulationRunResult } from '../src/lib/mobilization-contracts';
 
 const url = process.env.SUPABASE_URL!;
 const secret = process.env.SUPABASE_SECRET_KEY!;
 const publishable = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
-if (!url || !secret || !publishable) throw new Error('Set SUPABASE_URL, SUPABASE_SECRET_KEY, EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (.env.local)');
+if (!url || !secret || !publishable)
+  throw new Error('Set SUPABASE_URL, SUPABASE_SECRET_KEY, EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (.env.local)');
 const opts = { auth: { persistSession: false, autoRefreshToken: false } };
 const admin = createClient<Database>(url, secret, opts);
 
@@ -32,21 +34,45 @@ function expect(label: string, ok: boolean, detail?: unknown) {
 type Recorded = { method: string; auth: string | null; body: Record<string, unknown> };
 const recorded: Recorded[] = [];
 let requestIdForAsk = '';
+// Transport fixture only: never creates a database run or Mobilization.
+const planningRun: SimulationRunResult = {
+  runId: '00000000-0000-4000-8000-000000000002',
+  status: 'configuration_required',
+  decision: null,
+  output: null,
+  mobilizationIds: [],
+  validationErrors: [],
+  error: 'Test model not configured',
+  snapshot: null,
+  promptVersion: 'mobilization.v2',
+  model: null,
+  createdAt: '2026-10-07T00:00:00.000Z',
+};
 function answer(method: string, body: Record<string, unknown>): [number, unknown] {
   if (body.taskId === 'conflict') return [409, { error: 'task_changed' }];
   if (method === 'setDuty' && body.duty === 'off_shift') return [502, { error: 'pipeline_failed' }];
   switch (method) {
-    case 'interpret': return [200, { heard: body.text, intent: { kind: 'report' } }];
-    case 'commit': return [200, { confirmation: 'Report sent' }];
-    case 'guestAsk': return [200, { requestId: requestIdForAsk }];
-    case 'guestAddDetail': return [200, { escalated: true }];
-    default: return [200, {}];
+    case 'interpret':
+      return [200, { heard: body.text, intent: { kind: 'report' } }];
+    case 'commit':
+      return [200, { confirmation: 'Report sent' }];
+    case 'guestAsk':
+      return [200, { requestId: requestIdForAsk }];
+    case 'guestAddDetail':
+      return [200, { escalated: true }];
+    case 'getMobilizationRun':
+      return [200, planningRun];
+    default:
+      return [200, {}];
   }
 }
 
 // The app's tsconfig has no Bun types; this is all the script uses.
 declare const Bun: {
-  serve(o: { port: number; hostname: string; fetch(req: Request): Promise<Response> }): { port: number; stop(force?: boolean): void };
+  serve(o: { port: number; hostname: string; fetch(req: Request): Promise<Response> }): {
+    port: number;
+    stop(force?: boolean): void;
+  };
 };
 
 const stub = Bun.serve({
@@ -57,7 +83,8 @@ const stub = Bun.serve({
     const method = path.replace(/^\/api\//, '');
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     recorded.push({ method, auth: req.headers.get('authorization'), body });
-    const [status, json] = req.method === 'POST' && path.startsWith('/api/') ? answer(method, body) : [404, { error: 'not_found' }];
+    const [status, json] =
+      req.method === 'POST' && path.startsWith('/api/') ? answer(method, body) : [404, { error: 'not_found' }];
     return Response.json(json, { status });
   },
 });
@@ -71,7 +98,11 @@ type Client = SupabaseClient<Database>;
 async function signIn(client: Client, email: string) {
   const { data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email });
   if (error) throw error;
-  const { error: e2 } = await client.auth.verifyOtp({ email, token: data.properties.email_otp, type: 'email' });
+  const { error: e2 } = await client.auth.verifyOtp({
+    email,
+    token: data.properties.email_otp,
+    type: 'email',
+  });
   if (e2) throw e2;
 }
 
@@ -118,11 +149,13 @@ async function within(label: string, repo: SupabaseRepo, ok: (s: Snapshot) => bo
 const ready = (s: Snapshot) => s.status === 'ready' && !!s.meId;
 
 async function userId(email: string) {
-  const { data } = await admin.auth.admin.listUsers();
+  const { data } = await admin.auth.admin.listUsers({ perPage: 1000 });
   return data.users.find((u) => u.email === email)!.id;
 }
 
-const [priya, tom, linh, jordan] = await Promise.all(['priya', 'tom', 'linh', 'jordan'].map((n) => userId(`${n}@moloop.test`)));
+const [priya, tom, linh, jordan] = await Promise.all(
+  ['priya', 'tom', 'linh', 'jordan'].map((n) => userId(`${n}@moloop.test`)),
+);
 
 // ── fixtures, written as the server would (service role) ──
 
@@ -131,7 +164,10 @@ const { data: anon, error: anonErr } = await guestClient.auth.signInAnonymously(
 if (anonErr) throw anonErr;
 const guestId = anon.user!.id;
 
-const one = async <T>(q: PromiseLike<{ data: T; error: { message: string } | null }>, what: string): Promise<NonNullable<T>> => {
+const one = async <T>(
+  q: PromiseLike<{ data: T; error: { message: string } | null }>,
+  what: string,
+): Promise<NonNullable<T>> => {
   const { data, error } = await q;
   if (error || !data) throw new Error(`${what}: ${error?.message ?? 'no data'}`);
   return data;
@@ -160,32 +196,90 @@ async function sweepLeftovers() {
 }
 await sweepLeftovers();
 
-const report = await one(admin.from('reports').insert({
-  channel: 'voice', reporter_kind: 'volunteer', reporter_id: tom, raw_text: 'repo check: he is dizzy', detected_language: 'en',
-}).select('id').single(), 'report');
+const report = await one(
+  admin
+    .from('reports')
+    .insert({
+      channel: 'voice',
+      reporter_kind: 'volunteer',
+      reporter_id: tom,
+      raw_text: 'repo check: he is dizzy',
+      detected_language: 'en',
+    })
+    .select('id')
+    .single(),
+  'report',
+);
 const { data: zone } = await admin.from('zones').select('id').eq('slug', 'water-2').single();
 const { data: team } = await admin.from('teams').select('id').eq('slug', 'first-aid').single();
-const task = (title: string, assignee: string | null, status: Database['public']['Enums']['task_status'] = 'assigned') => ({
-  report_id: report.id, title, summary: title, category: 'medical' as const, priority: 'P2' as const, status,
-  assignee_id: assignee, handled_by: 'human' as const, zone_id: zone!.id, team_id: team!.id,
-  escalation: null, location_hint: 'by the taps',
+const task = (
+  title: string,
+  assignee: string | null,
+  status: Database['public']['Enums']['task_status'] = 'assigned',
+) => ({
+  report_id: report.id,
+  title,
+  summary: title,
+  category: 'medical' as const,
+  priority: 'P2' as const,
+  status,
+  assignee_id: assignee,
+  handled_by: 'human' as const,
+  zone_id: zone!.id,
+  team_id: team!.id,
+  escalation: null,
+  location_hint: 'by the taps',
 });
-const tasks = await one(admin.from('tasks').insert([
-  task('repo: priya', priya), task('repo: linh', linh), task('repo: tom', tom), task('repo: open', null, 'open'),
-]).select('id, title'), 'tasks');
-const T = Object.fromEntries(tasks.map((t) => [t.title.replace('repo: ', ''), t.id])) as Record<'priya' | 'linh' | 'tom' | 'open', string>;
+const tasks = await one(
+  admin
+    .from('tasks')
+    .insert([
+      task('repo: priya', priya),
+      task('repo: linh', linh),
+      task('repo: tom', tom),
+      task('repo: open', null, 'open'),
+    ])
+    .select('id, title'),
+  'tasks',
+);
+const T = Object.fromEntries(tasks.map((t) => [t.title.replace('repo: ', ''), t.id])) as Record<
+  'priya' | 'linh' | 'tom' | 'open',
+  string
+>;
 const taskIds = Object.values(T);
 
-const request = await one(admin.from('guest_requests').insert({
-  guest_id: guestId, heard: 'repo check', task_id: T.tom, stage: 'finding', zone_id: zone!.id,
-  thread: [{ from: 'guest', text: 'repo check', at: Date.now() }],
-}).select('id').single(), 'request');
+const request = await one(
+  admin
+    .from('guest_requests')
+    .insert({
+      guest_id: guestId,
+      heard: 'repo check',
+      task_id: T.tom,
+      stage: 'finding',
+      zone_id: zone!.id,
+      thread: [{ from: 'guest', text: 'repo check', at: Date.now() }],
+    })
+    .select('id')
+    .single(),
+  'request',
+);
 requestIdForAsk = request.id;
 await admin.from('tasks').update({ request_id: request.id }).eq('id', T.tom);
 
 await admin.from('task_events').insert([
-  { task_id: T.priya, actor_kind: 'agent', kind: 'created', data: { text: 'Reported by Tom Becker', actorName: 'Triage' } },
-  { task_id: T.priya, actor_kind: 'human', actor_id: jordan, kind: 'assigned', data: { text: 'Assigned to Priya' } },
+  {
+    task_id: T.priya,
+    actor_kind: 'agent',
+    kind: 'created',
+    data: { text: 'Reported by Tom Becker', actorName: 'Triage' },
+  },
+  {
+    task_id: T.priya,
+    actor_kind: 'human',
+    actor_id: jordan,
+    kind: 'assigned',
+    data: { text: 'Assigned to Priya' },
+  },
 ]);
 
 // A proposal for the open task: Tom first, then Priya (inserted the other way round, so order comes from the payload).
@@ -193,14 +287,34 @@ await admin.from('task_assignments').insert([
   { task_id: T.open, volunteer_id: priya, rationale: 'free · 200 m', distance_m: 200 },
   { task_id: T.open, volunteer_id: tom, rationale: 'free · 80 m', distance_m: 80 },
 ]);
-const action = await one(admin.from('agent_actions').insert({
-  type: 'assign_volunteer', task_id: T.open, payload: { type: 'assign_volunteer', taskId: T.open, volunteerIds: [tom, priya] },
-  auto_assign_at: new Date(Date.now() + 30_000).toISOString(),
-}).select('id').single(), 'action');
+const action = await one(
+  admin
+    .from('agent_actions')
+    .insert({
+      type: 'assign_volunteer',
+      task_id: T.open,
+      payload: { type: 'assign_volunteer', taskId: T.open, volunteerIds: [tom, priya] },
+      auto_assign_at: new Date(Date.now() + 30_000).toISOString(),
+    })
+    .select('id')
+    .single(),
+  'action',
+);
 
-const message = await one(admin.from('messages').insert({
-  scope: 'direct', sender_id: jordan, body: 'repo check: grab a fresh bag', kind: 'direct', task_id: null,
-}).select('id').single(), 'message');
+const message = await one(
+  admin
+    .from('messages')
+    .insert({
+      scope: 'direct',
+      sender_id: jordan,
+      body: 'repo check: grab a fresh bag',
+      kind: 'direct',
+      task_id: null,
+    })
+    .select('id')
+    .single(),
+  'message',
+);
 await admin.from('message_deliveries').insert({ message_id: message.id, recipient_id: priya, delivery: 'spoken' });
 const messageIds = [message.id];
 
@@ -220,38 +334,91 @@ try {
     const s = priyaRepo.getSnapshot();
     const mine = Object.values(s.tasks).filter((t) => taskIds.includes(t.id));
     expect('volunteer: meId is the auth user, not a guest', s.meId === priya && s.guestId === null);
-    expect('volunteer: sees their own task and the one they were proposed for, nobody else\'s',
-      mine.map((t) => t.id).sort().join() === [T.priya, T.open].sort().join(), mine.map((t) => t.title));
+    expect(
+      "volunteer: sees their own task and the one they were proposed for, nobody else's",
+      mine
+        .map((t) => t.id)
+        .sort()
+        .join() === [T.priya, T.open].sort().join(),
+      mine.map((t) => t.title),
+    );
     const t = s.tasks[T.priya];
-    expect('volunteer: task maps slugs, hint and reporter', t?.teamSlug === 'first-aid' && t.zoneSlug === 'water-2'
-      && t.locationHint === 'by the taps' && t.reporter.kind === 'volunteer' && t.reporter.name === 'Tom Becker'
-      && t.reporter.quote === 'repo check: he is dizzy', t);
-    expect('volunteer: times are epoch ms', typeof t?.createdAt === 'number' && Math.abs(t.createdAt - Date.now()) < 60_000);
+    expect(
+      'volunteer: task maps slugs, hint and reporter',
+      t?.teamSlug === 'first-aid' &&
+        t.zoneSlug === 'water-2' &&
+        t.locationHint === 'by the taps' &&
+        t.reporter.kind === 'volunteer' &&
+        t.reporter.name === 'Tom Becker' &&
+        t.reporter.quote === 'repo check: he is dizzy',
+      t,
+    );
+    expect(
+      'volunteer: times are epoch ms',
+      typeof t?.createdAt === 'number' && Math.abs(t.createdAt - Date.now()) < 60_000,
+    );
     expect('volunteer: sees all crew', Object.keys(s.volunteers).length >= 6);
     const me = s.volunteers[priya];
-    expect('volunteer: own profile maps duty, zone, skills, phone', me?.duty === 'on_duty' && me.zoneSlug === 'lawn-stage'
-      && me.skills.includes('first-aid-cert') && me.role === 'volunteer' && me.teamSlug === 'first-aid', me);
+    expect(
+      'volunteer: own profile maps duty, zone, skills, phone',
+      me?.duty === 'on_duty' &&
+        me.zoneSlug === 'lawn-stage' &&
+        me.skills.includes('first-aid-cert') &&
+        me.role === 'volunteer' &&
+        me.teamSlug === 'first-aid',
+      me,
+    );
     const evs = s.events.filter((e) => e.taskId === T.priya);
-    expect('volunteer: events with actor names', evs.length === 2 && evs[0].actor.name === 'Triage' && evs[1].actor.name === 'Jordan Lee', evs);
+    expect(
+      'volunteer: events with actor names',
+      evs.length === 2 && evs[0].actor.name === 'Triage' && evs[1].actor.name === 'Jordan Lee',
+      evs,
+    );
     const m = s.messages.find((x) => x.id === message.id);
-    expect('volunteer: message from the sender, unread, spoken', m?.fromName === 'Jordan Lee' && !m.read && m.delivery === 'spoken'
-      && m.recipientId === priya && m.kind === 'direct', m);
-    expect('volunteer: no proposals, no requests', Object.keys(s.proposals).length === 0 && Object.keys(s.requests).length === 0);
-    expect('volunteer: team icons from the app', s.teams['first-aid']?.sf === 'cross.case.fill' && !!s.zones['water-2']);
+    expect(
+      'volunteer: message from the sender, unread, spoken',
+      m?.fromName === 'Jordan Lee' &&
+        !m.read &&
+        m.delivery === 'spoken' &&
+        m.recipientId === priya &&
+        m.kind === 'direct',
+      m,
+    );
+    expect(
+      'volunteer: no proposals, no requests',
+      Object.keys(s.proposals).length === 0 && Object.keys(s.requests).length === 0,
+    );
+    expect(
+      'volunteer: team icons from the app',
+      s.teams['first-aid']?.sf === 'cross.case.fill' && !!s.zones['water-2'],
+    );
   }
 
   // ── lead ──
   {
     const s = leadRepo.getSnapshot();
     const seen = Object.values(s.tasks).filter((t) => taskIds.includes(t.id));
-    expect('lead: sees every task', seen.length === 4, seen.map((t) => t.title));
+    expect(
+      'lead: sees every task',
+      seen.length === 4,
+      seen.map((t) => t.title),
+    );
     const p = s.proposals[action.id];
-    expect('lead: proposal with candidates in proposed order', p?.status === 'pending' && p.taskId === T.open
-      && p.candidates.map((c) => c.volunteerId).join() === [tom, priya].join() && p.candidates[0].distanceM === 80, p);
-    expect('lead: proposal auto-assign time in ms', !!p && p.autoAssignAt > Date.now() && p.autoAssignAt - p.createdAt <= 31_000);
+    expect(
+      'lead: proposal with candidates in proposed order',
+      p?.status === 'pending' &&
+        p.taskId === T.open &&
+        p.candidates.map((c) => c.volunteerId).join() === [tom, priya].join() &&
+        p.candidates[0].distanceM === 80,
+      p,
+    );
+    expect(
+      'lead: proposal auto-assign time in ms',
+      !!p && p.autoAssignAt > Date.now() && p.autoAssignAt - p.createdAt <= 31_000,
+    );
     expect('lead: sees the guest request', !!s.requests[request.id]);
     expect('lead: can read phone numbers', s.volunteers[tom]?.phone !== undefined);
-    expect('lead: no inbox of other people\'s messages', !s.messages.some((x) => x.recipientId !== jordan));
+    expect("lead: no inbox of other people's messages", !s.messages.some((x) => x.recipientId !== jordan));
   }
 
   // ── festival-goer ──
@@ -259,44 +426,103 @@ try {
     const s = guestRepo.getSnapshot();
     expect('guest: guestId is meId (useRole → guest)', s.meId === guestId && s.guestId === guestId);
     const r = s.requests[request.id];
-    expect('guest: own request only', Object.keys(s.requests).length === 1 && r?.stage === 'finding' && r.taskId === T.tom
-      && r.zoneSlug === 'water-2' && r.thread.length === 1, s.requests);
-    expect('guest: only their request\'s task', Object.keys(s.tasks).length === 1 && !!s.tasks[T.tom], Object.keys(s.tasks));
-    expect('guest: sees who is coming, no one else', Object.keys(s.volunteers).join() === tom, Object.keys(s.volunteers));
+    expect(
+      'guest: own request only',
+      Object.keys(s.requests).length === 1 &&
+        r?.stage === 'finding' &&
+        r.taskId === T.tom &&
+        r.zoneSlug === 'water-2' &&
+        r.thread.length === 1,
+      s.requests,
+    );
+    expect(
+      "guest: only their request's task",
+      Object.keys(s.tasks).length === 1 && !!s.tasks[T.tom],
+      Object.keys(s.tasks),
+    );
+    expect(
+      'guest: sees who is coming, no one else',
+      Object.keys(s.volunteers).join() === tom,
+      Object.keys(s.volunteers),
+    );
     expect('guest: no phone numbers', s.volunteers[tom]?.phone === null);
-    expect('guest: no events, messages or proposals', !s.events.length && !s.messages.length && !Object.keys(s.proposals).length);
+    expect(
+      'guest: no events, messages or proposals',
+      !s.events.length && !s.messages.length && !Object.keys(s.proposals).length,
+    );
   }
 
   // ── realtime ──
-  await admin.from('tasks').update({ status: 'accepted', last_activity_at: new Date().toISOString() }).eq('id', T.priya);
+  await admin
+    .from('tasks')
+    .update({ status: 'accepted', last_activity_at: new Date().toISOString() })
+    .eq('id', T.priya);
   await Promise.all([
     within('realtime: task status reaches the volunteer', priyaRepo, (s) => s.tasks[T.priya]?.status === 'accepted'),
     within('realtime: task status reaches the lead', leadRepo, (s) => s.tasks[T.priya]?.status === 'accepted'),
   ]);
-  expect('realtime: patched task keeps its reporter', priyaRepo.getSnapshot().tasks[T.priya]?.reporter.name === 'Tom Becker');
+  expect(
+    'realtime: patched task keeps its reporter',
+    priyaRepo.getSnapshot().tasks[T.priya]?.reporter.name === 'Tom Becker',
+  );
 
-  const m2 = await one(admin.from('messages').insert({ scope: 'direct', body: 'repo check: nudge', kind: 'nudge', task_id: T.priya })
-    .select('id').single(), 'message 2');
+  const m2 = await one(
+    admin
+      .from('messages')
+      .insert({ scope: 'direct', body: 'repo check: nudge', kind: 'nudge', task_id: T.priya })
+      .select('id')
+      .single(),
+    'message 2',
+  );
   messageIds.push(m2.id);
   await admin.from('message_deliveries').insert({ message_id: m2.id, recipient_id: priya, delivery: 'ping' });
-  await within('realtime: new delivery reaches the inbox', priyaRepo,
-    (s) => s.messages.some((x) => x.id === m2.id && x.fromName === 'Moloop' && x.delivery === 'ping' && x.taskId === T.priya));
+  await within('realtime: new delivery reaches the inbox', priyaRepo, (s) =>
+    s.messages.some((x) => x.id === m2.id && x.fromName === 'Moloop' && x.delivery === 'ping' && x.taskId === T.priya),
+  );
 
   await admin.from('guest_requests').update({ stage: 'coming' }).eq('id', request.id);
-  await within('realtime: request stage reaches the festival-goer', guestRepo, (s) => s.requests[request.id]?.stage === 'coming');
+  await within(
+    'realtime: request stage reaches the festival-goer',
+    guestRepo,
+    (s) => s.requests[request.id]?.stage === 'coming',
+  );
 
-  await admin.from('tasks').update({ helper_ids: [linh] }).eq('id', T.tom);
-  await within('realtime: a new helper shows up for the festival-goer', guestRepo,
-    (s) => s.tasks[T.tom]?.helperIds.includes(linh) && !!s.volunteers[linh]);
+  await admin
+    .from('tasks')
+    .update({
+      helper_ids: [linh],
+      helper_status: [{ volunteerId: linh, status: 'accepted', assignedAt: Date.now(), respondedAt: Date.now() }],
+    })
+    .eq('id', T.tom);
+  await within(
+    'realtime: a new helper shows up for the festival-goer',
+    guestRepo,
+    (s) => !!s.tasks[T.tom]?.helpers.some((h) => h.volunteerId === linh) && !!s.volunteers[linh],
+  );
 
-  await admin.from('task_events').insert({ task_id: T.priya, actor_kind: 'human', actor_id: priya, kind: 'reply', data: { text: 'Accepted', reply: 'accept' } });
-  await within('realtime: task event reaches the volunteer', priyaRepo,
-    (s) => s.events.some((e) => e.taskId === T.priya && e.kind === 'reply' && e.reply === 'accept' && e.actor.name === 'Priya Shah'));
+  await admin.from('task_events').insert({
+    task_id: T.priya,
+    actor_kind: 'human',
+    actor_id: priya,
+    kind: 'reply',
+    data: { text: 'Accepted', reply: 'accept' },
+  });
+  await within('realtime: task event reaches the volunteer', priyaRepo, (s) =>
+    s.events.some(
+      (e) => e.taskId === T.priya && e.kind === 'reply' && e.reply === 'accept' && e.actor.name === 'Priya Shah',
+    ),
+  );
 
-  await admin.from('agent_actions').update({ status: 'executed', executed_at: new Date().toISOString() }).eq('id', action.id);
+  await admin
+    .from('agent_actions')
+    .update({ status: 'executed', executed_at: new Date().toISOString() })
+    .eq('id', action.id);
   await admin.from('task_assignments').update({ status: 'notified' }).eq('task_id', T.open).eq('volunteer_id', tom);
-  await within('realtime: auto-assigned proposal reaches the lead', leadRepo,
-    (s) => s.proposals[action.id]?.status === 'auto_assigned' && s.proposals[action.id]?.volunteerId === tom);
+  await within(
+    'realtime: auto-assigned proposal reaches the lead',
+    leadRepo,
+    (s) => s.proposals[action.id]?.status === 'auto_assigned' && s.proposals[action.id]?.volunteerId === tom,
+  );
 
   await admin.from('profiles').update({ status: 'on_break' }).eq('id', tom);
   await within('realtime: duty change reaches the lead', leadRepo, (s) => s.volunteers[tom]?.duty === 'on_break');
@@ -334,6 +560,13 @@ try {
   await guestRepo.guestReopen(request.id);
   await priyaRepo.guestReply(T.tom, 'on my way');
   await priyaRepo.setDuty('on_break');
+  // Stub transport checks, not lead authorization: real Mo-only guards are covered by API tests.
+  const planningResults = {
+    recoveredRun: await leadRepo.mobilizations.getRun(planningRun.runId),
+  };
+  await leadRepo.mobilizations.approve('transport-mobilization');
+  await leadRepo.mobilizations.reject('transport-mobilization');
+  await leadRepo.mobilizations.standDown('transport-mobilization', 'stood_down');
 
   const expected: [string, string, Record<string, unknown>][] = [
     ['interpret', pToken, { text: 'there is a spill' }],
@@ -359,27 +592,55 @@ try {
     ['guestReopen', gToken, { requestId: request.id }],
     ['guestReply', pToken, { taskId: T.tom, text: 'on my way' }],
     ['setDuty', pToken, { duty: 'on_break' }],
+    ['getMobilizationRun', jToken, { runId: planningRun.runId }],
+    ['approveMobilization', jToken, { mobilizationId: 'transport-mobilization' }],
+    ['rejectMobilization', jToken, { mobilizationId: 'transport-mobilization' }],
+    ['standDown', jToken, { mobilizationId: 'transport-mobilization', outcome: 'stood_down' }],
   ];
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   expected.forEach(([method, token, body], i) => {
     const r = recorded[i];
-    expect(`command: POST /api/${method} ${JSON.stringify(body).slice(0, 60)}`,
-      r?.method === method && r.auth === `Bearer ${token}` && same(r.body, body), r);
+    expect(
+      `command: POST /api/${method} ${JSON.stringify(body).slice(0, 60)}`,
+      r?.method === method && r.auth === `Bearer ${token}` && same(r.body, body),
+      r,
+    );
   });
   expect('command: no extra requests', recorded.length === expected.length, recorded.length);
-  expect('command: results come back typed', results.interpret.intent.kind === 'report' && results.commit.confirmation === 'Report sent'
-    && results.guestAsk === request.id && results.guestAddDetail.escalated === true, results);
+  expect(
+    'command: results come back typed',
+    results.interpret.intent.kind === 'report' &&
+      results.commit.confirmation === 'Report sent' &&
+      results.guestAsk === request.id &&
+      results.guestAddDetail.escalated === true,
+    results,
+  );
+  expect(
+    'planning transport: a saved analysis comes back typed',
+    planningResults.recoveredRun.runId === planningRun.runId &&
+      planningResults.recoveredRun.status === 'configuration_required',
+  );
 
   // Optimistic: markRead and setDuty show at once (the stub doesn't write, so this is the local change).
-  expect('optimistic: markRead flips read straight away', priyaRepo.getSnapshot().messages.find((x) => x.id === message.id)?.read === true);
-  expect('optimistic: setDuty flips duty straight away', priyaRepo.getSnapshot().volunteers[priya]?.duty === 'on_break');
+  expect(
+    'optimistic: markRead flips read straight away',
+    priyaRepo.getSnapshot().messages.find((x) => x.id === message.id)?.read === true,
+  );
+  expect(
+    'optimistic: setDuty flips duty straight away',
+    priyaRepo.getSnapshot().volunteers[priya]?.duty === 'on_break',
+  );
 
   // Errors: { error } with the status, and an optimistic change rolled back.
   try {
     await leadRepo.assign('conflict', priya);
     expect('error: 409 throws', false);
   } catch (e) {
-    expect('error: 409 throws CommandError with the server message', e instanceof CommandError && e.status === 409 && e.message === 'task_changed', String(e));
+    expect(
+      'error: 409 throws CommandError with the server message',
+      e instanceof CommandError && e.status === 409 && e.message === 'task_changed',
+      String(e),
+    );
   }
   try {
     await priyaRepo.setDuty('off_shift');
@@ -387,22 +648,42 @@ try {
   } catch (e) {
     expect('error: 502 throws CommandError', e instanceof CommandError && e.status === 502, String(e));
   }
-  expect('error: failed setDuty rolls back to the database', priyaRepo.getSnapshot().volunteers[priya]?.duty === 'on_duty',
-    priyaRepo.getSnapshot().volunteers[priya]?.duty);
+  expect(
+    'error: failed setDuty rolls back to the database',
+    priyaRepo.getSnapshot().volunteers[priya]?.duty === 'on_duty',
+    priyaRepo.getSnapshot().volunteers[priya]?.duty,
+  );
 
   // ── session change: sign out, sign in as someone else ──
   await P.auth.signOut({ scope: 'local' });
-  await within('session: signing out empties the snapshot', priyaRepo, (s) => s.status === 'ready' && s.meId === null && !Object.keys(s.tasks).length, 3_000);
+  await within(
+    'session: signing out empties the snapshot',
+    priyaRepo,
+    (s) => s.status === 'ready' && s.meId === null && !Object.keys(s.tasks).length,
+    3_000,
+  );
   await signIn(P, 'linh@moloop.test');
-  await within('session: signing in as someone else rehydrates', priyaRepo,
-    (s) => ready(s) && s.meId === linh && !!s.tasks[T.linh] && !s.tasks[T.priya], 8_000);
+  await within(
+    'session: signing in as someone else rehydrates',
+    priyaRepo,
+    (s) => ready(s) && s.meId === linh && !!s.tasks[T.linh] && !s.tasks[T.priya],
+    8_000,
+  );
   await sleep(300);
   await admin.from('tasks').update({ status: 'in_progress' }).eq('id', T.linh);
-  await within('session: realtime resubscribed for the new user', priyaRepo, (s) => s.tasks[T.linh]?.status === 'in_progress');
+  await within(
+    'session: realtime resubscribed for the new user',
+    priyaRepo,
+    (s) => s.tasks[T.linh]?.status === 'in_progress',
+  );
 
   // ── deletes ──
   await admin.from('task_events').delete().eq('task_id', T.priya);
-  await within('realtime: deleted events leave the lead\'s snapshot', leadRepo, (s) => !s.events.some((e) => e.taskId === T.priya));
+  await within(
+    "realtime: deleted events leave the lead's snapshot",
+    leadRepo,
+    (s) => !s.events.some((e) => e.taskId === T.priya),
+  );
 } finally {
   for (const r of repos) await r.dispose();
   await admin.from('message_deliveries').delete().in('message_id', messageIds);

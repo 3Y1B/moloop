@@ -56,7 +56,7 @@ const task = (over: Partial<Task> & { category: IncidentCategory; priority: Prio
   id: 'bench', title: '', summary: '', teamSlug: null, zoneSlug: null, locationHint: null, status: 'open', assigneeId: null,
   reporter: { kind: 'festivalgoer', quote: '', language: 'en' }, handledBy: 'ai', createdAt: 0, assignedAt: null, etaAt: null,
   lastActivityAt: 0, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null, escalation: null,
-  helperIds: [], resolution: null, requestId: null, ...over,
+  helpers: [], requiredCount: 1, resolution: null, requestId: null, mobilizationId: null, ...over,
 });
 const TASKS: Record<string, Task> = {
   medical: task({

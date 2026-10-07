@@ -15,7 +15,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 
-import { SCENARIOS, type Route, type Said } from './intake-scenarios';
+import { SCENARIOS, type Route, type Said, type Scenario } from './intake-scenarios';
 
 // The local stack, never what .env.local points at: this empties tasks and requests.
 // The app's tsconfig has no Bun types; this is all the script uses.
@@ -108,7 +108,7 @@ const from = flag('--from') ?? 'guest';
 const zone = flag('--zone');
 if (from !== 'guest' && !crew.has(from)) throw new Error(`No crew member "${from}". Try: guest, ${[...crew.keys()].slice(0, 8).join(', ')}, …`);
 // --say: one message of your own, every route allowed, so it only reports where it went.
-const yours = typed && { id: 'yours', group: 'your message', from, text: typed, zone, route: ['answer', 'allocator', 'lead', 'mo', 'joined'] as Route[] };
+const yours: Scenario | undefined = typed ? { id: 'yours', group: 'your message', from, text: typed, zone, route: ['answer', 'allocator', 'lead', 'mo', 'joined'] } : undefined;
 const chosen = yours ? [yours] : args.length ? SCENARIOS.filter((s) => args.includes(s.id) || args.includes(s.group)) : SCENARIOS;
 if (!chosen.length) throw new Error(`No scenario or group named ${args.join(', ')}`);
 const list = <T>(x: T | T[]) => (Array.isArray(x) ? x : [x]);

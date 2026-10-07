@@ -29,7 +29,7 @@ async function as(email: string): Promise<SupabaseClient> {
 }
 
 async function profileId(email: string) {
-  const { data } = await admin.auth.admin.listUsers();
+  const { data } = await admin.auth.admin.listUsers({ perPage: 1000 });
   return data.users.find((u) => u.email === email)!.id;
 }
 

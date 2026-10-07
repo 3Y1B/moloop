@@ -18,8 +18,8 @@ const task = (over: Partial<Task> = {}): Task => ({
   category: 'medical', priority: 'P2', teamSlug: 'first-aid', zoneSlug: 'food-alley', locationHint: null,
   status: 'accepted', assigneeId: 'priya', reporter: { kind: 'volunteer', name: 'Sam Smith', quote: 'guy collapsed by the food stalls', language: 'en' },
   handledBy: 'human', createdAt: NOW - 5 * MIN, assignedAt: NOW - 4 * MIN, etaAt: null, lastActivityAt: NOW - 4 * MIN,
-  nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null, escalation: null, helperIds: [], resolution: null,
-  requestId: null, ...over,
+  nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null, escalation: null, requiredCount: 1, helpers: [], resolution: null,
+  requestId: null, mobilizationId: null, ...over,
 });
 
 const asked: GuestRequest = {
@@ -34,13 +34,196 @@ function festival(tasks: Task[] = [task()], requests: GuestRequest[] = []) {
   const world: World = {
     volunteers: Object.fromEntries(volunteers.map((v) => [v.id, v])),
     tasks: Object.fromEntries(tasks.map((t) => [t.id, t])),
-    proposals: {}, requests: Object.fromEntries(requests.map((r) => [r.id, r])), teams: { 'first-aid': { name: 'First Aid' } },
+    proposals: {}, requests: Object.fromEntries(requests.map((r) => [r.id, r])), mobilizations: {}, teams: { 'first-aid': { name: 'First Aid' } },
   };
   let n = 0;
   return new Batch(world, { now: NOW, id: (kind) => `${kind}-${++n}` });
 }
 
+describe('manual helpers and automatic recruitment share one assignment', () => {
+  const ready = (over: Partial<Task> = {}) => task({ status: 'open', assigneeId: null, assignedAt: null,
+    category: 'facilities', requiredSkills: ['radio-trained'], ...over });
+  function crew(initial: Task) {
+    const b = festival([initial]);
+    for (const id of ['owner', 'selected', 'other', 'third'])
+      b.volunteers[id] = person(id, { skills: ['radio-trained'] });
+    return b;
+  }
+
+  it('deduplicates manual picks, reserves them before topping up and notifies each once', () => {
+    const initial = ready({ requiredCount: 3, mobilizationId: 'mobilization' });
+    const b = crew(initial);
+    C.assign(b, 'mo', initial.id, 'owner', 'assigned', ['owner', 'selected', 'selected']);
+
+    expect(b.tasks[initial.id].helpers).toHaveLength(2);
+    expect(b.tasks[initial.id].helpers[0]).toEqual({ volunteerId: 'selected', status: 'notified',
+      assignedAt: NOW, respondedAt: null });
+    expect(new Set(b.tasks[initial.id].helpers.map((entry) => entry.volunteerId)).size).toBe(2);
+    expect(b.tasks[initial.id].requiredCount).toBe(3);
+    for (const helper of b.tasks[initial.id].helpers) {
+      expect(b.events.filter((entry) => entry.kind === 'helper_added' && entry.taskId === initial.id &&
+        entry.text.includes(b.volunteers[helper.volunteerId].name))).toHaveLength(1);
+      expect(b.messages.filter((message) => message.kind === 'backup' &&
+        message.recipientId === helper.volunteerId)).toHaveLength(1);
+    }
+  });
+
+  it('sets ordinary manual demand without pre-accepting someone else or creating a second notification', () => {
+    const initial = ready();
+    const b = crew(initial);
+    C.assign(b, 'mo', initial.id, 'owner', 'assigned', ['selected']);
+    expect(b.tasks[initial.id]).toMatchObject({ requiredCount: 2,
+      helpers: [{ volunteerId: 'selected', status: 'notified' }] });
+    C.reply(b, 'selected', initial.id, 'accept');
+    expect(b.tasks[initial.id].helpers[0]).toMatchObject({ status: 'accepted', respondedAt: NOW });
+    expect(b.messages.filter((message) => message.kind === 'backup' &&
+      message.recipientId === 'selected')).toHaveLength(1);
+  });
+
+  it.each([
+    { role: 'team_lead' as const }, { duty: 'on_break' as const }, { skills: [] }, { shiftEndsAt: NOW },
+  ])('rejects an ineligible explicit helper before any side effect: %j', (over) => {
+    const initial = ready();
+    const b = crew(initial);
+    b.volunteers.selected = person('selected', { skills: ['radio-trained'], ...over });
+    expect(() => C.assign(b, 'mo', initial.id, 'owner', 'assigned', ['selected'])).toThrow(/Selected helpers/);
+    expect(b.tasks[initial.id]).toEqual(initial);
+    expect(b.messages).toEqual([]);
+    expect(b.events).toEqual([]);
+  });
+
+  it('takes a helper from another team on an ordinary task, not on a mobilization step', () => {
+    const ordinary = crew(ready());
+    ordinary.volunteers.selected = person('selected', { skills: ['radio-trained'], teamSlug: 'crowd' });
+    C.assign(ordinary, 'mo', ready().id, 'owner', 'assigned', ['selected']);
+    expect(ordinary.tasks[ready().id].helpers).toMatchObject([{ volunteerId: 'selected' }]);
+
+    const step = ready();
+    const b = crew({ ...step, mobilizationId: 'storm' });
+    b.volunteers.selected = person('selected', { skills: ['radio-trained'], teamSlug: 'crowd' });
+    expect(() => C.assign(b, 'mo', step.id, 'owner', 'assigned', ['selected'])).toThrow(/Selected helpers/);
+  });
+
+  it('rejects a helper busy on another task and an unknown helper without partial writes', () => {
+    const initial = ready();
+    const b = crew(initial);
+    b.tasks.busy = task({ id: 'busy', assigneeId: 'selected' });
+    for (const helperId of ['selected', 'unknown']) {
+      expect(() => C.assign(b, 'mo', initial.id, 'owner', 'assigned', [helperId])).toThrow();
+      expect(b.tasks[initial.id]).toEqual(initial);
+      expect(b.messages).toEqual([]);
+      expect(b.events).toEqual([]);
+    }
+  });
+
+  it('rejects stale named reservations for a queued owner, while no-helper assignments still queue', () => {
+    const initial = ready();
+    const b = crew(initial);
+    b.tasks.busy = task({ id: 'busy', assigneeId: 'owner' });
+    expect(() => C.assign(b, 'mo', initial.id, 'owner', 'assigned', ['selected'])).toThrow(/free owner/);
+    expect(b.tasks[initial.id]).toEqual(initial);
+    C.assign(b, 'mo', initial.id, 'owner');
+    expect(b.tasks[initial.id]).toMatchObject({ status: 'queued', helpers: [] });
+  });
+
+  it('does not release a selected retained helper when moving the owner', () => {
+    const slot = { volunteerId: 'selected', status: 'accepted' as const, assignedAt: NOW - MIN, respondedAt: NOW - MIN };
+    const initial = ready({ status: 'accepted', assigneeId: 'priya', requiredCount: 2, helpers: [slot] });
+    const b = crew(initial);
+    C.assign(b, 'mo', initial.id, 'owner', 'assigned', ['selected']);
+    expect(b.tasks[initial.id].helpers).toEqual([slot]);
+    expect(b.messages.filter((message) => message.recipientId === 'selected' && message.kind === 'moved')).toEqual([]);
+    expect(b.messages.filter((message) => message.recipientId === 'selected' && message.kind === 'backup')).toEqual([]);
+    expect(b.events.filter((entry) => entry.kind === 'helper_added')).toEqual([]);
+  });
+
+  it('retains an eligible automatic helper without releasing or notifying them again', () => {
+    const slot = { volunteerId: 'selected', status: 'accepted' as const, assignedAt: NOW - MIN, respondedAt: NOW - MIN };
+    const initial = ready({ status: 'accepted', assigneeId: 'priya', requiredCount: 2, helpers: [slot], mobilizationId: 'mobilization' });
+    const b = crew(initial);
+    delete b.volunteers.other;
+    delete b.volunteers.third;
+    C.assign(b, 'mo', initial.id, 'owner');
+    expect(b.tasks[initial.id].helpers).toEqual([slot]);
+    expect(b.messages.filter((message) => message.recipientId === 'selected')).toEqual([]);
+    expect(b.events.filter((entry) => entry.kind === 'helper_added')).toEqual([]);
+  });
+
+  it('leaves a visible staffing gap rather than automatically recruit busy, off-team or unqualified helpers', () => {
+    const initial = ready({ requiredCount: 3 });
+    const b = crew(initial);
+    b.volunteers.selected = person('selected', { skills: [] });
+    b.volunteers.other = person('other', { skills: ['radio-trained'], teamSlug: 'crowd' });
+    b.tasks.busy = task({ id: 'busy', assigneeId: 'third' });
+    C.assign(b, 'mo', initial.id, 'owner');
+    expect(b.tasks[initial.id]).toMatchObject({ requiredCount: 3, helpers: [] });
+  });
+
+  it('passes explicit helpers through ordinary proposal approval', () => {
+    const initial = ready();
+    const b = crew(initial);
+    b.proposals.pick = { id: 'pick', taskId: initial.id, candidates: [{ volunteerId: 'owner', rationale: 'free', distanceM: 0 }], helperIds: [],
+      createdAt: NOW, autoAssignAt: NOW + MIN, status: 'pending', volunteerId: null, decidedById: null, decidedAt: null };
+    C.approve(b, 'mo', 'pick', undefined, ['selected']);
+    expect(b.proposals.pick.status).toBe('approved');
+    expect(b.tasks[initial.id].helpers).toMatchObject([{ volunteerId: 'selected', status: 'notified' }]);
+  });
+});
+
+describe('tell_guest intent updates its task instead of filing an incident', () => {
+  it('sends the volunteer message and resets only the task update clock', () => {
+    const initial = task({ requestId: asked.id, nudgeCount: 2, lastNudgeAt: NOW - MIN, leadAlertedAt: NOW - MIN });
+    const request = { ...asked, taskId: initial.id, stage: 'coming' as const };
+    const b = festival([initial], [request]);
+    expect(C.commit(b, 'priya', { heard: 'tell them I am arriving',
+      intent: { kind: 'tell_guest', taskId: initial.id, text: 'I am arriving.' } })).toEqual({ confirmation: 'Sent to the festival-goer' });
+    expect(b.requests[request.id].thread.at(-1)).toMatchObject({ from: 'staff', text: 'I am arriving.', at: NOW });
+    expect(b.tasks[initial.id]).toMatchObject({ lastActivityAt: NOW, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null });
+    expect(Object.keys(b.tasks)).toEqual([initial.id]);
+  });
+});
+
+describe('a scoped scheduler pass retains the full world', () => {
+  it('nudges its named Task only, exactly once across repeated passes', () => {
+    const target = task({ id: 'target', status: 'assigned' });
+    const unrelated = task({ id: 'unrelated', status: 'assigned', assigneeId: 'sam' });
+    const b = festival([target, unrelated]);
+    C.schedulerStep(b, ['target']);
+    C.schedulerStep(b, ['target']);
+    expect(b.tasks.unrelated).toEqual(unrelated);
+    expect(b.tasks.target.lastNudgeAt).toBe(NOW);
+    expect(b.events.filter((event) => event.kind === 'nudged')).toHaveLength(1);
+    expect(b.messages.filter((message) => message.kind === 'nudge')).toHaveLength(1);
+  });
+
+  it('still sees an unrelated active Task when deciding whether a candidate is busy', () => {
+    const occupied = task({ id: 'occupied' });
+    const target = task({ id: 'target', status: 'open', assigneeId: null, assignedAt: null });
+    const b = festival([occupied, target]);
+    b.proposals.pick = { id: 'pick', taskId: 'target', candidates: [], helperIds: [], createdAt: NOW - MIN,
+      autoAssignAt: NOW - 1, status: 'pending', volunteerId: null, decidedById: null, decidedAt: null };
+    b.proposals.other = { ...b.proposals.pick, id: 'other', taskId: 'occupied' };
+    C.schedulerStep(b, ['target']);
+    expect(b.tasks.occupied).toEqual(occupied);
+    expect(b.tasks.target).toMatchObject({ status: 'queued', assigneeId: 'priya' });
+    expect(b.proposals.other.status).toBe('pending');
+  });
+});
+
 describe('updateTask: a new report about an incident already open', () => {
+  it('does not let a stale model match join an incident report to a Mobilization operation', () => {
+    const operation = task({ mobilizationId: 'mobilization', mobilizationStepKey: 'water-patrol' });
+    const b = festival([operation], [asked]);
+    C.understand(b, asked.id, {
+      kind: 'task', team: 'first-aid', priority: 'P3', category: 'medical',
+      title: 'A separate fainting report', summary: asked.heard, zoneSlug: 'food-alley',
+      locationHint: null, language: 'en', speakerNeeded: null, firstAidNeeded: null, escalate: null,
+    }, { taskId: operation.id, read: { priority: 'P1', resolved: false } });
+    expect(b.tasks[operation.id]).toEqual(operation);
+    expect(b.requests[asked.id].taskId).not.toBe(operation.id);
+    expect(Object.keys(b.tasks)).toHaveLength(2);
+  });
+
   it('goes on the existing task as a note, and no new task is made', () => {
     const b = festival();
 
@@ -313,7 +496,7 @@ describe('the picker’s read of a P1/P2 proposal', () => {
     const w: World = {
       volunteers: Object.fromEntries(volunteers.map((v) => [v.id, v])),
       tasks: { collapsed: open, spill: busyOn },
-      proposals: { p1: { ...proposal, ...over } }, requests: {}, teams: { 'first-aid': { name: 'First Aid' } },
+      proposals: { p1: { ...proposal, ...over } }, requests: {}, mobilizations: {}, teams: { 'first-aid': { name: 'First Aid' } },
     };
     let n = 0;
     return new Batch(w, { now, id: (kind) => `${kind}-${++n}` });
@@ -344,7 +527,7 @@ describe('the picker’s read of a P1/P2 proposal', () => {
 
     C.approve(b, 'lee', 'p1');
 
-    expect(b.tasks.collapsed).toMatchObject({ assigneeId: 'priya', helperIds: ['tom'] });
+    expect(b.tasks.collapsed).toMatchObject({ assigneeId: 'priya', helpers: [expect.objectContaining({ volunteerId: 'tom', status: 'notified' })] });
     expect(b.messages).toContainEqual(expect.objectContaining({ recipientId: 'tom', kind: 'backup', body: 'Help Priya: Man collapsed at the food stalls.' }));
   });
 
@@ -353,7 +536,7 @@ describe('the picker’s read of a P1/P2 proposal', () => {
 
     C.approve(b, 'lee', 'p1', 'ana');
 
-    expect(b.tasks.collapsed).toMatchObject({ assigneeId: 'ana', helperIds: [] });
+    expect(b.tasks.collapsed).toMatchObject({ assigneeId: 'ana', helpers: [] });
   });
 
   it('nobody approving in time assigns the pick and the helpers it said', () => {
@@ -362,7 +545,7 @@ describe('the picker’s read of a P1/P2 proposal', () => {
     C.schedulerStep(b);
 
     expect(b.proposals.p1.status).toBe('auto_assigned');
-    expect(b.tasks.collapsed).toMatchObject({ assigneeId: 'priya', helperIds: ['tom'] });
+    expect(b.tasks.collapsed).toMatchObject({ assigneeId: 'priya', helpers: [expect.objectContaining({ volunteerId: 'tom', status: 'notified' })] });
   });
 });
 

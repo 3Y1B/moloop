@@ -15,7 +15,7 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({
   id, title: id, summary: id, category: 'medical', priority: 'P2', teamSlug: 'first-aid', zoneSlug: 'food-alley',
   locationHint: null, status: 'open', assigneeId: null, reporter: { kind: 'volunteer', name: 'Sam Smith', quote: id, language: 'en' },
   handledBy: 'human', createdAt: NOW - 10 * MIN, assignedAt: null, etaAt: null, lastActivityAt: NOW - 10 * MIN, nudgeCount: 0,
-  lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: null, ...over,
+  lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null, escalation: null, helpers: [], requiredCount: 1, resolution: null, requestId: null, mobilizationId: null, ...over,
 });
 
 function festival(volunteers: Volunteer[], tasks: Task[] = []) {
@@ -47,7 +47,7 @@ describe('teamStats', () => {
         person('priya'), person('tom'), person('kai'), person('ana', { duty: 'on_break' }), person('zed', { duty: 'off_shift' }),
       ],
       [
-        task('collapsed', { status: 'in_progress', assigneeId: 'priya', helperIds: ['tom'] }),
+        task('collapsed', { status: 'in_progress', assigneeId: 'priya', helpers: [{ volunteerId: 'tom', status: 'accepted', assignedAt: NOW, respondedAt: NOW }] }),
         task('done', { status: 'resolved', assigneeId: 'kai' }),
       ],
     );
@@ -64,7 +64,7 @@ describe('crewFor', () => {
       person('linh', { teamSlug: 'welfare' }),
     ],
     [
-      task('collapsed', { status: 'escalated', assigneeId: 'priya', helperIds: ['bea'], escalation: asked }),
+      task('collapsed', { status: 'escalated', assigneeId: 'priya', helpers: [{ volunteerId: 'bea', status: 'accepted', assignedAt: NOW, respondedAt: NOW }], escalation: asked }),
       task('sunburn', { priority: 'P3' }),
       task('faint', { priority: 'P1' }),
       task('queued', { status: 'queued', assigneeId: 'tom' }),

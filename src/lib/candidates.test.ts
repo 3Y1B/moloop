@@ -10,7 +10,7 @@ const task = (over: Partial<Task> = {}): Task => ({
   priority: 'P1', teamSlug: 'first-aid', zoneSlug: 'food-alley', locationHint: null, status: 'open', assigneeId: null,
   reporter: { kind: 'festivalgoer', quote: 'a man collapsed', language: 'en' }, handledBy: 'human',
   createdAt: NOW, assignedAt: null, etaAt: null, lastActivityAt: NOW, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null,
-  resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: null, ...over,
+  resolvedAt: null, escalation: null, helpers: [], requiredCount: 1, resolution: null, requestId: null, mobilizationId: null, ...over,
 });
 
 const vol = (id: string, over: Partial<Volunteer> = {}): Volunteer => ({

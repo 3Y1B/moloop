@@ -1,4 +1,4 @@
-import { createContext, use, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, use, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import type { Repo, Snapshot } from './repo';
@@ -7,33 +7,28 @@ import { SupabaseRepo } from './supabase-repo';
 
 const RepoContext = createContext<Repo | null>(null);
 
-let repo: Repo | undefined;
-
-/** The last module run's repo. Fast Refresh re-runs this module but keeps the Supabase client, so it's closed here. */
-const hot = globalThis as { __moloopRepo?: { repo: SupabaseRepo; appState?: { remove(): void } } };
-
-/**
- * The shared world: sign-in, realtime, server commands. One per app, created on first use. Not per
- * component: React runs a state initializer twice in development and drops one result, and a repo that
- * is dropped without dispose() keeps listening to the shared Supabase client.
- */
-function getRepo(): Repo {
-  if (repo) return repo;
-  if (hot.__moloopRepo) {
-    hot.__moloopRepo.appState?.remove();
-    void hot.__moloopRepo.repo.dispose();
-  }
-  const created = new SupabaseRepo(getSupabase());
-  // Back from the background: realtime may have dropped changes while the phone slept.
-  const appState =
-    Platform.OS !== 'web' ? AppState.addEventListener('change', (state) => state === 'active' && created.resync()) : undefined;
-  hot.__moloopRepo = { repo: created, appState };
-  repo = created;
-  return created;
-}
-
+/** The shared world: sign-in, realtime, server commands. */
 export function RepoProvider({ children }: { children: ReactNode }) {
-  return <RepoContext value={getRepo()}>{children}</RepoContext>;
+  const [repo, setRepo] = useState<SupabaseRepo | null>(null);
+  useEffect(() => {
+    // Construct only after commit: StrictMode may discard a render without running its cleanup.
+    const next = new SupabaseRepo(getSupabase());
+    // Back from the background: realtime may have dropped changes while the phone slept.
+    const foreground = Platform.OS !== 'web'
+      ? AppState.addEventListener('change', (state) => { if (state === 'active') next.resync(); })
+      : null;
+    let mounted = true;
+    // Publish after setup completes; a discarded StrictMode setup must never expose its disposed Repo.
+    void Promise.resolve().then(() => { if (mounted) setRepo(next); });
+    return () => {
+      mounted = false;
+      foreground?.remove();
+      void next.dispose();
+    };
+  }, []);
+  // Descendants use the Repo immediately; don't mount them with an empty context.
+  if (!repo) return null;
+  return <RepoContext value={repo}>{children}</RepoContext>;
 }
 
 export function useRepo(): Repo {

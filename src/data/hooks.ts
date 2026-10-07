@@ -6,10 +6,19 @@ import { isActive, isOnTask } from '@/lib/lifecycle';
 import { needsFor, type NeedsItem } from '@/lib/needs';
 import { meetingPoint, onSite, placeOf, PRESENCE, type Place } from '@/lib/presence';
 import { routeBetween } from '@/lib/route';
-import type { GuestRequest, Proposal, Task, Team, TeamSlug, Volunteer, VolunteerRole } from '@/lib/schema';
+import type {
+  GuestRequest,
+  Mobilization,
+  Proposal,
+  Task,
+  Team,
+  TeamSlug,
+  Volunteer,
+  VolunteerRole,
+} from '@/lib/schema';
 import { NODES, toPlan, VENUE_ZONES, type Point } from './venue';
 import { getLatest, getPinned, subscribe as onFix } from './location';
-import { guestStage, memberStatus, taskStatusFor, type GuestStatus, type Status } from '@/lib/status';
+import { guestStage, memberStatus, mobilizationStatusFor, taskStatusFor, type GuestStatus, type Status } from '@/lib/status';
 import { chosenTeam, onTeamChange } from '@/lib/team-pill';
 import { fallbackSummary, type Summary } from '@/lib/summary';
 import { taskLog, type LogFilter } from '@/lib/task-log';
@@ -51,7 +60,11 @@ export function useMyWork() {
       helping: !!active && active.assigneeId !== s.meId,
       queue: mine.filter((t) => t.status === 'queued').sort(byPriorityThenAge),
       done: all
-        .filter((t) => t.status === 'resolved' && (t.assigneeId === s.meId || (!!s.meId && t.helperIds.includes(s.meId))))
+        .filter(
+          (t) =>
+            t.status === 'resolved' &&
+            (t.assigneeId === s.meId || (!!s.meId && t.helpers.some((h) => h.volunteerId === s.meId))),
+        )
         .sort((a, b) => (b.resolvedAt ?? 0) - (a.resolvedAt ?? 0)),
     };
   }, [s.tasks, s.meId]);
@@ -66,6 +79,19 @@ export function useTaskStatus(task: Task | undefined): Status | undefined {
 export function useTask(id: string | undefined) {
   const s = useSnapshot();
   return id ? s.tasks[id] : undefined;
+}
+
+export function useMobilization(id: string | undefined) {
+  const s = useSnapshot();
+  return id ? s.mobilizations[id] : undefined;
+}
+
+export function useMobilizationStatus(mobilization: Mobilization | undefined) {
+  const s = useSnapshot();
+  return useMemo(
+    () => (mobilization ? mobilizationStatusFor(mobilization, Object.values(s.tasks)) : undefined),
+    [mobilization, s.tasks],
+  );
 }
 
 export function useTaskEvents(taskId: string | undefined) {
@@ -155,7 +181,7 @@ export type { NeedsItem, NeedsKind } from '@/lib/needs';
 /** The lead's or Mo's "Needs you" list (lib/needs). */
 export function useNeedsMe(): NeedsItem[] {
   const s = useSnapshot();
-  return useMemo(() => needsFor(s, s.meId), [s.tasks, s.proposals, s.volunteers, s.meId]); // eslint-disable-line react-hooks/exhaustive-deps
+  return useMemo(() => needsFor(s, s.meId), [s.tasks, s.proposals, s.volunteers, s.mobilizations, s.meId]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 export type { TeamMember } from '@/lib/crew';
@@ -164,7 +190,7 @@ export type { TeamStat } from '@/lib/crew';
 /** A team at a glance: members (most urgent first, not me), their tasks, and the team's open and active tasks. Defaults to my team. */
 export function useTeam(teamSlug?: TeamSlug | null) {
   const s = useSnapshot();
-  const slug = teamSlug === undefined ? (s.meId ? s.volunteers[s.meId]?.teamSlug ?? null : null) : teamSlug;
+  const slug = teamSlug === undefined ? (s.meId ? (s.volunteers[s.meId]?.teamSlug ?? null) : null) : teamSlug;
   return useMemo(() => {
     const { members, openTasks } = slug ? crewFor(s, s.meId, slug) : { members: [], openTasks: [] };
     return {
@@ -172,7 +198,9 @@ export function useTeam(teamSlug?: TeamSlug | null) {
       members,
       /** Unassigned and queued, most urgent first. */
       openTasks,
-      activeTasks: Object.values(s.tasks).filter((t) => t.teamSlug === slug && isActive(t)).sort(byPriorityThenAge),
+      activeTasks: Object.values(s.tasks)
+        .filter((t) => t.teamSlug === slug && isActive(t))
+        .sort(byPriorityThenAge),
     };
   }, [s, slug]);
 }
@@ -217,7 +245,8 @@ export function useSummary(taskId?: string): Summary | null {
   const [got, setGot] = useState<{ summary?: Summary; failed?: boolean }>({});
   useEffect(() => {
     let live = true;
-    repo.summarize(taskId ? { scope: 'task', taskId } : { scope: 'shift' })
+    repo
+      .summarize(taskId ? { scope: 'task', taskId } : { scope: 'shift' })
       .then((summary) => live && setGot({ summary }))
       .catch(() => live && setGot((g) => ({ ...g, failed: !g.summary })));
     return () => {
@@ -225,7 +254,9 @@ export function useSummary(taskId?: string): Summary | null {
     };
   }, [repo, taskId, newest]);
   if (got.summary) return got.summary;
-  return got.failed ? { ...fallbackSummary(s, taskId ? { scope: 'task', taskId } : { scope: 'shift' }), ai: false, at: s.now } : null;
+  return got.failed
+    ? { ...fallbackSummary(s, taskId ? { scope: 'task', taskId } : { scope: 'shift' }), ai: false, at: s.now }
+    : null;
 }
 
 /** The whole event, for Mo and the map: every active task, every unassigned one, everyone on duty. */
@@ -253,9 +284,11 @@ export function usePerson(id: string | undefined) {
       team: volunteer.teamSlug ? s.teams[volunteer.teamSlug] : undefined,
       status: memberStatus(volunteer, all, s.now, s),
       active: all.filter((t) => t.assigneeId === id && isActive(t)).sort(byPriorityThenAge)[0],
-      helping: all.find((t) => isActive(t) && t.helperIds.includes(volunteer.id)),
+      helping: all.find((t) => isActive(t) && t.helpers.some((h) => h.volunteerId === volunteer.id)),
       queue: all.filter((t) => t.assigneeId === id && t.status === 'queued').sort(byPriorityThenAge),
-      done: all.filter((t) => t.assigneeId === id && t.status === 'resolved').sort((a, b) => (b.resolvedAt ?? 0) - (a.resolvedAt ?? 0)),
+      done: all
+        .filter((t) => t.assigneeId === id && t.status === 'resolved')
+        .sort((a, b) => (b.resolvedAt ?? 0) - (a.resolvedAt ?? 0)),
     };
   }, [s, id]);
 }
@@ -267,7 +300,11 @@ export function useCandidates(taskId: string | undefined, exclude: string[] = []
   return useMemo(() => {
     const task = taskId ? s.tasks[taskId] : undefined;
     return task
-      ? rankCandidates(task, Object.values(s.volunteers), Object.values(s.tasks), { exclude: key ? key.split(',') : [], positions: s.positions, now: s.now })
+      ? rankCandidates(task, Object.values(s.volunteers), Object.values(s.tasks), {
+          exclude: key ? key.split(',') : [],
+          positions: s.positions,
+          now: s.now,
+        })
       : [];
     // Positions move every few seconds: re-rank with them, not with every tick of the clock.
   }, [s.tasks, s.volunteers, s.positions, taskId, key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -289,12 +326,22 @@ export function useProposalForTask(taskId: string | undefined): Proposal | undef
 
 // ── Festival-goer ──
 
-export type RequestView = { request: GuestRequest; task?: Task; status: GuestStatus; volunteer?: Volunteer };
+export type RequestView = {
+  request: GuestRequest;
+  task?: Task;
+  status: GuestStatus;
+  volunteer?: Volunteer;
+};
 
 function requestView(s: ReturnType<typeof useSnapshot>, request: GuestRequest): RequestView {
   const task = request.taskId ? s.tasks[request.taskId] : undefined;
   const status = guestStage(request, task, s, s.now);
-  return { request, task, status, volunteer: status.volunteerId ? s.volunteers[status.volunteerId] : undefined };
+  return {
+    request,
+    task,
+    status,
+    volunteer: status.volunteerId ? s.volunteers[status.volunteerId] : undefined,
+  };
 }
 
 /** One request with its live stage ("Priya is coming · 3 min") and who's coming. */
@@ -310,7 +357,10 @@ export function useRequest(id: string | undefined): RequestView | undefined {
 export function useMyRequests(): RequestView[] {
   const s = useSnapshot();
   return useMemo(
-    () => Object.values(s.requests).sort((a, b) => b.createdAt - a.createdAt).map((r) => requestView(s, r)),
+    () =>
+      Object.values(s.requests)
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map((r) => requestView(s, r)),
     [s],
   );
 }

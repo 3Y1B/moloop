@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/icon';
 import { Type } from '@/constants/theme';
 import { useLookups, useMe, useRouteTo, useSnapshot, useTaskEvents, useTaskStatus } from '@/data/hooks';
 import { clockTime } from '@/lib/format';
+import { confirmedPeopleCount } from '@/lib/lifecycle';
 import { quoteFor } from '@/lib/quote';
 import type { Task } from '@/lib/schema';
 import { taskStatusFor } from '@/lib/status';
@@ -40,7 +41,7 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
   const { meId } = useSnapshot();
   const { zones } = useLookups();
   const zone = task.zoneSlug ? zones[task.zoneSlug] : undefined;
-  const helping = !!meId && task.helperIds.includes(meId);
+  const helping = !!meId && task.helpers.some((helper) => helper.volunteerId === meId);
   const hint = task.locationHint ? task.locationHint.charAt(0).toLowerCase() + task.locationHint.slice(1) : null;
   // The hint only when it adds something: "Water 2, by the second tap", not "Water 2, water 2".
   const extra = hint && hint.toLowerCase() !== zone?.name.toLowerCase() ? hint : null;
@@ -62,12 +63,12 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
         quote: true,
         onPress: q.original ? () => setOriginal((o) => !o) : undefined,
       },
-      { id: 'summary', at: task.createdAt, who: 'Moloop', text: task.summary },
+      ...(task.mobilizationId ? [] : [{ id: 'summary', at: task.createdAt, who: 'Moloop', text: task.summary }]),
       ...events
         .filter((e) => e.kind !== 'created')
         .map((e): LogEntry => ({ id: e.id, at: e.at, text: e.text, note: e.note })),
     ];
-  }, [task.createdAt, task.reporter, task.summary, events, original]);
+  }, [task.createdAt, task.reporter, task.summary, task.mobilizationId, events, original]);
 
   return (
     <Animated.View key={task.id} entering={FadeIn.duration(220)}>
@@ -78,7 +79,9 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
           <>
             <Head title={task.title} lead={<PrioritySignal priority={task.priority} size={14} />}>
               <View style={styles.where}>
-                <Text style={[styles.text, styles.flex, { color: theme.textSecondary }]} numberOfLines={1}>{place}</Text>
+                <Text style={[styles.text, styles.flex, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {place}
+                </Text>
                 {route && (
                   <View style={styles.walk}>
                     <Icon
@@ -101,7 +104,8 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
                       Haptics.selectionAsync();
                       router.push({ pathname: '/navigate/[id]', params: { id: task.id } });
                     }}
-                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                  >
                     <Text style={[styles.text, styles.strong, { color: theme.tint }]}>Directions</Text>
                   </Pressable>
                 )}
@@ -113,7 +117,21 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
               </View>
             )}
           </>
-        }>
+        }
+      >
+        {task.mobilizationId && (
+          <View style={styles.brief}>
+            <Text style={[styles.text, { color: theme.text }]}>{task.summary}</Text>
+            <Text style={[styles.small, { color: theme.textSecondary }]}>
+              {confirmedPeopleCount(task)} of {task.requiredCount} people committed
+            </Text>
+            {!!task.requiredSkills?.length && (
+              <Text style={[styles.small, { color: theme.textSecondary }]}>
+                Required skills: {task.requiredSkills.join(', ')}
+              </Text>
+            )}
+          </View>
+        )}
         <LogLines id={task.id} entries={entries} expanded={expanded} onExpand={onExpand} />
         {status && <NowLine status={status} />}
       </LogSheet>
@@ -147,9 +165,14 @@ export function FreeSheet({ done, onHeadLayout, minHeight, expanded, onExpand }:
       minHeight={minHeight}
       head={
         <Head title={onBreak ? 'On break' : 'Free'}>
-          {!!sub && <Text style={[styles.text, { color: theme.textSecondary }]} numberOfLines={1}>{sub}</Text>}
+          {!!sub && (
+            <Text style={[styles.text, { color: theme.textSecondary }]} numberOfLines={1}>
+              {sub}
+            </Text>
+          )}
         </Head>
-      }>
+      }
+    >
       <LogLines id="shift" entries={entries} expanded={expanded} onExpand={onExpand} />
     </LogSheet>
   );
@@ -163,4 +186,6 @@ const styles = StyleSheet.create({
   walk: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   minutes: { fontVariant: ['tabular-nums'] },
   owner: { marginTop: 10 },
+  brief: { gap: 6, marginBottom: 12 },
+  small: { fontSize: Type.footnote, lineHeight: 18 },
 });

@@ -46,7 +46,7 @@ export function crewFor(s: World, meId: string | null, team: TeamSlug | null): {
       volunteer: v,
       status: memberStatus(v, all, s.now, s),
       task: all.filter((t) => t.assigneeId === v.id && isActive(t)).sort(byPriorityThenAge)[0],
-      helping: all.find((t) => isActive(t) && t.helperIds.includes(v.id)),
+      helping: all.find((t) => isActive(t) && t.helpers.some((h) => h.volunteerId === v.id)),
     }))
     .sort((a, b) =>
       Number(a.volunteer.duty === 'off_shift') - Number(b.volunteer.duty === 'off_shift') ||

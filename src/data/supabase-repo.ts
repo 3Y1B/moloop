@@ -3,13 +3,46 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload, Session, Supabase
 import type { Database } from '@/lib/database.types';
 import type { Fix } from '@/lib/presence';
 import type { Summary, SummaryScope } from '@/lib/summary';
-import { applyReply } from '@/lib/lifecycle';
+import { applyHelperReply, applyReply } from '@/lib/lifecycle';
+import type { SimulationRunResult } from '@/lib/mobilization-contracts';
 import type { Duty, GuestRequest, Message, Proposal, ReplyKind, Task, TaskEvent, Volunteer } from '@/lib/schema';
-import type { BroadcastScope, Heard, Interpretation, Recording, Repo, RespondInput, Snapshot, VoiceResponse } from './repo';
+import type {
+  BroadcastScope,
+  CreateMobilizationInput,
+  Heard,
+  Interpretation,
+  MobilizationControls,
+  Repo,
+  Recording,
+  RespondInput,
+  Snapshot,
+  VoiceResponse,
+} from './repo';
 import {
-  DELIVERY_SELECT, PROFILE_SELECT, PROPOSAL_ACTION_SELECT, PROPOSAL_CANDIDATE_SELECT, refsFrom, TASK_SELECT,
-  toGuestRequest, toMessage, toPosition, toProposal, toTask, toTaskEvent, toTeam, toVolunteer, toZone, emptyRefs,
-  type DeliveryRow, type ProfileRow, type ProposalActionRow, type ProposalCandidateRow, type Refs, type Row, type TaskRow,
+  DELIVERY_SELECT,
+  PROFILE_SELECT,
+  PROPOSAL_ACTION_SELECT,
+  PROPOSAL_CANDIDATE_SELECT,
+  refsFrom,
+  TASK_SELECT,
+  toGuestRequest,
+  toMessage,
+  toMobilization,
+  toPosition,
+  toProposal,
+  toTask,
+  toTaskEvent,
+  toTeam,
+  toVolunteer,
+  toZone,
+  emptyRefs,
+  type DeliveryRow,
+  type ProfileRow,
+  type ProposalActionRow,
+  type ProposalCandidateRow,
+  type Refs,
+  type Row,
+  type TaskRow,
 } from './supabase/rows';
 
 type Db = SupabaseClient<Database>;
@@ -27,7 +60,10 @@ export type SupabaseRepoOptions = {
 
 /** A command the server refused: `status` is the HTTP status, `message` its `{ error }`. */
 export class CommandError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
     super(message);
     this.name = 'CommandError';
   }
@@ -35,11 +71,36 @@ export class CommandError extends Error {
 
 const DEFAULT_SERVER_URL = 'http://127.0.0.1:8787';
 const TICK_MS = 5_000;
-const ASSIGNED: Row<'task_assignments'>['status'][] = ['approved', 'notified', 'accepted', 'en_route', 'on_scene', 'done'];
+// Keep the counter across Fast Refresh module reloads without a native UUID dependency.
+const INSTANCE_COUNTER = Symbol.for('moloop.SupabaseRepo.instanceCounter');
+const nextInstance = () => {
+  const runtime = globalThis as typeof globalThis & { [INSTANCE_COUNTER]?: number };
+  return (runtime[INSTANCE_COUNTER] = (runtime[INSTANCE_COUNTER] ?? 0) + 1);
+};
+const ASSIGNED: Row<'task_assignments'>['status'][] = [
+  'approved',
+  'notified',
+  'accepted',
+  'en_route',
+  'on_scene',
+  'done',
+];
 
 const blank = (status: Snapshot['status']): Snapshot => ({
-  status, now: Date.now(), meId: null, guestId: null,
-  teams: {}, zones: {}, volunteers: {}, tasks: {}, events: [], messages: [], requests: {}, proposals: {}, positions: {},
+  status,
+  now: Date.now(),
+  meId: null,
+  guestId: null,
+  teams: {},
+  zones: {},
+  volunteers: {},
+  tasks: {},
+  events: [],
+  messages: [],
+  requests: {},
+  proposals: {},
+  positions: {},
+  mobilizations: {},
 });
 
 const without = <T>(record: Record<string, T>, ...ids: string[]) => {
@@ -52,7 +113,6 @@ const must = <T>(res: { data: T | null; error: { message: string } | null }, wha
   if (res.error) throw new Error(`${what}: ${res.error.message}`);
   return res.data ?? ([] as unknown as T);
 };
-
 
 type Change<T extends keyof Database['public']['Tables']> = RealtimePostgresChangesPayload<Row<T>>;
 
@@ -70,22 +130,24 @@ export class SupabaseRepo implements Repo {
   /** task id → report id, so a realtime row (no embed) keeps its reporter unless the report changed. */
   private reportOf = new Map<string, string>();
 
-  /** Carried by every channel topic. Random, not a module counter: Fast Refresh re-runs this module and a counter
-   * would start again at 1 while the old repo's channels are still open on the shared client. */
-  private readonly id = Math.random().toString(36).slice(2, 10);
-  /** Channels opened so far. A reconnect gets a fresh topic: offline, removeChannel can't close the old one. */
-  private joins = 0;
   private userId: string | null | undefined = undefined;
   private anonymous = false;
   /** Bumped on every session change: async work for an older session drops its result. */
   private gen = 0;
+  private readonly instance = nextInstance();
+  private connection = 0;
+  private disposed = false;
+  private disposal: Promise<void> | null = null;
   private channel: RealtimeChannel | null = null;
+  private removals = new Set<Promise<void>>();
+  private authTimers = new Set<ReturnType<typeof setTimeout>>();
   private joinTimer: ReturnType<typeof setTimeout> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private hydrateTimer: ReturnType<typeof setTimeout> | null = null;
   private retryMs = 1_000;
   /** Changes that arrive while a hydrate is in flight wait here, then replay on top of it. */
   private hydrating = false;
-  private inFlight = false;
+  private inFlight: number | null = null;
   private rehydrate = false;
   private queue: (() => void)[] = [];
 
@@ -95,16 +157,24 @@ export class SupabaseRepo implements Repo {
   private readonly ticker: ReturnType<typeof setInterval>;
   private readonly authSub: { unsubscribe(): void };
 
-  constructor(private readonly db: Db, opts: SupabaseRepoOptions = {}) {
+  constructor(
+    private readonly db: Db,
+    opts: SupabaseRepoOptions = {},
+  ) {
     this.serverUrl = (opts.serverUrl ?? process.env.EXPO_PUBLIC_SERVER_URL ?? DEFAULT_SERVER_URL).replace(/\/+$/, '');
     this.fetch = opts.fetch ?? ((...args) => fetch(...args));
     this.subscribeTimeoutMs = opts.subscribeTimeoutMs ?? 3_000;
     this.ticker = setInterval(() => {
-      if (this.state.status === 'ready') this.set({});
+      if (!this.disposed && this.state.status === 'ready') this.set({});
     }, opts.tickMs ?? TICK_MS);
     // Supabase warns against awaiting other client calls inside this callback: defer the work.
     const { data } = db.auth.onAuthStateChange((_event, session) => {
-      setTimeout(() => void this.onSession(session), 0);
+      if (this.disposed) return;
+      const timer = setTimeout(() => {
+        this.authTimers.delete(timer);
+        void this.onSession(session);
+      }, 0);
+      this.authTimers.add(timer);
     });
     this.authSub = data.subscription;
   }
@@ -112,6 +182,7 @@ export class SupabaseRepo implements Repo {
   getSnapshot = () => this.state;
 
   subscribe = (listener: () => void) => {
+    if (this.disposed) return () => {};
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -120,16 +191,24 @@ export class SupabaseRepo implements Repo {
 
   /** Re-read everything, e.g. when the app comes back to the foreground. */
   resync() {
+    if (this.disposed) return;
     if (this.userId) void this.hydrate(this.gen);
     if (this.userId && !this.channel) this.connect(this.gen);
   }
 
-  /** Stop the clock, realtime and auth listener. For scripts and tests; the app keeps one repo for its lifetime. */
-  async dispose() {
+  /** Release exactly this Repo's resources, including pending callbacks and removals. Idempotent. */
+  dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
+    this.disposed = true;
     clearInterval(this.ticker);
+    for (const timer of this.authTimers) clearTimeout(timer);
+    this.authTimers.clear();
     this.authSub.unsubscribe();
     this.gen++;
-    await this.disconnect();
+    this.queue = [];
+    this.listeners.clear();
+    this.disposal = this.disconnect();
+    return this.disposal;
   }
 
   // ── volunteer commands ──
@@ -137,7 +216,13 @@ export class SupabaseRepo implements Repo {
   async reply(taskId: string, reply: ReplyKind, note?: string) {
     // Accept is a button that flips straight away in the UI: show it now, the server confirms over realtime.
     const task = this.state.tasks[taskId];
-    const t = reply === 'accept' && task ? applyReply(task, 'accept', Date.now()) : null;
+    const actorId = this.state.meId;
+    const t =
+      reply === 'accept' && task && actorId
+        ? task.assigneeId === actorId
+          ? applyReply(task, 'accept', Date.now())
+          : applyHelperReply(task, actorId, 'accept', Date.now())
+        : null;
     if (t) this.set({ tasks: { ...this.state.tasks, [taskId]: t.task } });
     await this.command('reply', { taskId, reply, note }, () => this.refetchTasks([taskId]));
   }
@@ -176,7 +261,9 @@ export class SupabaseRepo implements Repo {
   async markRead(messageIds: string[]) {
     const ids = new Set(messageIds);
     if (!this.state.messages.some((m) => ids.has(m.id) && !m.read)) return;
-    this.set({ messages: this.state.messages.map((m) => (ids.has(m.id) ? { ...m, read: true } : m)) });
+    this.set({
+      messages: this.state.messages.map((m) => (ids.has(m.id) ? { ...m, read: true } : m)),
+    });
     await this.command('markRead', { messageIds }, () => this.refetchMessages(messageIds));
   }
 
@@ -184,7 +271,11 @@ export class SupabaseRepo implements Repo {
   async sharePosition(fix: Fix) {
     if (!this.userId) return;
     const { error } = await this.db.from('presence').upsert({
-      person_id: this.userId, lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy, heading: fix.heading,
+      person_id: this.userId,
+      lat: fix.lat,
+      lng: fix.lng,
+      accuracy: fix.accuracy,
+      heading: fix.heading,
     });
     if (error) throw new Error(`presence: ${error.message}`);
   }
@@ -227,10 +318,33 @@ export class SupabaseRepo implements Repo {
     await this.post('sendDirect', { volunteerId, body });
   }
 
+  // ── mobilizations ──
+
+  mobilizations: MobilizationControls = {
+    create: async (input: CreateMobilizationInput) => {
+      await this.post('createMobilization', input);
+    },
+    approve: async (mobilizationId, review) => {
+      await this.post('approveMobilization', { mobilizationId, ...review });
+    },
+    reject: async (mobilizationId: string) => {
+      await this.post('rejectMobilization', { mobilizationId });
+    },
+    standDown: async (mobilizationId: string, outcome: 'stood_down' | 'cancelled') => {
+      await this.post('standDown', { mobilizationId, outcome });
+    },
+    getRun: (runId) => this.post<SimulationRunResult>('getMobilizationRun', { runId }),
+  };
+
   // ── festival-goer ──
 
   async guestAsk(text: string, zoneSlug: string | null, locationHint?: string | null, clips?: string[]) {
-    const { requestId } = await this.post<{ requestId: string }>('guestAsk', { text, zoneSlug, locationHint, clips: clips?.length ? clips : undefined });
+    const { requestId } = await this.post<{ requestId: string }>('guestAsk', {
+      text,
+      zoneSlug,
+      locationHint,
+      clips: clips?.length ? clips : undefined,
+    });
     // The screen opens the request straight away: make sure it's here before saying where it is.
     if (!this.state.requests[requestId]) await this.refetchRequests([requestId]);
     return requestId;
@@ -279,7 +393,10 @@ export class SupabaseRepo implements Repo {
     const json = (await res.json().catch(() => null)) as (T & { error?: unknown }) | null;
     if (!res.ok) {
       const error = json?.error;
-      throw new CommandError(res.status, typeof error === 'string' ? error : error ? JSON.stringify(error) : res.statusText);
+      throw new CommandError(
+        res.status,
+        typeof error === 'string' ? error : error ? JSON.stringify(error) : res.statusText,
+      );
     }
     return (json ?? {}) as T;
   }
@@ -297,44 +414,48 @@ export class SupabaseRepo implements Repo {
   // ── session ──
 
   private async onSession(session: Session | null) {
+    if (this.disposed) return;
     const uid = session?.user.id ?? null;
     if (uid === this.userId) return; // token refresh: supabase-js hands realtime the new token itself
     this.userId = uid;
     this.anonymous = !!session?.user.is_anonymous;
     const gen = ++this.gen;
     this.queue = [];
+    this.rehydrate = false;
     this.reportOf.clear();
-    await this.disconnect();
-    if (gen !== this.gen) return;
-    if (!uid) {
-      this.state = blank('ready');
-      this.emit();
-      return;
-    }
-    this.state = blank('loading');
+    this.refs = emptyRefs();
+    // Never keep the previous role's private snapshot visible while an async leave is pending.
+    this.state = blank(uid ? 'loading' : 'ready');
     this.emit();
-    this.connect(gen);
+    await this.disconnect();
+    if (this.disposed || gen !== this.gen) return;
+    if (uid) this.connect(gen);
   }
 
   // ── realtime ──
 
   private connect(gen: number) {
     const uid = this.userId;
-    if (!uid) return;
+    if (this.disposed || gen !== this.gen || !uid || this.channel) return;
     this.hydrating = true;
-    const pg = <T extends keyof Database['public']['Tables']>(table: T, handle: (p: Change<T>) => void, filter?: string) =>
+    const pg =
+      <T extends keyof Database['public']['Tables']>(table: T, handle: (p: Change<T>) => void, filter?: string) =>
       (channel: RealtimeChannel) =>
         channel.on<Row<T>>(
           'postgres_changes',
           { event: '*', schema: 'public', table, ...(filter ? { filter } : {}) },
-          (p) => this.receive(gen, () => handle(p as Change<T>)),
+          (p) => {
+            if (channel === this.channel) this.receive(gen, () => handle(p as Change<T>));
+          },
         );
 
     // Every table the phone reads that's in the supabase_realtime publication, minus shift_assignments (not in
     // the snapshot). `messages` arrive through the caller's own deliveries.
-    // supabase-js hands back the existing channel for a topic that's already open on the client, so the topic
-    // is unique per repo and per join: no two channels, old or new, may ever share one.
-    let channel = this.db.channel(`repo:${this.id}:${uid}:${++this.joins}`, { config: { postgres_changes_options: { wait: true } } });
+    // Supabase returns an existing channel for a reused topic, even while async removal is pending.
+    // Both Repo recreation and reconnects must get a fresh, not-already-subscribed channel.
+    let channel = this.db.channel(`repo:${uid}:${this.instance}:${gen}:${++this.connection}`, {
+      config: { postgres_changes_options: { wait: true } },
+    });
     for (const add of [
       pg('tasks', (p) => this.onTask(p)),
       pg('task_assignments', (p) => this.onAssignment(p)),
@@ -344,13 +465,15 @@ export class SupabaseRepo implements Repo {
       pg('guest_requests', (p) => this.onRequest(p)),
       pg('profiles', (p) => this.onProfile(p)),
       pg('presence', (p) => this.onPresence(p)),
-    ]) channel = add(channel);
+      pg('mobilizations', (p) => this.onMobilization(p)),
+    ])
+      channel = add(channel);
     // The join reply only says the channel is open. The server confirms the Postgres side separately
     // ("Subscribed to PostgreSQL"), on every join and rejoin. Changes before that are lost, so that's
     // when to (re)read everything: nothing falls between the read and the first change.
     let live = false;
     channel = channel.on('system', {}, (p: { extension?: string; status?: string; message?: string }) => {
-      if (gen !== this.gen || channel !== this.channel || p.extension !== 'postgres_changes') return;
+      if (this.disposed || gen !== this.gen || channel !== this.channel || p.extension !== 'postgres_changes') return;
       if (p.status === 'ok') {
         live = true;
         this.retryMs = 1_000;
@@ -364,11 +487,12 @@ export class SupabaseRepo implements Repo {
 
     // If realtime is slow or down, hydrate anyway after a moment: the app works, just not live.
     this.joinTimer = setTimeout(() => {
-      if (!live && gen === this.gen) void this.hydrate(gen);
+      this.joinTimer = null;
+      if (!this.disposed && !live && gen === this.gen) void this.hydrate(gen);
     }, this.subscribeTimeoutMs);
 
     channel.subscribe((status, err) => {
-      if (gen !== this.gen || channel !== this.channel) return;
+      if (this.disposed || gen !== this.gen || channel !== this.channel) return;
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         live = false;
         if (err) console.warn(`[SupabaseRepo] realtime ${status}`, err);
@@ -379,12 +503,12 @@ export class SupabaseRepo implements Repo {
   }
 
   private scheduleReconnect(gen: number) {
-    if (this.retryTimer) return;
+    if (this.disposed || gen !== this.gen || this.retryTimer) return;
     this.retryTimer = setTimeout(async () => {
       this.retryTimer = null;
-      if (gen !== this.gen) return;
+      if (this.disposed || gen !== this.gen) return;
       await this.disconnect();
-      if (gen === this.gen) this.connect(gen);
+      if (!this.disposed && gen === this.gen) this.connect(gen);
     }, this.retryMs);
     this.retryMs = Math.min(this.retryMs * 2, 30_000);
   }
@@ -392,15 +516,34 @@ export class SupabaseRepo implements Repo {
   private async disconnect() {
     if (this.joinTimer) clearTimeout(this.joinTimer);
     if (this.retryTimer) clearTimeout(this.retryTimer);
-    this.joinTimer = this.retryTimer = null;
+    if (this.hydrateTimer) clearTimeout(this.hydrateTimer);
+    this.joinTimer = this.retryTimer = this.hydrateTimer = null;
     const channel = this.channel;
     this.channel = null;
-    if (channel) await this.db.removeChannel(channel).catch(() => {});
+    if (channel) {
+      const removal = (async () => {
+        try {
+          const status = await this.db.removeChannel(channel).catch(() => 'error' as const);
+          // A timeout already closes/evicts the channel. An error does not: retry the leave while
+          // its close hooks still exist, before teardown clears those hooks.
+          if (status === 'error') await channel.unsubscribe(0);
+        } catch (error) {
+          console.warn('[SupabaseRepo] realtime cleanup failed', error);
+        } finally {
+          // Supabase only tears down an 'ok' removal; release timers/bindings on every result.
+          channel.teardown();
+        }
+      })();
+      this.removals.add(removal);
+      void removal.then(() => this.removals.delete(removal));
+    }
+    // A second disconnect/dispose must also wait for a removal already started by a session switch.
+    await Promise.all(this.removals);
   }
 
   /** Apply a change now, or after the hydrate in flight lands on top of it. */
   private receive(gen: number, apply: () => void) {
-    if (gen !== this.gen) return;
+    if (this.disposed || gen !== this.gen) return;
     if (this.hydrating) this.queue.push(apply);
     else apply();
   }
@@ -408,18 +551,22 @@ export class SupabaseRepo implements Repo {
   // ── hydrate ──
 
   private async hydrate(gen: number) {
-    if (this.inFlight) {
+    if (this.disposed || gen !== this.gen) return;
+    if (this.inFlight === gen) {
       this.rehydrate = true;
       return;
     }
-    this.inFlight = true;
+    // A new session can hydrate while the old session's request is still pending.
+    this.inFlight = gen;
     this.hydrating = true;
     try {
       do {
         this.rehydrate = false;
         const next = await this.load();
-        if (gen !== this.gen) return;
-        this.state = next;
+        if (this.disposed || gen !== this.gen) return;
+        this.refs = next.refs;
+        this.reportOf = next.reportOf;
+        this.state = next.snapshot;
       } while (this.rehydrate);
       this.hydrating = false;
       const queued = this.queue;
@@ -427,24 +574,41 @@ export class SupabaseRepo implements Repo {
       for (const apply of queued) apply();
       this.emit();
     } catch (e) {
-      if (gen !== this.gen) return;
+      if (this.disposed || gen !== this.gen) return;
       console.warn('[SupabaseRepo] hydrate failed', e);
       this.hydrating = false;
       if (this.state.status !== 'ready') this.set({ status: 'error' });
       // Try again shortly: a flaky connection on the oval shouldn't strand the app on "error".
-      setTimeout(() => {
-        if (gen === this.gen) void this.hydrate(gen);
+      if (this.hydrateTimer) clearTimeout(this.hydrateTimer);
+      this.hydrateTimer = setTimeout(() => {
+        this.hydrateTimer = null;
+        if (!this.disposed && gen === this.gen) void this.hydrate(gen);
       }, 3_000);
     } finally {
-      if (gen === this.gen) this.inFlight = false;
+      if (this.inFlight === gen) this.inFlight = null;
     }
   }
 
   /** Everything this caller can read, as one snapshot. RLS decides the contents per role. */
-  private async load(): Promise<Snapshot> {
+  private async load(): Promise<{ snapshot: Snapshot; refs: Refs; reportOf: Map<string, string> }> {
     const uid = this.userId!;
+    const anonymous = this.anonymous;
     const db = this.db;
-    const [teams, zones, profiles, skills, contacts, tasks, events, deliveries, requests, actions, candidates, presence] = await Promise.all([
+    const [
+      teams,
+      zones,
+      profiles,
+      skills,
+      contacts,
+      tasks,
+      events,
+      deliveries,
+      requests,
+      actions,
+      candidates,
+      mobilizations,
+      presence,
+    ] = await Promise.all([
       db.from('teams').select('id, slug, name, color'),
       db.from('zones').select('id, slug, name'),
       db.from('profiles').select(PROFILE_SELECT),
@@ -456,46 +620,61 @@ export class SupabaseRepo implements Repo {
       db.from('guest_requests').select('*'),
       db.from('agent_actions').select(PROPOSAL_ACTION_SELECT).eq('type', 'assign_volunteer'),
       db.from('task_assignments').select(PROPOSAL_CANDIDATE_SELECT),
+      // Staff-only (RLS): empty for a volunteer or festival-goer, not an error.
+      db.from('mobilizations').select('*'),
       db.from('presence').select('person_id, lat, lng, accuracy, heading, at'),
     ]);
 
     const teamRows = must(teams, 'teams');
     const zoneRows = must(zones, 'zones');
-    this.refs = refsFrom(teamRows, zoneRows);
+    const refs = refsFrom(teamRows, zoneRows);
 
     const skillsBy = new Map<string, string[]>();
-    for (const s of must(skills, 'volunteer_skills') as { volunteer_id: string; skill: { slug: string } | null }[]) {
+    for (const s of must(skills, 'volunteer_skills') as {
+      volunteer_id: string;
+      skill: { slug: string } | null;
+    }[]) {
       if (s.skill) skillsBy.set(s.volunteer_id, [...(skillsBy.get(s.volunteer_id) ?? []), s.skill.slug]);
     }
     const phoneBy = new Map(must(contacts, 'profile_private').map((c) => [c.id, c.phone]));
-    const volunteers = Object.fromEntries((must(profiles, 'profiles') as ProfileRow[]).map((p) => [
-      p.id, toVolunteer(p, this.refs, { skills: skillsBy.get(p.id), phone: phoneBy.get(p.id) ?? null }),
-    ]));
+    const volunteers = Object.fromEntries(
+      (must(profiles, 'profiles') as ProfileRow[]).map((p) => [
+        p.id,
+        toVolunteer(p, refs, { skills: skillsBy.get(p.id), phone: phoneBy.get(p.id) ?? null }),
+      ]),
+    );
 
     const taskRows = must(tasks, 'tasks') as unknown as TaskRow[];
-    this.reportOf = new Map(taskRows.map((t) => [t.id, t.report_id]));
+    const reportOf = new Map(taskRows.map((t) => [t.id, t.report_id]));
     const assignmentRows = must(candidates, 'task_assignments') as ProposalCandidateRow[];
     const meId = uid;
 
-    return {
+    const snapshot: Snapshot = {
       status: 'ready',
       now: Date.now(),
       meId,
-      guestId: this.anonymous ? meId : null,
+      guestId: anonymous ? meId : null,
       teams: Object.fromEntries(teamRows.map((t) => [t.slug, toTeam(t)])),
       zones: Object.fromEntries(zoneRows.map((z) => [z.slug, toZone(z)])),
       volunteers,
-      tasks: Object.fromEntries(taskRows.map((t) => [t.id, toTask(t, this.refs)])),
+      tasks: Object.fromEntries(taskRows.map((t) => [t.id, toTask(t, refs)])),
       events: must(events, 'task_events').map((e) => this.event(e, volunteers)),
       messages: (must(deliveries, 'message_deliveries') as unknown as DeliveryRow[])
-        .map(toMessage).filter((m): m is Message => !!m),
-      requests: Object.fromEntries(must(requests, 'guest_requests').map((r) => [r.id, toGuestRequest(r, this.refs)])),
-      proposals: Object.fromEntries((must(actions, 'agent_actions') as ProposalActionRow[]).map((a) => {
-        const p = this.proposal(a, assignmentRows, taskRows.find((t) => t.id === a.task_id)?.assignee_id ?? null);
-        return [p.id, p];
-      })),
+        .map(toMessage)
+        .filter((m): m is Message => !!m),
+      requests: Object.fromEntries(must(requests, 'guest_requests').map((r) => [r.id, toGuestRequest(r, refs)])),
+      proposals: Object.fromEntries(
+        (must(actions, 'agent_actions') as ProposalActionRow[]).map((a) => {
+          const p = this.proposal(a, assignmentRows, taskRows.find((t) => t.id === a.task_id)?.assignee_id ?? null);
+          return [p.id, p];
+        }),
+      ),
+      mobilizations: Object.fromEntries(
+        must(mobilizations, 'mobilizations').map((m) => [m.id, toMobilization(m, refs)]),
+      ),
       positions: Object.fromEntries(must(presence, 'presence').map((r) => [r.person_id, toPosition(r)])),
     };
+    return { snapshot, refs, reportOf };
   }
 
   private event(row: Row<'task_events'>, volunteers = this.state.volunteers): TaskEvent {
@@ -503,7 +682,11 @@ export class SupabaseRepo implements Repo {
   }
 
   /** Who got a decided proposal: the assignment that went ahead, else whoever owns the task now. */
-  private proposal(action: ProposalActionRow, assignments: ProposalCandidateRow[], taskAssignee: string | null): Proposal {
+  private proposal(
+    action: ProposalActionRow,
+    assignments: ProposalCandidateRow[],
+    taskAssignee: string | null,
+  ): Proposal {
     const taken = assignments
       .filter((a) => a.task_id === action.task_id && ASSIGNED.includes(a.status))
       .sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
@@ -537,9 +720,13 @@ export class SupabaseRepo implements Repo {
    * they change, not as they become visible, so fetch them as they appear.
    */
   private async ensurePeople(tasks: Task[]) {
-    const people = [...new Set(tasks.flatMap((t) => [t.assigneeId, ...t.helperIds]))].filter((id): id is string => !!id);
+    const people = [...new Set(tasks.flatMap((t) => [t.assigneeId, ...t.helpers.map((h) => h.volunteerId)]))].filter(
+      (id): id is string => !!id,
+    );
     const missing = people.filter((id) => !this.state.volunteers[id]);
-    const requests = [...new Set(tasks.map((t) => t.requestId))].filter((id): id is string => !!id && !this.state.requests[id]);
+    const requests = [...new Set(tasks.map((t) => t.requestId))].filter(
+      (id): id is string => !!id && !this.state.requests[id],
+    );
     await Promise.all([
       missing.length ? this.refetchVolunteers(missing) : null,
       requests.length ? this.refetchRequests(requests) : null,
@@ -550,7 +737,10 @@ export class SupabaseRepo implements Repo {
   private async refetchPositions(ids: string[]) {
     if (!ids.length) return;
     const gen = this.gen;
-    const rows = must(await this.db.from('presence').select('person_id, lat, lng, accuracy, heading, at').in('person_id', ids), 'presence');
+    const rows = must(
+      await this.db.from('presence').select('person_id, lat, lng, accuracy, heading, at').in('person_id', ids),
+      'presence',
+    );
     if (gen !== this.gen || !rows.length) return;
     const positions = { ...this.state.positions };
     for (const r of rows) positions[r.person_id] = toPosition(r);
@@ -561,18 +751,27 @@ export class SupabaseRepo implements Repo {
     const gen = this.gen;
     const [profiles, skills, contacts] = await Promise.all([
       this.db.from('profiles').select(PROFILE_SELECT).in('id', ids),
-      this.db.from('volunteer_skills').select('volunteer_id, skill:skills!volunteer_skills_skill_id_fkey(slug)').in('volunteer_id', ids),
+      this.db
+        .from('volunteer_skills')
+        .select('volunteer_id, skill:skills!volunteer_skills_skill_id_fkey(slug)')
+        .in('volunteer_id', ids),
       this.db.from('profile_private').select('id, phone').in('id', ids),
     ]);
     if (gen !== this.gen) return;
     const skillsBy = new Map<string, string[]>();
-    for (const s of must(skills, 'volunteer_skills') as { volunteer_id: string; skill: { slug: string } | null }[]) {
+    for (const s of must(skills, 'volunteer_skills') as {
+      volunteer_id: string;
+      skill: { slug: string } | null;
+    }[]) {
       if (s.skill) skillsBy.set(s.volunteer_id, [...(skillsBy.get(s.volunteer_id) ?? []), s.skill.slug]);
     }
     const phoneBy = new Map(must(contacts, 'profile_private').map((c) => [c.id, c.phone]));
     const volunteers = without(this.state.volunteers, ...ids);
     for (const p of must(profiles, 'profiles') as ProfileRow[]) {
-      volunteers[p.id] = toVolunteer(p, this.refs, { skills: skillsBy.get(p.id), phone: phoneBy.get(p.id) ?? null });
+      volunteers[p.id] = toVolunteer(p, this.refs, {
+        skills: skillsBy.get(p.id),
+        phone: phoneBy.get(p.id) ?? null,
+      });
     }
     this.set({ volunteers });
   }
@@ -581,11 +780,20 @@ export class SupabaseRepo implements Repo {
     if (!this.userId || !messageIds.length) return;
     const gen = this.gen;
     const rows = must(
-      await this.db.from('message_deliveries').select(DELIVERY_SELECT).eq('recipient_id', this.userId).in('message_id', messageIds),
+      await this.db
+        .from('message_deliveries')
+        .select(DELIVERY_SELECT)
+        .eq('recipient_id', this.userId)
+        .in('message_id', messageIds),
       'message_deliveries',
     ) as unknown as DeliveryRow[];
     if (gen !== this.gen) return;
-    const fresh = new Map(rows.map(toMessage).filter((m): m is Message => !!m).map((m) => [m.id, m]));
+    const fresh = new Map(
+      rows
+        .map(toMessage)
+        .filter((m): m is Message => !!m)
+        .map((m) => [m.id, m]),
+    );
     const ids = new Set(messageIds);
     const kept = this.state.messages.filter((m) => !ids.has(m.id));
     this.set({ messages: [...kept, ...fresh.values()] });
@@ -617,16 +825,26 @@ export class SupabaseRepo implements Repo {
     if (by.taskIds) q = q.in('task_id', by.taskIds);
     if (by.actionIds) q = q.in('id', by.actionIds);
     const actions = must(await q, 'agent_actions') as ProposalActionRow[];
-    const taskIds = [...new Set([...(by.taskIds ?? []), ...actions.map((a) => a.task_id).filter((id): id is string => !!id)])];
+    const taskIds = [
+      ...new Set([...(by.taskIds ?? []), ...actions.map((a) => a.task_id).filter((id): id is string => !!id)]),
+    ];
     const assignments = taskIds.length
-      ? must(await this.db.from('task_assignments').select(PROPOSAL_CANDIDATE_SELECT).in('task_id', taskIds), 'task_assignments') as ProposalCandidateRow[]
+      ? (must(
+          await this.db.from('task_assignments').select(PROPOSAL_CANDIDATE_SELECT).in('task_id', taskIds),
+          'task_assignments',
+        ) as ProposalCandidateRow[])
       : [];
     if (gen !== this.gen) return;
     const stale = Object.values(this.state.proposals)
       .filter((p) => by.actionIds?.includes(p.id) || by.taskIds?.includes(p.taskId))
       .map((p) => p.id);
     const proposals = without(this.state.proposals, ...stale);
-    for (const a of actions) proposals[a.id] = this.proposal(a, assignments, a.task_id ? this.state.tasks[a.task_id]?.assigneeId ?? null : null);
+    for (const a of actions)
+      proposals[a.id] = this.proposal(
+        a,
+        assignments,
+        a.task_id ? (this.state.tasks[a.task_id]?.assigneeId ?? null) : null,
+      );
     this.set({ proposals });
   }
 
@@ -703,7 +921,10 @@ export class SupabaseRepo implements Repo {
     const delivery = row.delivery === 'spoken' || row.delivery === 'ping' ? row.delivery : undefined;
     // The spoken version lands a moment after the message: that's this update.
     const next: Message = {
-      ...known, read: row.read_at !== null, ...(row.body_local ? { body: row.body_local } : {}), ...(row.audio_path ? { audio: row.audio_path } : {}),
+      ...known,
+      read: row.read_at !== null,
+      ...(row.body_local ? { body: row.body_local } : {}),
+      ...(row.audio_path ? { audio: row.audio_path } : {}),
     };
     if (delivery) next.delivery = delivery;
     else delete next.delivery;
@@ -724,6 +945,15 @@ export class SupabaseRepo implements Repo {
     const request = toGuestRequest(row, this.refs);
     this.set({ requests: { ...this.state.requests, [request.id]: request } });
     void this.ensureTasksFor([request]).catch(warn('task'));
+  }
+
+  private onMobilization(p: Change<'mobilizations'>) {
+    if (p.eventType === 'DELETE') {
+      if (p.old.id) this.set({ mobilizations: without(this.state.mobilizations, p.old.id) });
+      return;
+    }
+    const m = toMobilization(p.new, this.refs);
+    this.set({ mobilizations: { ...this.state.mobilizations, [m.id]: m } });
   }
 
   private onProfile(p: Change<'profiles'>) {
@@ -754,12 +984,14 @@ export class SupabaseRepo implements Repo {
   // ── plumbing ──
 
   private set(patch: Partial<Snapshot>) {
+    if (this.disposed) return;
     this.state = { ...this.state, ...patch, now: Date.now() };
     // While a hydrate is in flight the screen keeps the last full snapshot; it emits once that lands.
     if (!this.hydrating || this.state.status !== 'loading') this.emit();
   }
 
   private emit() {
+    if (this.disposed) return;
     this.listeners.forEach((l) => l());
   }
 }

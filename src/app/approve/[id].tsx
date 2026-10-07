@@ -12,7 +12,8 @@ import { Card, Separator } from '@/components/ui/card';
 import { Radius, Type } from '@/constants/theme';
 import { useLookups, useProposal, useRepo, useSnapshot, useTask, useTaskStatus } from '@/data/hooks';
 import { initials } from '@/lib/format';
-import { isBusy, POLICY } from '@/lib/lifecycle';
+import { canHelp, isBusy, POLICY } from '@/lib/lifecycle';
+import { goBack } from '@/lib/navigation';
 import type { Proposal, Task, Volunteer } from '@/lib/schema';
 import { toneColor, useTheme } from '@/hooks/use-theme';
 
@@ -38,14 +39,21 @@ export default function ApproveSheet() {
   return (
     <Sheet>
       <ApproveHead task={task} />
-      {choosing
-        ? <Pending proposal={proposal} task={task} picked={picked} onPick={setPicked} />
-        : <Decided proposal={proposal} task={task} />}
+      {choosing ? (
+        <Pending proposal={proposal} task={task} picked={picked} onPick={setPicked} />
+      ) : (
+        <Decided proposal={proposal} task={task} />
+      )}
     </Sheet>
   );
 }
 
-function Pending({ proposal, task, picked, onPick }: {
+function Pending({
+  proposal,
+  task,
+  picked,
+  onPick,
+}: {
   proposal: Proposal;
   task: Task;
   picked: string[] | null;
@@ -58,18 +66,33 @@ function Pending({ proposal, task, picked, onPick }: {
   const { volunteers, teams } = useLookups();
   const [sending, setSending] = useState(false);
   const all = Object.values(tasks);
-  const candidates = proposal.candidates.filter((c) => volunteers[c.volunteerId]);
+  const candidates = proposal.candidates.filter((c) => {
+    const volunteer = volunteers[c.volunteerId];
+    if (!volunteer || volunteer.role !== 'volunteer' || volunteer.duty !== 'on_duty') return false;
+    return !task.mobilizationId || canHelp(task, volunteer, all, now);
+  });
   const top = candidates[0];
 
   if (!top) {
-    return <Button label="Pick a volunteer" onPress={() => router.replace({ pathname: '/assign/[id]', params: { id: task.id, mode: 'assign' } })} />;
+    return (
+      <Button
+        label="Pick a volunteer"
+        onPress={() => router.replace({ pathname: '/assign/[id]', params: { id: task.id, mode: 'assign' } })}
+      />
+    );
   }
 
   const touched = picked !== null;
-  const selection = picked ?? [top.volunteerId, ...proposal.helperIds.filter((vid) => volunteers[vid])];
+  const eligible = new Set(candidates.map((candidate) => candidate.volunteerId));
+  const selection = (picked ?? [top.volunteerId, ...proposal.helperIds]).filter(
+    (vid) => volunteers[vid] && (!task.mobilizationId || eligible.has(vid)),
+  );
   const lead = selection[0] ? volunteers[selection[0]] : undefined;
   const why = candidates.find((c) => c.volunteerId === lead?.id)?.rationale;
-  const extras = selection.slice(1).map((vid) => volunteers[vid]).filter(Boolean);
+  const extras = selection
+    .slice(1)
+    .map((vid) => volunteers[vid])
+    .filter(Boolean);
 
   const leftMs = Math.max(0, proposal.autoAssignAt - now);
   const left = Math.ceil(leftMs / 1000);
@@ -81,12 +104,21 @@ function Pending({ proposal, task, picked, onPick }: {
     : `${left > 0 ? `Auto-assigns in ${left} s` : 'Assigning'}${along ? ` with ${along}` : ''}`;
 
   // Untouched, Approve sends the AI's pick and whoever it ticked to go along.
-  const label = selection.length === 0 ? 'Send'
-    : !touched || (selection.length === 1 && selection[0] === top.volunteerId) ? `Approve ${first(lead)}`
-      : selection.length > 1 ? `Send ${selection.length}`
-        : `Send ${first(lead)}`;
+  const label =
+    selection.length === 0
+      ? 'Send'
+      : !touched || (selection.length === 1 && selection[0] === top.volunteerId)
+        ? `Approve ${first(lead)}`
+        : selection.length > 1
+          ? `Send ${selection.length}`
+          : `Send ${first(lead)}`;
 
-  const toggle = (vid: string) => onPick(selection.includes(vid) ? selection.filter((x) => x !== vid) : [...selection, vid]);
+  // Going along needs a free first pick and someone assign() takes as a helper; anyone else goes alone.
+  const others = all.filter((t) => t.id !== task.id);
+  const joins = (vid: string) =>
+    selection.length > 0 && !isBusy(others, selection[0]) && canHelp(task, volunteers[vid], all, now);
+  const toggle = (vid: string) =>
+    onPick(selection.includes(vid) ? selection.filter((x) => x !== vid) : joins(vid) ? [...selection, vid] : [vid]);
 
   // The first ticked takes the task; the rest go with them as helpers.
   const send = async () => {
@@ -101,21 +133,40 @@ function Pending({ proposal, task, picked, onPick }: {
       setSending(false);
       return;
     }
-    router.back();
+    goBack({ pathname: '/task/[id]', params: { id: task.id } });
   };
 
   return (
     <>
       <View style={styles.center}>
-        <ApproveRing size={RING} state={ring} share={share} endsAt={proposal.autoAssignAt} totalMs={POLICY.autoAssignMs} color={theme.tint}>
+        <ApproveRing
+          size={RING}
+          state={ring}
+          share={share}
+          endsAt={proposal.autoAssignAt}
+          totalMs={POLICY.autoAssignMs}
+          color={theme.tint}
+        >
           {lead && <Text style={[styles.face, { color: theme.text }]}>{initials(lead.name)}</Text>}
         </ApproveRing>
         <View style={styles.who}>
-          {lead
-            ? <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>{lead.name}</Text>
-            : <Text style={[styles.name, { color: theme.textTertiary }]}>No one picked</Text>}
-          {why && <Text style={[styles.small, { color: theme.textSecondary }]} numberOfLines={1}>{why}</Text>}
-          {line && <Text style={[styles.small, styles.line, { color: theme.text }]} numberOfLines={1}>{line}</Text>}
+          {lead ? (
+            <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+              {lead.name}
+            </Text>
+          ) : (
+            <Text style={[styles.name, { color: theme.textTertiary }]}>No one picked</Text>
+          )}
+          {why && (
+            <Text style={[styles.small, { color: theme.textSecondary }]} numberOfLines={1}>
+              {why}
+            </Text>
+          )}
+          {line && (
+            <Text style={[styles.small, styles.line, { color: theme.text }]} numberOfLines={1}>
+              {line}
+            </Text>
+          )}
         </View>
       </View>
 
@@ -174,24 +225,34 @@ function Decided({ proposal, task }: { proposal: Proposal; task: Task }) {
           share={0}
           endsAt={proposal.autoAssignAt}
           totalMs={POLICY.autoAssignMs}
-          color={auto ? theme.text : theme.tint}>
-          {v
-            ? <Text style={[styles.face, { color: theme.text }]}>{initials(v.name)}</Text>
-            : <Text style={[styles.small, { color: theme.textSecondary }]}>{how}</Text>}
+          color={auto ? theme.text : theme.tint}
+        >
+          {v ? (
+            <Text style={[styles.face, { color: theme.text }]}>{initials(v.name)}</Text>
+          ) : (
+            <Text style={[styles.small, { color: theme.textSecondary }]}>{how}</Text>
+          )}
         </ApproveRing>
         <View style={styles.who}>
-          {v && <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>{v.name}</Text>}
+          {v && (
+            <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+              {v.name}
+            </Text>
+          )}
           {v && <Text style={[styles.small, { color: theme.textSecondary }]}>{how}</Text>}
           {status && !cancelled && (
-            <Text style={[styles.small, { color: toneColor(theme, status.tone) }]} numberOfLines={1}>{status.label}</Text>
+            <Text style={[styles.small, { color: toneColor(theme, status.tone) }]} numberOfLines={1}>
+              {status.label}
+            </Text>
           )}
         </View>
       </View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Done"
-        onPress={() => router.back()}
-        style={({ pressed }) => [styles.done, { backgroundColor: theme.backgroundElement }, pressed && styles.pressed]}>
+        onPress={() => goBack({ pathname: '/task/[id]', params: { id: task.id } })}
+        style={({ pressed }) => [styles.done, { backgroundColor: theme.backgroundElement }, pressed && styles.pressed]}
+      >
         <Text style={[styles.doneText, { color: theme.text }]}>Done</Text>
       </Pressable>
     </>
@@ -207,7 +268,13 @@ const styles = StyleSheet.create({
   line: { marginTop: 4, fontVariant: ['tabular-nums'] },
   list: { gap: 8, marginTop: 6 },
   label: { fontSize: Type.footnote, fontWeight: '500', paddingHorizontal: 4 },
-  done: { height: 48, borderRadius: Radius.control, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' },
+  done: {
+    height: 48,
+    borderRadius: Radius.control,
+    borderCurve: 'continuous',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   doneText: { fontSize: Type.body + 1, fontWeight: '600' },
   pressed: { opacity: 0.7 },
 });

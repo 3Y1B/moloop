@@ -1,8 +1,8 @@
-import type { IncidentCategory, Priority, ReplyKind, TaskStatus, TeamSlug } from './enums';
+import type { IncidentCategory, Priority, ReplyKind, TaskAssignmentStatus, TaskStatus, TeamSlug } from './enums';
 
 /**
- * Client-facing domain model. Screens only ever see these shapes; SupabaseRepo maps rows into them.
- * Times are epoch ms.
+ * Client-facing domain model. Screens see these shapes; SupabaseRepo maps database rows into them.
+ * Times are epoch ms. Tests construct the same domain shapes without changing production data.
  */
 
 export type Team = {
@@ -92,6 +92,19 @@ export type Reporter = {
   english?: string;
 };
 
+/**
+ * One recruited helper's own state on a task, independent of the owner's `status`. `status` reuses
+ * `TaskAssignmentStatus` but only ever holds `'notified'` (recruited, awaiting their own accept/decline)
+ * or `'accepted'` here — a decline removes the entry outright rather than storing `'declined'`.
+ */
+export type HelperAssignment = {
+  volunteerId: string;
+  /** A helper is either awaiting their own reply or has explicitly accepted. */
+  status: Extract<TaskAssignmentStatus, 'notified' | 'accepted'>;
+  assignedAt: number;
+  respondedAt: number | null;
+};
+
 export type Task = {
   id: string;
   title: string;
@@ -116,12 +129,24 @@ export type Task = {
   resolvedAt: number | null;
   /** Set while someone asked for help, and kept after a response so screens can say what happened. */
   escalation: Escalation | null;
-  /** Backup sent by a lead. Helpers are busy with this task too; `done` from anyone resolves it for all. */
-  helperIds: string[];
+  /** How many people this task needs in total, owner included. 1 for almost every task. */
+  requiredCount: number;
+  /**
+   * Everyone beyond the owner: backup sent by a lead (immediately `'accepted'`), or proactively
+   * recruited to reach `requiredCount` (starts `'notified'`, until they accept/decline their own slot).
+   * Helpers are busy with this task too; `done` from anyone resolves it for all.
+   */
+  helpers: HelperAssignment[];
   /** How it ended. Null while open. */
   resolution: TaskResolution | null;
   /** The festival-goer request this task came from, if any. */
   requestId: string | null;
+  /** The mobilization this task was spawned from, if any. */
+  mobilizationId: string | null;
+  /** Stable action key within a mobilization; legacy tasks have none. */
+  mobilizationStepKey?: string | null;
+  /** Hard qualifications for a mobilization action, preserved through reassignment. */
+  requiredSkills?: string[];
 };
 
 export type TaskResolution = 'done' | 'handed_over' | 'cancelled';
@@ -151,24 +176,27 @@ export type Escalation = {
   ownerId: string | null;
   bumpedAt: number | null;
   response: EscalationResponse | null;
-  /**
-   * 'intake': the intake agent escalated a new report before anyone was sent. The task stays open and unassigned,
-   * the allocator leaves it alone, and `reason` is the agent's. Absent: a volunteer asked for help.
-   */
+  /** Intake held this open for a lead or Mo before anyone is dispatched. */
   source?: 'intake';
 };
 
-export type GuestRequestStage = 'understanding' | 'answered' | 'finding' | 'coming' | 'with_you' | 'sorted' | 'cancelled';
+export type GuestRequestStage =
+  'understanding' | 'answered' | 'finding' | 'coming' | 'with_you' | 'sorted' | 'cancelled';
 
-export type GuestThreadEntry = { from: 'guest' | 'ai' | 'staff'; name?: string; text: string; at: number };
+export type GuestThreadEntry = {
+  from: 'guest' | 'ai' | 'staff';
+  name?: string;
+  text: string;
+  at: number;
+};
 
 /**
- * A festival-goer's question or report. A festival-goer only ever reads their own; crew read the ones
- * behind tasks they work on.
+ * A festival-goer's question or report. RLS returns their own requests; crew may read requests
+ * behind tasks they are working on.
  */
 export type GuestRequest = {
   id: string;
-  /** Who asked. Crew use it to find them on the map. */
+  /** Requester used by crew to locate the person. */
   guestId?: string;
   createdAt: number;
   heard: string;
@@ -210,9 +238,20 @@ export type Proposal = {
 };
 
 export type TaskEventKind =
-  | 'created' | 'assigned' | 'queued' | 'reply' | 'nudged' | 'lead_alerted'
-  | 'escalated' | 'reassigned' | 'resolved' | 'note'
-  | 'responded' | 'bumped' | 'proposed';
+  | 'created'
+  | 'assigned'
+  | 'queued'
+  | 'reply'
+  | 'nudged'
+  | 'lead_alerted'
+  | 'escalated'
+  | 'reassigned'
+  | 'resolved'
+  | 'note'
+  | 'responded'
+  | 'bumped'
+  | 'proposed'
+  | 'helper_added';
 
 export type TaskEvent = {
   id: string;
@@ -227,7 +266,11 @@ export type TaskEvent = {
 };
 
 export type MessageKind =
-  | 'task' | 'nudge' | 'broadcast' | 'direct' | 'system'
+  | 'task'
+  | 'nudge'
+  | 'broadcast'
+  | 'direct'
+  | 'system'
   /** Your task went to someone else ("Moved to Kai"). */
   | 'moved'
   /** Your task was closed by a lead ("Closed by Jordan"). */
@@ -251,7 +294,90 @@ export type Message = {
   taskId?: string;
   /** How it reached the volunteer: read aloud (idle) or a short ping (busy). */
   delivery?: 'spoken' | 'ping';
-  /** The spoken version, once rendered: a path in the `speech` bucket. */
+  /** Rendered brief in the speech bucket. */
   audio?: string;
   read: boolean;
+};
+
+// ── mobilization ──
+
+export type MobilizationStatus = 'proposed' | 'active' | 'stood_down' | 'cancelled' | 'rejected';
+
+/** One concrete action. A team can own several actions; candidates are non-binding previews. */
+export type MobilizationStep = {
+  teamSlug: TeamSlug;
+  peopleNeeded: number;
+  reason: string;
+  candidates: ProposalCandidate[];
+  stepKey?: string;
+  title?: string;
+  instructions?: string;
+  zoneSlug?: string | null;
+  requiredSkills?: string[];
+  completionCriteria?: string;
+  evidenceRefs?: string[];
+  addressesFindingIds?: string[];
+  playbookRefs?: import('../mobilization-contracts').PlaybookActionRef[];
+};
+
+/** The observations that supported a detection proposal. A historical snapshot, never a live rollup. */
+export type MobilizationEvidence = {
+  observedAt: number;
+  windowMinutes: number;
+  incidents: {
+    /** Representative zone for this cluster; nearby source tasks can belong to adjacent zones. */
+    zoneSlug: string;
+    category: IncidentCategory;
+    count: number;
+    openCount: number;
+    taskIds: string[];
+    sampleTitles: string[];
+  }[];
+  weather: {
+    tempC: number;
+    trendCPerHour: number;
+    activeWarnings: ('heat' | 'storm')[];
+    minutesToWarning: number | null;
+  };
+  lineup: {
+    stageSlug: string;
+    act: string;
+    minutesUntil: number;
+    expectedDraw: 'low' | 'medium' | 'high';
+  }[];
+};
+
+/**
+ * A multi-team response plan: system-proposed (needs Mo's approval, no auto-timeout) or Mo-initiated
+ * (active immediately). `steps` is authoritative only while `status === 'proposed'`; once active, the
+ * real per-step state is the `Task` rows themselves (`task.mobilizationId === this.id`).
+ */
+export type Mobilization = {
+  id: string;
+  title: string;
+  status: MobilizationStatus;
+  rationale: string;
+  /** Playbook slugs cited as precedent, not enforced templates. */
+  relatedPlaybooks: string[];
+  urgency: Priority;
+  zoneSlug: string | null;
+  steps: MobilizationStep[];
+  /** Detection-time source observations. Manual and older mobilizations have no stored snapshot. */
+  evidence: MobilizationEvidence | null;
+  /** Immutable AI input/output and prompt audit; absent on legacy/manual plans. */
+  analysisRunId?: string | null;
+  /** Set when created from a playbook template. */
+  playbookSlug: string | null;
+  createdAt: number;
+  decidedById: string | null;
+  decidedAt: number | null;
+};
+
+/** A precedent case (heat, storm, lost child...): reference material for Gate 3, not a rigid dispatcher. */
+export type Playbook = {
+  id: string;
+  slug: string;
+  title: string;
+  trigger: string;
+  steps: { step: string; teamSlug: TeamSlug; template: string }[];
 };

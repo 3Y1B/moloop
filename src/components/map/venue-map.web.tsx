@@ -22,10 +22,11 @@ export { zoneSpot, type MapMarker, type MapPerson } from './map-model';
 type GL = typeof import('maplibre-gl');
 
 const LIVE = liveLayers(VoiceGradient);
+const MAPLIBRE_WORKER_URL = '/maplibre/maplibre-gl-worker.mjs';
 
 /**
  * The web build of VenueMap: the same style and overlays on maplibre-gl. Loaded on demand, so it never runs on the server.
- * Stay on maplibre-gl 5: v6 loads its worker from a separate file, which Metro doesn't bundle.
+ * MapLibre v6 uses an ESM worker; scripts/sync-maplibre-worker.mjs publishes its exact version via Expo's public directory.
  */
 export function VenueMap(props: VenueMapProps) {
   const { route, target, targetColor, frame, interactive = true, style } = props;
@@ -42,11 +43,16 @@ export function VenueMap(props: VenueMapProps) {
   const liveKey = JSON.stringify(liveData(route, target, targetColor ?? theme.danger));
   const fullStyle = useMemo<StyleSpecification | null>(
     // maplibre-gl bundles its own copy of the style-spec types; the JSON is the same.
-    () => baseStyle && ({
-      ...baseStyle,
-      sources: { ...baseStyle.sources, live: { type: 'geojson', data: JSON.parse(liveKey), lineMetrics: true } },
-      layers: [...baseStyle.layers, ...LIVE],
-    } as unknown as StyleSpecification),
+    () =>
+      baseStyle &&
+      ({
+        ...baseStyle,
+        sources: {
+          ...baseStyle.sources,
+          live: { type: 'geojson', data: JSON.parse(liveKey), lineMetrics: true },
+        },
+        layers: [...baseStyle.layers, ...LIVE],
+      } as unknown as StyleSpecification),
     [baseStyle, liveKey],
   );
 
@@ -62,6 +68,7 @@ export function VenueMap(props: VenueMapProps) {
     let gone = false;
     Promise.all([import('maplibre-gl'), loadIcons()]).then(([lib, icons]) => {
       if (gone || !holder.current) return;
+      lib.setWorkerUrl(MAPLIBRE_WORKER_URL);
       const { style: s, camera: c } = first.current;
       map = new lib.Map({
         container: holder.current,
@@ -72,7 +79,10 @@ export function VenueMap(props: VenueMapProps) {
           const { size: z, frame: f, camera: auto } = first.current;
           if (!z) return { center: lngLat, zoom };
           zoom = Math.min(Math.max(zoom, minZoomFor(z, f, auto)), 22);
-          return { center: new lib.LngLat(...clampToLimit([lngLat.lng, lngLat.lat], panLimit(zoom, z, f, auto))), zoom };
+          return {
+            center: new lib.LngLat(...clampToLimit([lngLat.lng, lngLat.lat], panLimit(zoom, z, f, auto))),
+            zoom,
+          };
         },
         interactive,
         dragRotate: false,
@@ -125,13 +135,15 @@ export function VenueMap(props: VenueMapProps) {
         // A screen underneath lays out at 0 × 0; keep the last real size.
         const { width, height } = e.nativeEvent.layout;
         if (width > 0 && height > 0) setSize({ width, height });
-      }}>
+      }}
+    >
       <div ref={holder} style={{ position: 'absolute', inset: 0 }} />
-      {gl && overlays.map((o) => (
-        <WebMarker key={o.key} gl={gl} at={o.at} anchor={o.anchor} onPress={o.onPress}>
-          {o.view}
-        </WebMarker>
-      ))}
+      {gl &&
+        overlays.map((o) => (
+          <WebMarker key={o.key} gl={gl} at={o.at} anchor={o.anchor} onPress={o.onPress}>
+            {o.view}
+          </WebMarker>
+        ))}
       {gl && interactive && canRecenter && size && (
         <MapButton
           label="Back to me"
@@ -173,7 +185,19 @@ function fold(map: GLMap) {
 }
 
 /** An RN view pinned to the map: rendered into a DOM element maplibre-gl moves around. */
-function WebMarker({ gl, at, anchor, onPress, children }: { gl: { lib: GL; map: GLMap }; at: Point; anchor: 'center' | 'bottom'; onPress?: () => void; children: ReactElement }) {
+function WebMarker({
+  gl,
+  at,
+  anchor,
+  onPress,
+  children,
+}: {
+  gl: { lib: GL; map: GLMap };
+  at: Point;
+  anchor: 'center' | 'bottom';
+  onPress?: () => void;
+  children: ReactElement;
+}) {
   const pressable = !!onPress;
   const el = useMemo(() => {
     const div = document.createElement('div');

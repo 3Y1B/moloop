@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { withFallback, type Attempt } from './fallback';
+import { ModelAuditError } from './errors';
 
 const hangs = () => new Promise<never>(() => {});
 const model = <R>(id: string, call: (signal: AbortSignal) => Promise<R>): Attempt<R> => ({ id, call });
@@ -28,6 +29,14 @@ describe('withFallback', () => {
     });
 
     await expect(withFallback(spark, model('openai', async () => 'from openai'), limits)).resolves.toBe('from openai');
+  });
+
+  it('does not bypass a mandatory audit failure by using the fallback', async () => {
+    let fallbackCalled = false;
+    const primary = model('configured', async () => { throw new ModelAuditError(); });
+    const fallback = model('openai', async () => { fallbackCalled = true; return 'must not be used'; });
+    await expect(withFallback(primary, fallback, limits)).rejects.toBeInstanceOf(ModelAuditError);
+    expect(fallbackCalled).toBe(false);
   });
 
   it('uses the fallback when the primary hangs past its time limit', async () => {

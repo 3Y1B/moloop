@@ -128,7 +128,7 @@ const near = (s: Snapshot, who: string, p: Point, m = 0.5) => {
 };
 
 try {
-  const moUser = (await admin.auth.admin.listUsers()).data.users.find((u) => u.email === 'mo@moloop.test');
+  const moUser = (await admin.auth.admin.listUsers({ perPage: 1000 })).data.users.find((u) => u.email === 'mo@moloop.test');
   if (!moUser) throw new Error('Seed the crew first: npm run db:seed');
   // Ana is posted at Gate B and Ben at Food Alley, which is much nearer the Grove. Ana's phone says she's at the Grove.
   const [mo, ana, ben] = await Promise.all([signIn('mo@moloop.test'), hire('ana', 'Ana Presence', 'gate-b'), hire('ben', 'Ben Presence', 'food-alley')]);

@@ -8,7 +8,8 @@ import { transact } from './world';
  * Runs in the server process. Each pass takes the same world lock as commands, so a pass that overlaps
  * a command (or another pass, even from a second server) sees its writes and never doubles a nudge.
  */
-export const schedulerPass = () => transact({ availability: true }, (b) => schedulerStep(b));
+export const schedulerPass = (taskIds?: readonly string[]) =>
+  transact({ availability: true, taskIds: taskIds ? [...taskIds] : undefined }, (b) => schedulerStep(b, taskIds));
 
 export function startScheduler(everyMs: number) {
   let running = false;

@@ -19,14 +19,14 @@ const onTask = (volunteerId: string): Task => ({
   id: 'collapsed', title: 'Man collapsed', summary: 'Near the food trucks.', category: 'medical', priority: 'P2', teamSlug: 'first-aid',
   zoneSlug: 'food-alley', locationHint: null, status: 'accepted', assigneeId: volunteerId, reporter: { kind: 'festivalgoer', quote: 'collapsed', language: 'en' },
   handledBy: 'human', createdAt: END - 10 * MIN, assignedAt: END - 10 * MIN, etaAt: null, lastActivityAt: END, nudgeCount: 0, lastNudgeAt: null,
-  leadAlertedAt: null, resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: null,
+  leadAlertedAt: null, resolvedAt: null, escalation: null, helpers: [], requiredCount: 1, resolution: null, requestId: null, mobilizationId: null,
 });
 
 function day(now: number, { shifts = [shift('s1')], people = [person('tom')], tasks = [] as Task[] } = {}) {
   const volunteers = [...people, person('jordan', { role: 'team_lead', duty: 'on_duty' }), person('mo', { role: 'coordinator', teamSlug: null, duty: 'on_duty' })];
   const world: World = {
     volunteers: Object.fromEntries(volunteers.map((v) => [v.id, v])),
-    tasks: Object.fromEntries(tasks.map((t) => [t.id, t])), proposals: {}, requests: {}, teams: { 'first-aid': { name: 'First Aid' } },
+    tasks: Object.fromEntries(tasks.map((t) => [t.id, t])), proposals: {}, requests: {}, mobilizations: {}, teams: { 'first-aid': { name: 'First Aid' } },
     shifts: Object.fromEntries(shifts.map((s) => [s.id, s])),
     availability: { ana: [{ from: START, to: END }], kai: [{ from: START, to: START + 60 * MIN }] },
   };

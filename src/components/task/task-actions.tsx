@@ -7,8 +7,8 @@ import { useDockHeight } from '@/components/voice/voice-dock';
 import { Type } from '@/constants/theme';
 import { useMe, useMyWork, useRepo } from '@/data/hooks';
 import { REPLY_LABEL } from '@/lib/format';
-import { availableReplies } from '@/lib/lifecycle';
-import type { ReplyKind, Task } from '@/lib/schema';
+import { availableHelperReplies, availableReplies } from '@/lib/lifecycle';
+import type { HelperAssignment, ReplyKind, Task } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 import { useSendReply } from './reply-bar';
 
@@ -18,8 +18,9 @@ import { useSendReply } from './reply-bar';
  * Free, it's only there on a break (Back on duty). `onHeight` lets the sheet keep its content clear of it.
  */
 export function TaskActions({ onHeight }: { onHeight: (height: number) => void }) {
-  const { active, helping } = useMyWork();
+  const { active } = useMyWork();
   const me = useMe();
+  const helperEntry = active && me ? active.helpers.find((helper) => helper.volunteerId === me.id) : undefined;
   const dock = useDockHeight();
   const onBreak = !!me && me.duty !== 'on_duty';
   if (!active && !onBreak) return null;
@@ -30,7 +31,7 @@ export function TaskActions({ onHeight }: { onHeight: (height: number) => void }
       exiting={FadeOut.duration(120)}
       onLayout={(e) => onHeight(Math.ceil(e.nativeEvent.layout.height))}
       style={[styles.bar, { bottom: dock }]}>
-      <Surface>{active ? <Replies task={active} helping={helping} /> : <BackOnDuty />}</Surface>
+      <Surface>{active ? <Replies task={active} helperEntry={helperEntry} /> : <BackOnDuty />}</Surface>
     </Animated.View>
   );
 }
@@ -40,11 +41,14 @@ function Surface({ children }: { children: React.ReactNode }) {
   return <View style={[styles.surface, { backgroundColor: theme.card }]}>{children}</View>;
 }
 
-function Replies({ task, helping }: { task: Task; helping: boolean }) {
+function Replies({ task, helperEntry }: { task: Task; helperEntry?: HelperAssignment }) {
   const send = useSendReply(task);
-  const { primary, secondary } = availableReplies(task.status);
-  // "Still on it" lives in the status line ("Send an update") and in voice. A helper only gets Done.
-  const alt = helping ? undefined : secondary.find((r) => r !== 'still_on_it');
+  const { primary, secondary } = helperEntry
+    ? availableHelperReplies(helperEntry.status)
+    : availableReplies(task.status);
+  // Notified helpers must accept/decline their own slot before they can finish it.
+  // "Still on it" lives in the status line and in voice.
+  const alt = secondary.find((r) => r !== 'still_on_it');
   // Words for a festival-goer go through the assistant ("Update your task"), so there's no Reply button here.
   if (!primary) return null;
 

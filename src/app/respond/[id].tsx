@@ -1,4 +1,4 @@
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
@@ -12,6 +12,7 @@ import { attempt, callNumber } from '@/components/lead/sheet';
 import { TaskMap } from '@/components/lead/task-map';
 import { useCandidates, useLookups, useMe, useRepo, useSnapshot, useTask } from '@/data/hooks';
 import { availableResponses, isBusy, isQuiet, needsResponse } from '@/lib/lifecycle';
+import { goBack } from '@/lib/navigation';
 import { walkFrom } from '@/lib/presence';
 import { routeBetween } from '@/lib/route';
 import type { EscalationResponseKind, HandoverTarget } from '@/lib/schema';
@@ -60,8 +61,8 @@ export default function RespondSheet() {
     useCallback(() => {
       if (!settled || closed.current) return;
       closed.current = true;
-      router.back();
-    }, [settled]),
+      goBack({ pathname: '/task/[id]', params: { id } });
+    }, [id, settled]),
   );
 
   const keyboard = useAnimatedKeyboard();
@@ -86,7 +87,7 @@ export default function RespondSheet() {
   const passToMo = async () => {
     if (!task) return false;
     const ok = await attempt(() => repo.passToCoordinator(task.id));
-    if (ok) router.back();
+    if (ok) goBack({ pathname: '/task/[id]', params: { id } });
     return ok;
   };
 
@@ -117,7 +118,7 @@ export default function RespondSheet() {
           setCalled(true);
           if (owner?.phone) callNumber(owner.phone);
         }
-        if (r.kind === 'pass') router.back();
+        if (r.kind === 'pass') goBack({ pathname: '/task/[id]', params: { id } });
         return;
       }
       if (r.open === '000') setStep('emergency');
@@ -165,7 +166,7 @@ export default function RespondSheet() {
 
   const dock = handingOver ? (
     <ArrivedStep onArrived={async () => {
-      if (await attempt(() => repo.arrived(task.id))) router.back();
+      if (await attempt(() => repo.arrived(task.id))) goBack({ pathname: '/task/[id]', params: { id } });
     }} />
   ) : responses.length === 0 ? null : picking ? (
     <PickStep

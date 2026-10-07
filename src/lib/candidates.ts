@@ -33,25 +33,50 @@ export const SKILL_LABEL: Record<string, string> = {
   multilingual: 'multilingual',
 };
 
+/** Only what the scoring reads: lets a mobilization step rank candidates before any real Task exists. */
+export type Rankable = Pick<Task, 'category' | 'zoneSlug' | 'reporter' | 'helpers' | 'assigneeId' | 'teamSlug'> &
+  Pick<Partial<Task>, 'id' | 'mobilizationId' | 'requiredSkills'>;
+
 const FIRST_AID = 'first-aid-cert';
 
-type Assessed = { v: Volunteer; candidate: ProposalCandidate; free: boolean; sameTeam: boolean; held: string[]; speaks: boolean; aid: boolean };
+type Assessed = {
+  v: Volunteer;
+  candidate: ProposalCandidate;
+  free: boolean;
+  sameTeam: boolean;
+  held: string[];
+  speaks: boolean;
+  aid: boolean;
+};
 
 /** The language someone at a task needs a volunteer to speak (intake's read), else the report's own if not English. */
-export const speakerNeeded = (task: Task) =>
-  task.reporter.speakerNeeded !== undefined ? task.reporter.speakerNeeded : task.reporter.language !== 'en' ? task.reporter.language : null;
+export const speakerNeeded = (task: Rankable) =>
+  task.reporter.speakerNeeded !== undefined
+    ? task.reporter.speakerNeeded
+    : task.reporter.language !== 'en'
+      ? task.reporter.language
+      : null;
 
 /** Someone at a task may need hands-on first aid (intake's read), else by the category (medical, heat) when it didn't say. */
-export const firstAidNeeded = (task: Task) => task.reporter.firstAidNeeded ?? certsFor(task.category).includes(FIRST_AID);
+export const firstAidNeeded = (task: Rankable) =>
+  task.reporter.firstAidNeeded ?? certsFor(task.category).includes(FIRST_AID);
 
 /** The certificates a task wants by its category alone: one at most. */
 export const certsFor = (category: IncidentCategory) => (SKILL_FOR[category] ? [SKILL_FOR[category]] : []);
 
 /** The category's certificate, and first aid when someone may need it. */
-const wanted = (task: Task) => [...new Set([...certsFor(task.category), ...(firstAidNeeded(task) ? [FIRST_AID] : [])])];
+const wanted = (task: Rankable) => [...new Set([...certsFor(task.category), ...(firstAidNeeded(task) ? [FIRST_AID] : [])])];
 
 /** One person against one task: free or busy, the walk, which of the wanted certificates they hold, the language it needs. */
-function assess(task: Task, v: Volunteer, tasks: Task[], certs: string[], lang: string | null, positions: Record<string, Position> | undefined, now: number): Assessed {
+function assess(
+  task: Rankable,
+  v: Volunteer,
+  tasks: Task[],
+  certs: string[],
+  lang: string | null,
+  positions: Record<string, Position> | undefined,
+  now: number,
+): Assessed {
   const route = routeBetween(walkFrom(positions, v.id, v.zoneSlug, now), task.zoneSlug);
   const distanceM = route ? Math.round(route.meters) : null;
   const free = !isBusy(tasks, v.id);
@@ -64,26 +89,51 @@ function assess(task: Task, v: Volunteer, tasks: Task[], certs: string[], lang: 
     speaks ? `speaks ${languageName(lang)}` : null,
   ].filter(Boolean);
   return {
-    v, candidate: { volunteerId: v.id, rationale: why.join(' · '), distanceM }, free, sameTeam: v.teamSlug === task.teamSlug, held, speaks,
+    v,
+    candidate: { volunteerId: v.id, rationale: why.join(' · '), distanceM },
+    free,
+    sameTeam: v.teamSlug === task.teamSlug,
+    held,
+    speaks,
     aid: v.skills.includes(FIRST_AID),
   };
 }
 
 /** Volunteers on duty and not already on this task. */
-export function eligible(task: Task, volunteers: Volunteer[], exclude: string[] = []) {
-  const skip = new Set([...exclude, ...task.helperIds, ...(task.assigneeId ? [task.assigneeId] : [])]);
+export function eligible(task: Rankable, volunteers: Volunteer[], exclude: string[] = []) {
+  const skip = new Set([...exclude, ...task.helpers.map((h) => h.volunteerId), ...(task.assigneeId ? [task.assigneeId] : [])]);
   return volunteers.filter((v) => v.role === 'volunteer' && v.duty === 'on_duty' && !skip.has(v.id));
 }
 
 export function rankCandidates(
-  task: Task, volunteers: Volunteer[], tasks: Task[],
-  { exclude = [], limit = 5, positions, now = Date.now() }: { exclude?: string[]; limit?: number; positions?: Record<string, Position>; now?: number } = {},
+  task: Rankable,
+  volunteers: Volunteer[],
+  tasks: Task[],
+  {
+    exclude = [],
+    limit = 5,
+    positions,
+    now = Date.now(),
+  }: { exclude?: string[]; limit?: number; positions?: Record<string, Position>; now?: number } = {},
 ): ProposalCandidate[] {
   const lang = speakerNeeded(task);
+  const others = tasks.filter((t) => t.id !== task.id);
   return eligible(task, volunteers, exclude)
+    // A mobilization step: its own team, free, on shift, with what the playbook requires.
+    .filter(
+      (v) =>
+        !task.mobilizationId ||
+        (v.teamSlug === task.teamSlug &&
+          !isBusy(others, v.id) &&
+          (v.shiftEndsAt == null || v.shiftEndsAt > now) &&
+          (task.requiredSkills ?? []).every((required) => v.skills.includes(required))),
+    )
     .map((v) => {
       const a = assess(task, v, tasks, wanted(task), lang, positions, now);
-      return { candidate: a.candidate, score: [a.sameTeam ? 0 : 1, a.free ? 0 : 1, a.held.length || a.speaks ? 0 : 1, a.candidate.distanceM ?? 9_999] };
+      return {
+        candidate: a.candidate,
+        score: [a.sameTeam ? 0 : 1, a.free ? 0 : 1, a.held.length || a.speaks ? 0 : 1, a.candidate.distanceM ?? 9_999],
+      };
     })
     .sort((a, b) => a.score.reduce((d, x, i) => d || x - b.score[i], 0))
     .slice(0, limit)
@@ -99,20 +149,28 @@ export function rankCandidates(
  * Free people only, unless nobody's free.
  */
 export function laneCandidates(
-  task: Task, volunteers: Volunteer[], tasks: Task[],
-  { qualified, size = 6, positions, now = Date.now() }:
-    { qualified: string[] | null; size?: number; positions?: Record<string, Position>; now?: number },
+  task: Task,
+  volunteers: Volunteer[],
+  tasks: Task[],
+  {
+    qualified,
+    size = 6,
+    positions,
+    now = Date.now(),
+  }: { qualified: string[] | null; size?: number; positions?: Record<string, Position>; now?: number },
 ): ProposalCandidate[] {
   const lang = speakerNeeded(task);
   const all = eligible(task, volunteers).map((v) => assess(task, v, tasks, wanted(task), lang, positions, now));
   const pool = new Map((all.some((a) => a.free) ? all.filter((a) => a.free) : all).map((a) => [a.v.id, a]));
   const far = (a: Assessed) => a.candidate.distanceM ?? 9_999;
 
-  const order = qualified ?? rankCandidates(task, volunteers, tasks, { limit: Infinity, positions, now }).map((c) => c.volunteerId);
+  const order =
+    qualified ?? rankCandidates(task, volunteers, tasks, { limit: Infinity, positions, now }).map((c) => c.volunteerId);
   const best = order.flatMap((id) => pool.get(id) ?? []).slice(0, size);
   const nearest = [...pool.values()].sort((a, b) => far(a) - far(b));
   const seen = new Set<string>();
-  const picked = Array.from({ length: size }, (_, i) => [best[i], nearest[i]]).flat()
+  const picked = Array.from({ length: size }, (_, i) => [best[i], nearest[i]])
+    .flat()
     .filter((a) => a && !seen.has(a.v.id) && seen.add(a.v.id));
   const noSpeaker = !!lang && !picked.some((a) => a.speaks);
   const noAid = firstAidNeeded(task) && !picked.some((a) => a.aid);
@@ -126,12 +184,18 @@ export function laneCandidates(
  * `people` in `order` meets, the first who meets the most still missing goes too: as one more person while `most`
  * allows, else in place of the last one going who isn't the only one meeting another need.
  */
-export function withNeeded(order: string[], people: number, needs: ((id: string) => boolean)[], most: number): { order: string[]; people: number } {
+export function withNeeded(
+  order: string[],
+  people: number,
+  needs: ((id: string) => boolean)[],
+  most: number,
+): { order: string[]; people: number } {
   const going = order.slice(0, people);
   const missing = needs.filter((n) => !going.some(n));
   const meets = (id: string) => missing.filter((n) => n(id)).length;
   const extra = order.reduce<string | null>((best, id) => (meets(id) > (best ? meets(best) : 0) ? id : best), null);
-  const out = people < most ? -1 : going.findLastIndex((id) => !needs.some((n) => n(id) && going.filter(n).length === 1));
+  const out =
+    people < most ? -1 : going.findLastIndex((id) => !needs.some((n) => n(id) && going.filter(n).length === 1));
   if (!extra || (people >= most && out < 0)) return { order, people };
   const crew = [...going.filter((_, i) => i !== out), extra];
   return withNeeded([...crew, ...order.filter((id) => !crew.includes(id))], crew.length, needs, most);

@@ -4,9 +4,10 @@
  *   bun --watch src/server/main.ts
  *
  * SCHEDULER_MS sets the pass interval (default 5000; 0 turns it off). POLICY_* env vars shorten the
- * lifecycle timings (./policy.ts).
+ * lifecycle timings (./policy.ts). Mobilization simulation runs only on an explicit request.
  */
 import { app } from './http/app';
+import { applyMobilizationIdleTimeout, type RequestIdleTimeoutServer } from './http/mobilization-idle-timeout';
 import { hasOpenAi, onSpark } from './models/providers';
 import { warmSpeech } from './models/speech';
 import { applyPolicyFromEnv } from './policy';
@@ -30,4 +31,10 @@ const schedulerMs = Number(process.env.SCHEDULER_MS ?? 5_000);
 if (schedulerMs > 0) startScheduler(schedulerMs);
 console.log(`server listening on :${port}${schedulerMs > 0 ? `, scheduler every ${schedulerMs} ms` : ', scheduler off'}`);
 
-export default { port, fetch: app.fetch };
+export default {
+  port,
+  fetch(request: Request, server: RequestIdleTimeoutServer) {
+    applyMobilizationIdleTimeout(request, server);
+    return app.fetch(request);
+  },
+};

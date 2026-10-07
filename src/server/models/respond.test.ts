@@ -11,7 +11,7 @@ const task: Task = {
   priority: 'P2', teamSlug: 'first-aid', zoneSlug: 'food-alley', locationHint: null, status: 'escalated', assigneeId: 'priya',
   reporter: { kind: 'volunteer', quote: 'guy collapsed by the food stalls', language: 'en' }, handledBy: 'human',
   createdAt: NOW, assignedAt: null, etaAt: null, lastActivityAt: NOW, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null,
-  resolvedAt: null, helperIds: [], resolution: null, requestId: null,
+  resolvedAt: null, requiredCount: 1, helpers: [], resolution: null, requestId: null, mobilizationId: null,
   escalation: { at: NOW, reason: null, level: 'lead', ownerId: 'lee', bumpedAt: null, response: null },
 };
 
@@ -116,6 +116,62 @@ describe('Interpreter.respond: what a lead said on the Respond screen', () => {
     const { value } = await new SparkInterpreter().respond(heard('send Tom', { available: [], canPass: false }));
 
     expect(value).toBeNull();
+    expect(replies).toHaveLength(1);
+  });
+});
+
+describe('Interpreter.interpret after merging guest messages and helper replies', () => {
+  const chosenKind = (kind: string): FakeReply => ({
+    json: { answers: [answer('kind', { [kind]: 0.99, new_report: 0.01 })] },
+  });
+  const withHelper = (status: 'notified' | 'accepted'): Task => ({
+    ...task, status: 'accepted', requiredCount: 2,
+    helpers: [{ volunteerId: 'tom', status, assignedAt: NOW, respondedAt: status === 'accepted' ? NOW : null }],
+  });
+
+  it.each(['accept', 'decline'] as const)('preserves the notified helper’s own %s despite the accepted owner', async (kind) => {
+    replies.push(chosenKind(kind));
+
+    const result = await new SparkInterpreter().interpret({ tasks: [withHelper('notified')], meId: 'tom', text: kind });
+
+    expect(result.intent).toEqual({ kind: 'reply', taskId: task.id, reply: kind });
+    expect(JSON.stringify(http.requests[0].json)).toContain('a helper (notified assignment)');
+  });
+
+  it('does not give an accepted helper the owner’s need-help reply', async () => {
+    replies.push(chosenKind('need_help'));
+
+    const result = await new SparkInterpreter().interpret({ tasks: [withHelper('accepted')], meId: 'tom', text: 'need help' });
+
+    expect(result.intent).toEqual({ kind: 'report' });
+  });
+
+  it('can rewrite a message for the linked guest without changing its confirmed intent', async () => {
+    replies.push(chosenKind('tell_guest'), {
+      json: { choices: [{ message: { content: JSON.stringify({ message: 'I am two minutes away.' }) } }] },
+    });
+
+    const result = await new SparkInterpreter().interpret({
+      tasks: [{ ...task, requestId: 'guest-request' }], meId: 'priya', text: "tell her I'm two minutes away",
+    });
+
+    expect(result.intent).toEqual({ kind: 'tell_guest', taskId: task.id, text: 'I am two minutes away.' });
+  });
+
+  it('does not emit a guest message for a staff-only task', async () => {
+    replies.push(chosenKind('tell_guest'));
+
+    const result = await new SparkInterpreter().interpret({ tasks: [task], meId: 'priya', text: 'tell her I am nearby' });
+
+    expect(result.intent).toEqual({ kind: 'report' });
+  });
+
+  it('does not interpret another volunteer’s task as a guest message', async () => {
+    replies.push(chosenKind('tell_guest'));
+
+    const result = await new SparkInterpreter().interpret({ tasks: [{ ...task, requestId: 'guest-request' }], meId: 'kai', text: 'tell her I am nearby' });
+
+    expect(result.intent).toEqual({ kind: 'report' });
     expect(replies).toHaveLength(1);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { needsFor } from './needs';
+import { needsFor, type NeedsItem } from './needs';
 import type { Escalation, Proposal, Task, Volunteer } from './schema';
 
 const NOW = 1_800_000_000_000;
@@ -15,7 +15,7 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({
   id, title: id, summary: id, category: 'medical', priority: 'P2', teamSlug: 'first-aid', zoneSlug: 'food-alley',
   locationHint: null, status: 'open', assigneeId: null, reporter: { kind: 'volunteer', name: 'Sam Smith', quote: id, language: 'en' },
   handledBy: 'human', createdAt: NOW - 10 * MIN, assignedAt: null, etaAt: null, lastActivityAt: NOW - 10 * MIN, nudgeCount: 0,
-  lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: null, ...over,
+  lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null, escalation: null, helpers: [], requiredCount: 1, resolution: null, requestId: null, mobilizationId: null, ...over,
 });
 
 const passedUp = (over: Partial<Escalation> = {}): Escalation => ({
@@ -32,8 +32,11 @@ function festival(tasks: Task[], proposals: Proposal[] = []) {
     volunteers: Object.fromEntries(volunteers.map((v) => [v.id, v])),
     tasks: Object.fromEntries(tasks.map((t) => [t.id, t])),
     proposals: Object.fromEntries(proposals.map((p) => [p.id, p])),
+    mobilizations: {},
   };
 }
+
+const idOf = (n: NeedsItem) => (n.kind === 'mobilization' ? n.mobilization.id : n.task.id);
 
 describe('needsFor Mo', () => {
   it('puts a task a lead passed up at the top', () => {
@@ -41,7 +44,7 @@ describe('needsFor Mo', () => {
       task('spill', { priority: 'P2', teamSlug: 'crowd' }),
       task('collapsed', { status: 'escalated', assigneeId: 'priya', escalation: passedUp() }),
     ]);
-    expect(needsFor(world, 'mo').map((n) => [n.kind, n.task.id])).toEqual([['help', 'collapsed'], ['unassigned', 'spill']]);
+    expect(needsFor(world, 'mo').map((n) => [n.kind, idOf(n)])).toEqual([['help', 'collapsed'], ['unassigned', 'spill']]);
   });
 
   it('asks Mo to approve the pick for a P1, even on a team with a lead', () => {
@@ -59,7 +62,7 @@ describe('needsFor Mo', () => {
       task('queue', { priority: 'P2', teamSlug: 'crowd' }),
       task('bin', { priority: 'P3', teamSlug: 'crowd' }),
     ]);
-    expect(needsFor(world, 'mo').map((n) => n.task.id)).toEqual(['fight', 'queue']);
+    expect(needsFor(world, 'mo').map((n) => idOf(n))).toEqual(['fight', 'queue']);
   });
 
   it('keeps a handover Mo sent until Mo marks it arrived', () => {
@@ -68,6 +71,6 @@ describe('needsFor Mo', () => {
       task('collapsed', { status: 'escalated', assigneeId: 'priya', escalation: passedUp({ response: sent }) }),
       task('sprain', { status: 'escalated', assigneeId: 'priya', escalation: passedUp({ level: 'lead', response: { ...sent, byId: 'lee' } }) }),
     ]);
-    expect(needsFor(world, 'mo').map((n) => [n.kind, n.task.id])).toEqual([['handover', 'collapsed']]);
+    expect(needsFor(world, 'mo').map((n) => [n.kind, idOf(n)])).toEqual([['handover', 'collapsed']]);
   });
 });

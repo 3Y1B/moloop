@@ -9,12 +9,33 @@
  */
 import type { Database, Json, Tables } from '@/lib/database.types';
 import type {
-  Duty, Escalation, GuestRequest, GuestThreadEntry, Message, Position, Proposal, ProposalStatus, ReplyKind, Reporter, Task,
-  TaskEvent, TaskEventKind, Team, TeamSlug, Volunteer, VolunteerRole, Zone,
+  Duty,
+  Escalation,
+  GuestRequest,
+  GuestThreadEntry,
+  HelperAssignment,
+  Message,
+  Mobilization,
+  MobilizationEvidence,
+  MobilizationStep,
+  Playbook,
+  Position,
+  Proposal,
+  ProposalStatus,
+  ReplyKind,
+  Reporter,
+  Task,
+  TaskEvent,
+  TaskEventKind,
+  Team,
+  TeamSlug,
+  Volunteer,
+  VolunteerRole,
+  Zone,
 } from '@/lib/schema';
 import { POLICY } from '@/lib/lifecycle';
-import { toPlan } from '../venue';
 import { TEAMS } from '../teams';
+import { toPlan } from '../venue';
 
 export type Row<T extends keyof Database['public']['Tables']> = Tables<T>;
 
@@ -32,7 +53,8 @@ export function toMs(ts: string): number {
 export const toMsOrNull = (ts: string | null | undefined): number | null => (ts ? toMs(ts) : null);
 
 /** Epoch ms → timestamptz, for the server writing domain values back. */
-export const fromMs = (ms: number | null | undefined): string | null => (ms == null ? null : new Date(ms).toISOString());
+export const fromMs = (ms: number | null | undefined): string | null =>
+  ms == null ? null : new Date(ms).toISOString();
 
 // ── reference data ──
 
@@ -48,8 +70,8 @@ export function refsFrom(teams: Pick<Row<'teams'>, 'id' | 'slug'>[], zones: Pick
   };
 }
 
-const teamSlug = (refs: Refs, id: string | null) => (id ? refs.teams.get(id) ?? null : null);
-const zoneSlug = (refs: Refs, id: string | null) => (id ? refs.zones.get(id) ?? null : null);
+const teamSlug = (refs: Refs, id: string | null) => (id ? (refs.teams.get(id) ?? null) : null);
+const zoneSlug = (refs: Refs, id: string | null) => (id ? (refs.zones.get(id) ?? null) : null);
 
 const ICONS = new Map(TEAMS.map((t) => [t.slug, t]));
 
@@ -66,7 +88,10 @@ export function toTeam(row: Pick<Row<'teams'>, 'slug' | 'name' | 'color'>): Team
   };
 }
 
-export const toZone = (row: Pick<Row<'zones'>, 'slug' | 'name'>): Zone => ({ slug: row.slug, name: row.name });
+export const toZone = (row: Pick<Row<'zones'>, 'slug' | 'name'>): Zone => ({
+  slug: row.slug,
+  name: row.name,
+});
 
 // ── people ──
 
@@ -85,11 +110,18 @@ export const statusFromDuty = (duty: Duty): VolunteerStatus =>
 export const toRole = (role: UserRole): VolunteerRole =>
   role === 'volunteer' || role === 'team_lead' ? role : 'coordinator';
 
-export type ProfileRow = Pick<Row<'profiles'>, 'id' | 'full_name' | 'role' | 'team_id' | 'status' | 'languages' | 'last_known_zone'>;
+export type ProfileRow = Pick<
+  Row<'profiles'>,
+  'id' | 'full_name' | 'role' | 'team_id' | 'status' | 'languages' | 'last_known_zone'
+>;
 export const PROFILE_SELECT = 'id, full_name, role, team_id, status, languages, last_known_zone';
 
 /** `skills` from volunteer_skills, `phone` from profile_private (null when the caller can't read it). */
-export function toVolunteer(row: ProfileRow, refs: Refs, extra: { skills?: string[]; phone?: string | null } = {}): Volunteer {
+export function toVolunteer(
+  row: ProfileRow,
+  refs: Refs,
+  extra: { skills?: string[]; phone?: string | null } = {},
+): Volunteer {
   return {
     id: row.id,
     name: row.full_name,
@@ -163,9 +195,13 @@ export function toTask(row: TaskRow, refs: Refs, reporter: Reporter = toReporter
     leadAlertedAt: toMsOrNull(row.lead_alerted_at),
     resolvedAt: toMsOrNull(row.resolved_at),
     escalation: (row.escalation as Escalation | null) ?? null,
-    helperIds: row.helper_ids ?? [],
+    requiredCount: row.required_count,
+    helpers: (row.helper_status as HelperAssignment[] | null) ?? [],
     resolution: row.resolution,
     requestId: row.request_id,
+    mobilizationId: row.mobilization_id,
+    mobilizationStepKey: row.mobilization_step_key,
+    requiredSkills: row.required_skills ?? [],
   };
 }
 
@@ -181,18 +217,42 @@ export type TaskEventData = {
 };
 
 const EVENT_KINDS = new Set<TaskEventKind>([
-  'created', 'assigned', 'queued', 'reply', 'nudged', 'lead_alerted', 'escalated', 'reassigned', 'resolved', 'note',
-  'responded', 'bumped', 'proposed',
+  'created',
+  'assigned',
+  'queued',
+  'reply',
+  'nudged',
+  'lead_alerted',
+  'escalated',
+  'reassigned',
+  'resolved',
+  'note',
+  'responded',
+  'bumped',
+  'proposed',
+  'helper_added',
 ]);
 
 /** Shown when an event row carries no text of its own. */
 const EVENT_TEXT: Record<TaskEventKind, string> = {
-  created: 'Reported', assigned: 'Assigned', queued: 'Queued', reply: 'Replied', nudged: 'Nudged',
-  lead_alerted: 'Lead alerted', escalated: 'Asked for help', reassigned: 'Reassigned', resolved: 'Resolved',
-  note: 'Note', responded: 'Responded', bumped: 'Passed to Mo', proposed: 'Suggested a volunteer',
+  created: 'Reported',
+  assigned: 'Assigned',
+  queued: 'Queued',
+  reply: 'Replied',
+  nudged: 'Nudged',
+  lead_alerted: 'Lead alerted',
+  escalated: 'Asked for help',
+  reassigned: 'Reassigned',
+  resolved: 'Resolved',
+  note: 'Note',
+  responded: 'Responded',
+  bumped: 'Passed to Mo',
+  proposed: 'Suggested a volunteer',
+  helper_added: 'Helper recruited',
 };
 
-const asObject = (j: Json): Record<string, Json | undefined> => (j && typeof j === 'object' && !Array.isArray(j) ? j : {});
+const asObject = (j: Json): Record<string, Json | undefined> =>
+  j && typeof j === 'object' && !Array.isArray(j) ? j : {};
 
 /** `actorName` is the actor's profile name, when the caller can see it. Unknown kinds read as notes. */
 export function toTaskEvent(row: Row<'task_events'>, actorName?: string): TaskEvent {
@@ -205,7 +265,11 @@ export function toTaskEvent(row: Row<'task_events'>, actorName?: string): TaskEv
     taskId: row.task_id,
     at: toMs(row.created_at),
     kind,
-    actor: { kind: actorKind, ...(row.actor_id ? { id: row.actor_id } : {}), ...(name ? { name } : {}) },
+    actor: {
+      kind: actorKind,
+      ...(row.actor_id ? { id: row.actor_id } : {}),
+      ...(name ? { name } : {}),
+    },
     text: data.text ?? (kind === 'note' && row.kind !== 'note' ? row.kind : EVENT_TEXT[kind]),
     ...(data.reply ? { reply: data.reply } : {}),
     ...(data.note ? { note: data.note } : {}),
@@ -215,7 +279,9 @@ export function toTaskEvent(row: Row<'task_events'>, actorName?: string): TaskEv
 // ── presence ──
 
 /** A presence row on the plan. Rows carry lng/lat; everything on the phone works in plan metres. */
-export function toPosition(row: Pick<Row<'presence'>, 'person_id' | 'lat' | 'lng' | 'accuracy' | 'heading' | 'at'>): Position {
+export function toPosition(
+  row: Pick<Row<'presence'>, 'person_id' | 'lat' | 'lng' | 'accuracy' | 'heading' | 'at'>,
+): Position {
   const { x, y } = toPlan([row.lng, row.lat]);
   return { personId: row.person_id, x, y, accuracy: row.accuracy, heading: row.heading, at: toMs(row.at) };
 }
@@ -241,22 +307,37 @@ export function toGuestRequest(row: Row<'guest_requests'>, refs: Refs): GuestReq
 // ── proposals ──
 
 /** Proposals are `agent_actions(assign_volunteer)` plus its `task_assignments(status = proposed)`. */
-export const PROPOSAL_ACTION_SELECT = 'id, task_id, status, payload, decided_by, decided_at, executed_at, auto_assign_at, created_at';
+export const PROPOSAL_ACTION_SELECT =
+  'id, task_id, status, payload, decided_by, decided_at, executed_at, auto_assign_at, created_at';
 export type ProposalActionRow = Pick<
-  Row<'agent_actions'>, 'id' | 'task_id' | 'status' | 'payload' | 'decided_by' | 'decided_at' | 'executed_at' | 'auto_assign_at' | 'created_at'
+  Row<'agent_actions'>,
+  | 'id'
+  | 'task_id'
+  | 'status'
+  | 'payload'
+  | 'decided_by'
+  | 'decided_at'
+  | 'executed_at'
+  | 'auto_assign_at'
+  | 'created_at'
 >;
 export const PROPOSAL_CANDIDATE_SELECT = 'id, task_id, volunteer_id, status, rationale, distance_m, created_at';
 export type ProposalCandidateRow = Pick<
-  Row<'task_assignments'>, 'id' | 'task_id' | 'volunteer_id' | 'status' | 'rationale' | 'distance_m' | 'created_at'
+  Row<'task_assignments'>,
+  'id' | 'task_id' | 'volunteer_id' | 'status' | 'rationale' | 'distance_m' | 'created_at'
 >;
 
 /** pending → pending, approved → approved, executed with nobody deciding → auto-assigned, rejected/expired/failed → cancelled. */
 export function toProposalStatus(row: Pick<Row<'agent_actions'>, 'status' | 'decided_by'>): ProposalStatus {
   switch (row.status) {
-    case 'pending': return 'pending';
-    case 'approved': return 'approved';
-    case 'executed': return row.decided_by ? 'approved' : 'auto_assigned';
-    default: return 'cancelled';
+    case 'pending':
+      return 'pending';
+    case 'approved':
+      return 'approved';
+    case 'executed':
+      return row.decided_by ? 'approved' : 'auto_assigned';
+    default:
+      return 'cancelled';
   }
 }
 
@@ -264,21 +345,33 @@ export function toProposalStatus(row: Pick<Row<'agent_actions'>, 'status' | 'dec
  * `candidates` are the proposed assignment rows, in the order the agent proposed them
  * (`payload.volunteerIds`, else row creation order); `helperIds` go with the top pick. `volunteerId` is who got it, once decided.
  */
-export function toProposal(action: ProposalActionRow, candidates: ProposalCandidateRow[], volunteerId: string | null = null): Proposal {
+export function toProposal(
+  action: ProposalActionRow,
+  candidates: ProposalCandidateRow[],
+  volunteerId: string | null = null,
+): Proposal {
   const { volunteerIds: order, helperIds } = asObject(action.payload);
   const rank = new Map(Array.isArray(order) ? order.map((id, i) => [String(id), i]) : []);
   const proposed = candidates
     .filter((c) => c.status === 'proposed' && c.task_id === action.task_id)
-    .sort((a, b) =>
-      (rank.get(a.volunteer_id) ?? Infinity) - (rank.get(b.volunteer_id) ?? Infinity)
-      || toMs(a.created_at) - toMs(b.created_at));
+    .sort(
+      (a, b) =>
+        (rank.get(a.volunteer_id) ?? Infinity) - (rank.get(b.volunteer_id) ?? Infinity) ||
+        toMs(a.created_at) - toMs(b.created_at),
+    );
   const createdAt = toMs(action.created_at);
   const status = toProposalStatus(action);
   return {
     id: action.id,
     taskId: action.task_id ?? '',
-    candidates: proposed.map((c) => ({ volunteerId: c.volunteer_id, rationale: c.rationale ?? '', distanceM: c.distance_m })),
-    helperIds: Array.isArray(helperIds) ? helperIds.map(String).filter((id) => proposed.some((c) => c.volunteer_id === id)) : [],
+    candidates: proposed.map((c) => ({
+      volunteerId: c.volunteer_id,
+      rationale: c.rationale ?? '',
+      distanceM: c.distance_m,
+    })),
+    helperIds: Array.isArray(helperIds)
+      ? helperIds.map(String).filter((id) => proposed.some((c) => c.volunteer_id === id))
+      : [],
     createdAt,
     autoAssignAt: toMsOrNull(action.auto_assign_at) ?? createdAt + POLICY.autoAssignMs,
     status,
@@ -288,14 +381,52 @@ export function toProposal(action: ProposalActionRow, candidates: ProposalCandid
   };
 }
 
+// ── mobilization ──
+
+export function toMobilization(row: Row<'mobilizations'>, refs: Refs): Mobilization {
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    rationale: row.rationale,
+    relatedPlaybooks: row.related_playbooks ?? [],
+    urgency: row.urgency,
+    zoneSlug: zoneSlug(refs, row.zone_id),
+    steps: (row.steps as MobilizationStep[] | null) ?? [],
+    evidence: (row.evidence as MobilizationEvidence | null) ?? null,
+    playbookSlug: row.playbook_slug,
+    analysisRunId: row.analysis_run_id,
+    createdAt: toMs(row.created_at),
+    decidedById: row.decided_by,
+    decidedAt: toMsOrNull(row.decided_at),
+  };
+}
+
+export function toPlaybook(row: Row<'playbooks'>): Playbook {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    trigger: row.trigger,
+    steps: (row.steps as Playbook['steps'] | null) ?? [],
+  };
+}
+
 // ── messages ──
 
 /** A delivery row with its message and the sender's name embedded. */
 export const DELIVERY_SELECT =
   'message_id, recipient_id, body_local, delivery, audio_path, read_at, message:messages!message_deliveries_message_id_fkey(id, kind, body, task_id, created_at, sender:profiles!messages_sender_id_fkey(full_name))';
 
-export type DeliveryRow = Pick<Row<'message_deliveries'>, 'message_id' | 'recipient_id' | 'body_local' | 'delivery' | 'audio_path' | 'read_at'> & {
-  message: (Pick<Row<'messages'>, 'id' | 'kind' | 'body' | 'task_id' | 'created_at'> & { sender: { full_name: string } | null }) | null;
+export type DeliveryRow = Pick<
+  Row<'message_deliveries'>,
+  'message_id' | 'recipient_id' | 'body_local' | 'delivery' | 'audio_path' | 'read_at'
+> & {
+  message:
+    | (Pick<Row<'messages'>, 'id' | 'kind' | 'body' | 'task_id' | 'created_at'> & {
+        sender: { full_name: string } | null;
+      })
+    | null;
 };
 
 /** A message as one recipient sees it: their delivery decides `read` and `delivery`. No sender reads as the festival-goer for their replies, Moloop otherwise. */

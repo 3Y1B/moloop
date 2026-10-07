@@ -22,7 +22,7 @@ export const ZONES: Zone[] = [
   ['artist-gate', 'Artist Gate'], ['artist-village', 'Artist Village'], ['backstage', 'Oval Backstage'], ['track-backstage', 'Track Backstage'],
   ['toilets-west', 'Toilets West'], ['toilets-east', 'Toilets East'], ['the-grove', 'The Grove'], ['pavilion', 'Pavilion'],
   ['ticket-office', 'Ticket Office'], ['merch-lounge', 'Merch & Lounge'], ['supplies', 'Supplies'], ['bar', 'Bar'],
-].map(([slug, name]) => ({ slug, name })).sort((x, y) => x.name.localeCompare(y.name));
+].map(([slug, name]) => ({ slug, name, capacity: null })).sort((x, y) => x.name.localeCompare(y.name));
 
 type Opts = { zone?: string; hint?: string };
 type Row = [GateLabel, string, Opts?];

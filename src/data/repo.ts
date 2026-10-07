@@ -1,8 +1,24 @@
 import type { RespondInput } from '@/lib/lifecycle';
 import type { Fix } from '@/lib/presence';
 import type { RespondCommand } from '@/lib/ai';
+import type { SimulationRunResult } from '@/lib/mobilization-contracts';
 import type { Summary, SummaryScope } from '@/lib/summary';
-import type { Duty, GuestRequest, Message, Position, Proposal, ReplyKind, Task, TaskEvent, Team, TeamSlug, Volunteer, Zone } from '@/lib/schema';
+import type {
+  Duty,
+  GuestRequest,
+  Message,
+  Mobilization,
+  Position,
+  Priority,
+  Proposal,
+  ReplyKind,
+  Task,
+  TaskEvent,
+  Team,
+  TeamSlug,
+  Volunteer,
+  Zone,
+} from '@/lib/schema';
 
 export type { RespondInput };
 
@@ -26,7 +42,8 @@ export type Snapshot = {
   messages: Message[];
   requests: Record<string, GuestRequest>;
   proposals: Record<string, Proposal>;
-  /** Live GPS by person id: everyone this caller may see (crew see crew; a festival-goer, who's coming). */
+  mobilizations: Record<string, Mobilization>;
+  /** Live GPS by person id, restricted to people this caller may see. */
   positions: Record<string, Position>;
 };
 
@@ -38,7 +55,10 @@ export type Interpretation = {
   heard: string;
   /** The voice clips it was said in (from `transcribe`), kept with the report it becomes. */
   clips?: string[];
-  intent: { kind: 'reply'; taskId: string; reply: ReplyKind } | { kind: 'tell_guest'; taskId: string; text: string } | { kind: 'report' };
+  intent:
+    | { kind: 'reply'; taskId: string; reply: ReplyKind }
+    | { kind: 'tell_guest'; taskId: string; text: string }
+    | { kind: 'report' };
 };
 
 /**
@@ -114,5 +134,30 @@ export interface Repo {
 
   /** Volunteer → festival-goer, on a task that came from a request. */
   guestReply(taskId: string, text: string): Promise<void>;
+
+  /** Mobilization is server/Supabase-only: real-model simulation and approval need shared persistence. */
+  mobilizations?: MobilizationControls;
 }
 
+export type CreateMobilizationInput = {
+  title: string;
+  rationale: string;
+  urgency: Priority;
+  zoneSlug: string | null;
+  /** Pre-fills steps from a playbook's template; still freely editable. */
+  playbookSlug?: string;
+  steps: { teamSlug: TeamSlug; peopleNeeded: number; reason: string }[];
+};
+
+export interface MobilizationControls {
+  /** Mo-initiated, active immediately (no self-approval step), optionally templated from a playbook. */
+  create(input: CreateMobilizationInput): Promise<void>;
+  /** Approve a system-proposed mobilization: re-ranks candidates fresh and creates the real tasks. */
+  approve(mobilizationId: string, review?: MobilizationReview): Promise<void>;
+  reject(mobilizationId: string): Promise<void>;
+  standDown(mobilizationId: string, outcome: 'stood_down' | 'cancelled'): Promise<void>;
+  getRun(id: string): Promise<SimulationRunResult>;
+}
+
+/** An explicit Mo review of the immutable analysis, including any known execution gaps. */
+export type MobilizationReview = { reviewedRunId?: string; acknowledgeGaps?: boolean };

@@ -28,7 +28,7 @@ export function NeedsList() {
       )}
       {needs.length > 0 ? (
         <TeamSection title="Waiting on you" count={needs.length}>
-          {needs.map((n) => <NeedsRow key={`${n.kind}-${n.task.id}`} item={n} />)}
+          {needs.map((n) => <NeedsRow key={`${n.kind}-${n.kind === 'mobilization' ? n.mobilization.id : n.task.id}`} item={n} />)}
         </TeamSection>
       ) : (
         <AllClear />

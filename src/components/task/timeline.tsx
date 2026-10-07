@@ -20,6 +20,7 @@ const KIND_SF: Record<TaskEvent['kind'], string> = {
   responded: 'person.crop.circle.badge.exclamationmark',
   bumped: 'arrow.up.circle.fill',
   proposed: 'sparkles',
+  helper_added: 'person.badge.plus',
 };
 
 /** Android (Material Symbols) fallbacks for the same events. */
@@ -37,6 +38,7 @@ const KIND_MD: Record<TaskEvent['kind'], string> = {
   responded: 'support_agent',
   bumped: 'arrow_circle_up',
   proposed: 'auto_awesome',
+  helper_added: 'person_add',
 };
 
 /**
@@ -46,11 +48,17 @@ const KIND_MD: Record<TaskEvent['kind'], string> = {
 export function Timeline({ events }: { events: TaskEvent[] }) {
   const theme = useTheme();
   const colorFor = (e: TaskEvent) =>
-    e.kind === 'resolved' ? theme.success
-      : e.kind === 'lead_alerted' || e.kind === 'escalated' ? theme.danger
-        : e.kind === 'nudged' || e.kind === 'bumped' ? theme.warning
-          : e.kind === 'responded' ? theme.tint
-            : e.actor.kind === 'human' ? theme.tint : theme.textTertiary;
+    e.kind === 'resolved'
+      ? theme.success
+      : e.kind === 'lead_alerted' || e.kind === 'escalated'
+        ? theme.danger
+        : e.kind === 'nudged' || e.kind === 'bumped'
+          ? theme.warning
+          : e.kind === 'responded'
+            ? theme.tint
+            : e.actor.kind === 'human'
+              ? theme.tint
+              : theme.textTertiary;
 
   return (
     <View style={styles.list}>
@@ -61,7 +69,13 @@ export function Timeline({ events }: { events: TaskEvent[] }) {
           <View key={e.id} style={styles.item}>
             <View style={styles.rail}>
               <View style={[styles.dot, { backgroundColor: `${color}14` }]}>
-                <Icon sf={e.reply ? REPLY_SF[e.reply] : KIND_SF[e.kind]} md={e.reply ? 'chat_bubble' : KIND_MD[e.kind]} size={12} color={color} weight="medium" />
+                <Icon
+                  sf={e.reply ? REPLY_SF[e.reply] : KIND_SF[e.kind]}
+                  md={e.reply ? 'chat_bubble' : KIND_MD[e.kind]}
+                  size={12}
+                  color={color}
+                  weight="medium"
+                />
               </View>
               {!last && <View style={[styles.line, { backgroundColor: theme.separator }]} />}
             </View>

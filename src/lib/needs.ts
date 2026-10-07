@@ -1,28 +1,33 @@
 import { isHeld, isQuiet, needsResponse, quietSince } from './lifecycle';
-import type { Proposal, Task, TeamSlug, Volunteer } from './schema';
+import type { Mobilization, Proposal, Task, TeamSlug, Volunteer } from './schema';
 
-export type NeedsKind = 'help' | 'escalated' | 'quiet' | 'approval' | 'handover' | 'unassigned';
-export type NeedsItem = {
-  kind: NeedsKind;
-  task: Task;
-  /** For approvals. */
-  proposal?: Proposal;
-  /** When it started needing someone (help asked, went quiet, proposed, handover sent, reported). */
-  since: number;
-};
+export type NeedsKind = 'help' | 'escalated' | 'mobilization' | 'quiet' | 'approval' | 'handover' | 'unassigned';
+export type NeedsItem =
+  | {
+      kind: Exclude<NeedsKind, 'mobilization'>;
+      task: Task;
+      /** For approvals. */
+      proposal?: Proposal;
+      /** When it started needing someone (help asked, went quiet, proposed, handover sent, reported). */
+      since: number;
+    }
+  | { kind: 'mobilization'; mobilization: Mobilization; since: number };
 
-const NEEDS_ORDER: NeedsKind[] = ['help', 'escalated', 'quiet', 'approval', 'handover', 'unassigned'];
+const NEEDS_ORDER: NeedsKind[] = ['help', 'escalated', 'mobilization', 'quiet', 'approval', 'handover', 'unassigned'];
+const priorityOf = (item: NeedsItem) => (item.kind === 'mobilization' ? item.mobilization.urgency : item.task.priority);
 
 type World = {
   tasks: Record<string, Task>;
   proposals: Record<string, Proposal>;
   volunteers: Record<string, Volunteer>;
+  mobilizations: Record<string, Mobilization>;
 };
 
 /**
  * The lead's or Mo's "Needs you" list. Lead: their team's help requests and AI escalations (still shown after a
  * bump), quiet tasks, pending approvals, handovers waiting on "Arrived", unassigned tasks.
- * Mo: what was bumped or escalated to Mo (or has no lead), P1 approvals, unassigned P1/P2. Volunteers get nothing.
+ * Mo: what was bumped or escalated to Mo (or has no lead), P1 approvals, unassigned P1/P2, and proposed or active
+ * mobilizations (venue-wide, so leads don't see these). Volunteers get nothing.
  */
 export function needsFor(s: World, meId: string | null): NeedsItem[] {
   const me = meId ? s.volunteers[meId] : undefined;
@@ -32,6 +37,12 @@ export function needsFor(s: World, meId: string | null): NeedsItem[] {
   const mine = (t: Task) => (lead ? t.teamSlug === me.teamSlug : !hasLead(t.teamSlug));
   const pending = new Map(Object.values(s.proposals).filter((p) => p.status === 'pending').map((p) => [p.taskId, p]));
   const items: NeedsItem[] = [];
+
+  if (!lead) {
+    for (const m of Object.values(s.mobilizations)) {
+      if (m.status === 'proposed' || m.status === 'active') items.push({ kind: 'mobilization', mobilization: m, since: m.createdAt });
+    }
+  }
 
   for (const t of Object.values(s.tasks)) {
     const e = t.escalation;
@@ -50,5 +61,5 @@ export function needsFor(s: World, meId: string | null): NeedsItem[] {
     }
   }
   return items.sort((a, b) =>
-    NEEDS_ORDER.indexOf(a.kind) - NEEDS_ORDER.indexOf(b.kind) || a.task.priority.localeCompare(b.task.priority) || a.since - b.since);
+    NEEDS_ORDER.indexOf(a.kind) - NEEDS_ORDER.indexOf(b.kind) || priorityOf(a).localeCompare(priorityOf(b)) || a.since - b.since);
 }

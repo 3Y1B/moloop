@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { fakeHttp, type FakeReply } from './fake-http';
 import { LunaLlm } from './luna';
+import type { ModelDiagnostic } from './http';
 
 const Incident = z.object({ title: z.string(), urgent: z.boolean() });
 
@@ -31,6 +32,56 @@ const spark = (...replies: Reply[]) => {
 const ask = { system: 'Classify festival reports.', prompt: 'a guy collapsed by the food stalls', schema: Incident };
 
 describe('LunaLlm.generate', () => {
+  it('records complete body timing and numeric usage without copying response content', async () => {
+    const diagnostics: ModelDiagnostic[] = [];
+    const llm = new LunaLlm({ baseUrl: 'https://provider.test/v1', apiKey: 'TEST_SECRET', fetch: async () => new Response(JSON.stringify({
+      choices: [{ message: { content: '{"title":"TEST_SECRET response","urgent":true}' } }],
+      usage: { prompt_tokens: 123, completion_tokens: 45, completion_tokens_details: { reasoning_tokens: 12 }, echoed_key: 'TEST_SECRET' },
+    }), { headers: { 'x-request-id': 'req_0123456789abcdef0123456789abcdef' } }) });
+    await expect(llm.generate({ ...ask, onDiagnostic: (event) => { diagnostics.push(event); } })).resolves.toMatchObject({ urgent: true });
+    expect(diagnostics.map((event) => event.stage)).toEqual(['request_start', 'response_headers', 'response_body', 'complete']);
+    expect(diagnostics[2]).toMatchObject({ request: 1, attempt: 1, status: 200, usage: { inputTokens: 123, outputTokens: 45, reasoningTokens: 12 } });
+    expect(JSON.stringify(diagnostics)).not.toMatch(/TEST_SECRET|provider\.test|choices|echoed_key/);
+  });
+
+  it('does not coerce invalid usage fields or expose arbitrary usage data', async () => {
+    const diagnostics: ModelDiagnostic[] = [];
+    const llm = new LunaLlm({ baseUrl: 'https://provider.test/v1', fetch: async () => new Response(JSON.stringify({
+      choices: [{ message: { content: '{"title":"x","urgent":false}' } }],
+      usage: { prompt_tokens: '123', completion_tokens: -1, completion_tokens_details: { reasoning_tokens: 1.5 }, token: 'TEST_SECRET' },
+    })) });
+    await llm.generate({ ...ask, onDiagnostic: (event) => { diagnostics.push(event); } });
+    expect(diagnostics.find((event) => event.stage === 'response_body')?.usage).toBeUndefined();
+    expect(JSON.stringify(diagnostics)).not.toContain('TEST_SECRET');
+  });
+
+  it('distinguishes repair round two from transport retries', async () => {
+    const { llm } = spark({ content: '{"urgent":"wrong"}' }, { content: '{"title":"valid","urgent":true}' });
+    const events: ModelDiagnostic[] = [];
+    await llm.generate({ ...ask, onDiagnostic: (event) => { events.push(event); } });
+    expect(events.filter((event) => event.stage === 'request_start')).toMatchObject([{ request: 1, attempt: 1 }, { request: 2, attempt: 1 }]);
+    expect(events.find((event) => event.stage === 'repair')).toMatchObject({ request: 1 });
+    expect(events.at(-1)).toMatchObject({ stage: 'complete', request: 2, attempt: 1 });
+  });
+
+  it('records an aborted body read without starting a retry or JSON repair', async () => {
+    const cancel = new AbortController(); const events: ModelDiagnostic[] = [];
+    const response = new Response('{}');
+    const json = vi.spyOn(response, 'json').mockImplementation(async () => new Promise((_resolve, reject) => {
+      cancel.signal.addEventListener('abort', () => reject(cancel.signal.reason), { once: true });
+      queueMicrotask(() => cancel.abort());
+    }));
+    const fetch = vi.fn(async () => response);
+    const llm = new LunaLlm({ baseUrl: 'https://provider.test/v1', fetch });
+    const result = llm.generate({ ...ask, signal: cancel.signal, onDiagnostic: (event) => {
+      events.push(event);
+    } }).catch((error) => error);
+    expect((await result).name).toBe('AbortError');
+    expect(events.find((event) => event.stage === 'cancelled')).toMatchObject({ phase: 'response_body', status: 200 });
+    expect(fetch).toHaveBeenCalledTimes(1); expect(json).toHaveBeenCalledTimes(1);
+    expect(events.some((event) => event.stage === 'repair')).toBe(false);
+  });
+
   it('returns the parsed object when the model replies with valid JSON', async () => {
     const { llm } = spark({ content: '{"title":"Man collapsed at food stalls","urgent":true}' });
 

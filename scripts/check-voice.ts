@@ -116,7 +116,7 @@ async function guest() {
   return person(data.user!.id, client, data.session!.access_token);
 }
 
-const moUser = (await admin.auth.admin.listUsers()).data.users.find((u) => u.email === 'mo@moloop.test');
+const moUser = (await admin.auth.admin.listUsers({ perPage: 1000 })).data.users.find((u) => u.email === 'mo@moloop.test');
 if (!moUser) throw new Error('Seed the crew first: npm run db:seed');
 const mo = await signIn('mo@moloop.test', moUser.id);
 const sam = await hire('sam', 'Sam Voice', 'security', 'gate-b');

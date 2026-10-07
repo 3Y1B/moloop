@@ -22,7 +22,12 @@ import { ReplyBar } from './reply-bar';
  * (summary, reporter's words, team) is one tap away under Details; the full history is on the task page.
  * Status lives in one place, the top-right line (lib/status). Backing someone up, the card says whose task it is.
  */
-export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = true, defaultExpanded = false }: {
+export function ActiveTaskCard({
+  task,
+  showReplies = true,
+  showTimelineLink = true,
+  defaultExpanded = false,
+}: {
   task: Task;
   showReplies?: boolean;
   showTimelineLink?: boolean;
@@ -35,7 +40,8 @@ export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = tr
   const { zones } = useLookups();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const zone = task.zoneSlug ? zones[task.zoneSlug] : undefined;
-  const helping = !!meId && task.helperIds.includes(meId);
+  const helperEntry = meId ? task.helpers.find((h) => h.volunteerId === meId) : undefined;
+  const helping = !!helperEntry;
 
   return (
     <Animated.View layout={LinearTransition.duration(220)}>
@@ -57,7 +63,9 @@ export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = tr
             <Icon sf="mappin" md="location_on" size={13} color={accent} />
             <Text style={[styles.zone, { color: theme.text }]} numberOfLines={1}>
               {zone.name}
-              {task.locationHint && <Text style={{ color: theme.textSecondary, fontWeight: '400' }}> · {task.locationHint}</Text>}
+              {task.locationHint && (
+                <Text style={{ color: theme.textSecondary, fontWeight: '400' }}> · {task.locationHint}</Text>
+              )}
             </Text>
           </View>
         )}
@@ -66,7 +74,7 @@ export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = tr
 
         <MapPreview task={task} />
 
-        {showReplies && <ReplyBar task={task} helping={helping} />}
+        {showReplies && <ReplyBar task={task} helperEntry={helperEntry} />}
 
         <View style={styles.footer}>
           <Pressable
@@ -77,9 +85,16 @@ export function ActiveTaskCard({ task, showReplies = true, showTimelineLink = tr
               Haptics.selectionAsync();
               setExpanded((e) => !e);
             }}
-            style={styles.footerBtn}>
+            style={styles.footerBtn}
+          >
             <Text style={[styles.link, { color: theme.textSecondary }]}>{expanded ? 'Less' : 'Details'}</Text>
-            <Icon sf={expanded ? 'chevron.up' : 'chevron.down'} md={expanded ? 'expand_less' : 'expand_more'} size={11} color={theme.textSecondary} weight="bold" />
+            <Icon
+              sf={expanded ? 'chevron.up' : 'chevron.down'}
+              md={expanded ? 'expand_less' : 'expand_more'}
+              size={11}
+              color={theme.textSecondary}
+              weight="bold"
+            />
           </Pressable>
           {showTimelineLink && (
             <Link href={{ pathname: '/task/[id]', params: { id: task.id, focus: 'timeline' } }} asChild>
@@ -120,9 +135,15 @@ export function Details({ task }: { task: Task }) {
       {q.original ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={original ? 'Show the English' : `Show the original, ${q.original.label.replace('Original, ', '')}`}
+          accessibilityLabel={
+            original ? 'Show the English' : `Show the original, ${q.original.label.replace('Original, ', '')}`
+          }
           onPress={() => setOriginal((o) => !o)}
-          style={({ pressed }) => [styles.quote, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
+          style={({ pressed }) => [
+            styles.quote,
+            { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
           {quote}
         </Pressable>
       ) : (
@@ -143,7 +164,9 @@ export function Owner({ task }: { task: Task }) {
   return (
     <View style={styles.owner}>
       <Avatar name={owner.name} color={color} size={22} />
-      <Text style={[styles.ownerName, { color: theme.text }]} numberOfLines={1}>{owner.name}</Text>
+      <Text style={[styles.ownerName, { color: theme.text }]} numberOfLines={1}>
+        {owner.name}
+      </Text>
       {owner.phone && (
         <Pressable
           accessibilityRole="button"
@@ -153,7 +176,8 @@ export function Owner({ task }: { task: Task }) {
             Haptics.selectionAsync();
             Linking.openURL(`tel:${owner.phone!.replace(/\s+/g, '')}`);
           }}
-          style={({ pressed }) => [styles.footerBtn, { opacity: pressed ? 0.6 : 1 }]}>
+          style={({ pressed }) => [styles.footerBtn, { opacity: pressed ? 0.6 : 1 }]}
+        >
           <Icon sf="phone.fill" md="call" size={12} color={theme.tint} />
           <Text style={[styles.link, { color: theme.tint }]}>Call</Text>
         </Pressable>
@@ -165,7 +189,14 @@ export function Owner({ task }: { task: Task }) {
 const styles = StyleSheet.create({
   card: { padding: 14, gap: 10 },
   // Long status lines ("Emergency services on the way · Stay with them") drop under the badge instead of truncating early.
-  topRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 10, rowGap: 6 },
+  topRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 10,
+    rowGap: 6,
+  },
   status: { flexShrink: 1 },
   title: { fontSize: Type.title, lineHeight: 23, fontWeight: '600', letterSpacing: -0.2 },
   location: { flexDirection: 'row', gap: 5, alignItems: 'center', marginTop: -4 },

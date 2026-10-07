@@ -1,13 +1,31 @@
 import { z } from 'zod';
 
 import {
-  TEAM_CATEGORY, unread, type DetailRead, type EscalateTo, type Match, type Named, type RespondCommand, type Triage, type Understood,
+  TEAM_CATEGORY,
+  unread,
+  type DetailRead,
+  type EscalateTo,
+  type Match,
+  type Named,
+  type RespondCommand,
+  type Triage,
+  type Understood,
 } from '@/lib/ai';
 import { activeTaskOf } from '@/lib/commands';
+import { availableHelperReplies } from '@/lib/lifecycle';
 import { ReplyKind, type EscalationResponseKind, type Priority, type Task, type TeamSlug } from '@/lib/schema';
 import type { Interpretation } from '@/data/repo';
 import { callTool, chatModelId, choice, decide, decideModelId, generate, noul, toolModelId, type CallOptions } from '.';
-import { ANSWER_SYSTEM, AnswerOut, CreateTaskArgs, EscalateArgs, INTAKE_SYSTEM, intakeTools, TEAMS, type AnswerArgs } from './intake-tools';
+import {
+  ANSWER_SYSTEM,
+  AnswerOut,
+  CreateTaskArgs,
+  EscalateArgs,
+  INTAKE_SYSTEM,
+  intakeTools,
+  TEAMS,
+  type AnswerArgs,
+} from './intake-tools';
 import { venueFacts, zones, type Zone } from './venue';
 
 /**
@@ -58,19 +76,30 @@ export interface Interpreter {
 export type Teammate = Named & { free: boolean; minutes?: number };
 
 /** What a lead said, about which task, and what fits: `available` responses, "Pass to Mo" if `canPass`. */
-export type RespondHeard = { task: Task; text: string; available: EscalationResponseKind[]; canPass: boolean; people: Teammate[]; quiet?: boolean };
+export type RespondHeard = {
+  task: Task;
+  text: string;
+  available: EscalationResponseKind[];
+  canPass: boolean;
+  people: Teammate[];
+  quiet?: boolean;
+};
 
 const URGENCY: Priority[] = ['P1', 'P2', 'P3'];
 
 /** "Tell her I'm two minutes away" → "I'm two minutes away": the volunteer speaking to the festival-goer. As said, if the model fails. */
 async function toGuest(text: string): Promise<string> {
   try {
-    const { message } = await generate({
-      system: 'A festival volunteer said this for the festival-goer they are on their way to help. Rewrite it as the '
-        + 'volunteer speaking to them directly: drop "tell her/them", keep every fact, same language, one or two short sentences.',
-      prompt: text,
-      schema: z.object({ message: z.string().min(1).max(300) }),
-    }, { signal: AbortSignal.timeout(Number(process.env.AI_TELL_MS ?? 2_000)) });
+    const { message } = await generate(
+      {
+        system:
+          'A festival volunteer said this for the festival-goer they are on their way to help. Rewrite it as the ' +
+          'volunteer speaking to them directly: drop "tell her/them", keep every fact, same language, one or two short sentences.',
+        prompt: text,
+        schema: z.object({ message: z.string().min(1).max(300) }),
+      },
+      { signal: AbortSignal.timeout(Number(process.env.AI_TELL_MS ?? 2_000)) },
+    );
     return message.trim();
   } catch (e) {
     console.warn(`toGuest sent it as said: ${(e as Error).message}`);
@@ -80,12 +109,16 @@ async function toGuest(text: string): Promise<string> {
 /** A festival-goer's words in English, or null when they're already English or the model is down or slow. */
 async function toEnglish(text: string): Promise<string | null> {
   try {
-    const { language, english } = await generate({
-      system: 'A festival-goer added this to their request for help. Say which language it is in (ISO 639-1) and give it '
-        + 'in English, faithful to what they said, names and places kept as written. If it is already English, repeat it.',
-      prompt: text,
-      schema: z.object({ language: z.string().min(2).max(8), english: z.string().min(1).max(2000) }),
-    }, { signal: AbortSignal.timeout(Number(process.env.AI_TRANSLATE_MS ?? 3_000)) });
+    const { language, english } = await generate(
+      {
+        system:
+          'A festival-goer added this to their request for help. Say which language it is in (ISO 639-1) and give it ' +
+          'in English, faithful to what they said, names and places kept as written. If it is already English, repeat it.',
+        prompt: text,
+        schema: z.object({ language: z.string().min(2).max(8), english: z.string().min(1).max(2000) }),
+      },
+      { signal: AbortSignal.timeout(Number(process.env.AI_TRANSLATE_MS ?? 3_000)) },
+    );
     return language.toLowerCase().startsWith('en') ? null : english.trim();
   } catch (e) {
     console.warn(`toEnglish kept the original: ${(e as Error).message}`);
@@ -95,8 +128,16 @@ async function toEnglish(text: string): Promise<string | null> {
 const moreUrgent = (a: Priority, b: Priority) => (URGENCY.indexOf(a) <= URGENCY.indexOf(b) ? a : b);
 
 const run = (over: Partial<Run> = {}): Run => ({
-  route: 'escalated_to_triage', reason: null, confidence: null, team: null, priority: null, rewrite: null,
-  models: {}, latencyMs: 0, error: null, ...over,
+  route: 'escalated_to_triage',
+  reason: null,
+  confidence: null,
+  team: null,
+  priority: null,
+  rewrite: null,
+  models: {},
+  latencyMs: 0,
+  error: null,
+  ...over,
 });
 
 // ── Spark ──
@@ -111,10 +152,11 @@ const PRIORITIES = {
  * The gate: can it be settled with nobody sent? A need they can walk to counts, not only a question, and so does a
  * greeting. "That didn't help" on its own doesn't make it more than routine; asking for a person does.
  */
-const ROUTINE = 'Can this be settled with nobody sent: a greeting or a message with no request yet, or only a routine question '
-  + 'or need the person can sort out themselves once told where to go (water, toilets, food, Info, lost property, set times, '
-  + 'directions), with nothing urgent, unsafe or medical in it? Saying an earlier answer did not help does not change this; '
-  + 'asking for a person, or describing new trouble, does.';
+const ROUTINE =
+  'Can this be settled with nobody sent: a greeting or a message with no request yet, or only a routine question ' +
+  'or need the person can sort out themselves once told where to go (water, toilets, food, Info, lost property, set times, ' +
+  'directions), with nothing urgent, unsafe or medical in it? Saying an earlier answer did not help does not change this; ' +
+  'asking for a person, or describing new trouble, does.';
 
 const REPLIES = {
   accept: 'Agrees to take the task or says they are on their way',
@@ -127,7 +169,8 @@ const REPLIES = {
 
 /** Only on a festival-goer's request: words meant for them. */
 const TELL_GUEST = {
-  tell_guest: 'A message for the festival-goer who asked for help: where to wait, what the volunteer looks like, how long they will be ("tell her I\'m two minutes away", "I\'m in the yellow vest")',
+  tell_guest:
+    'A message for the festival-goer who asked for help: where to wait, what the volunteer looks like, how long they will be ("tell her I\'m two minutes away", "I\'m in the yellow vest")',
 };
 
 /** The responses a lead can pick, as the model is offered them. Only those that fit right now are offered. */
@@ -148,15 +191,22 @@ type Action = keyof typeof ACTIONS;
 const toCommand = (a: Action, said: string): RespondCommand | null => {
   switch (a) {
     case 'backup':
-    case 'reassign': return { kind: a };
-    case 'handover_medics': return { kind: 'handover', target: 'medics' };
-    case 'handover_security': return { kind: 'handover', target: 'security' };
-    case 'handover_emergency': return { kind: 'handover', target: 'emergency' };
-    case 'close': return { kind: 'close', note: said.trim() };
+    case 'reassign':
+      return { kind: a };
+    case 'handover_medics':
+      return { kind: 'handover', target: 'medics' };
+    case 'handover_security':
+      return { kind: 'handover', target: 'security' };
+    case 'handover_emergency':
+      return { kind: 'handover', target: 'emergency' };
+    case 'close':
+      return { kind: 'close', note: said.trim() };
     case 'call':
     case 'carry_on':
-    case 'pass': return { kind: a };
-    case 'unclear': return null;
+    case 'pass':
+      return { kind: a };
+    case 'unclear':
+      return null;
   }
 };
 
@@ -193,10 +243,12 @@ function aboveSender(e: EscalateTo | null, from: Sender | undefined, team: TeamS
 
 const LEVEL = { lead: 1, coordinator: 2 } as const;
 /** The higher of two escalations. Escalating is never undone. */
-const higher = (a: EscalateTo | null, b: EscalateTo | null) => (!a ? b : !b ? a : LEVEL[b.level] > LEVEL[a.level] ? b : a);
+const higher = (a: EscalateTo | null, b: EscalateTo | null) =>
+  !a ? b : !b ? a : LEVEL[b.level] > LEVEL[a.level] ? b : a;
 
 /** "Food Alley, by the bins": the zone picked and what they said about where. */
-const whereFrom = (i: Heard, zs: Zone[]) => [zs.find((z) => z.slug === i.zoneSlug)?.name, i.locationHint].filter(Boolean).join(', ');
+const whereFrom = (i: Heard, zs: Zone[]) =>
+  [zs.find((z) => z.slug === i.zoneSlug)?.name, i.locationHint].filter(Boolean).join(', ');
 
 /** The message as a model reads it, with who sent it and from where. */
 function prompted(i: Heard, zs: Zone[]) {
@@ -211,14 +263,20 @@ function prompted(i: Heard, zs: Zone[]) {
  */
 export function classify(i: Heard, zs: Zone[], o: CallOptions = {}) {
   const where = whereFrom(i, zs);
-  return decide({
-    message: i.text, ...(where && { location: where }), ...(i.from && { sent_by: describe(i.from) }),
-    ...(i.from?.kind === 'festivalgoer' && { venue_facts: venueFacts(zs) }),
-  }, {
-    team: choice('Which team should handle this message?', TEAMS),
-    priority: choice('How urgent is this message?', PRIORITIES),
-    routine: noul(ROUTINE),
-  }, o);
+  return decide(
+    {
+      message: i.text,
+      ...(where && { location: where }),
+      ...(i.from && { sent_by: describe(i.from) }),
+      ...(i.from?.kind === 'festivalgoer' && { venue_facts: venueFacts(zs) }),
+    },
+    {
+      team: choice('Which team should handle this message?', TEAMS),
+      priority: choice('How urgent is this message?', PRIORITIES),
+      routine: noul(ROUTINE),
+    },
+    o,
+  );
 }
 type Classified = Awaited<ReturnType<typeof classify>>;
 
@@ -247,30 +305,41 @@ async function assess(i: Heard, zs: Zone[], o: CallOptions, gate?: Promise<Class
   ]);
 
   const none = unread(i.text, i.zoneSlug, i.locationHint);
-  const errors = [called, decided].flatMap((r) => (r.status === 'rejected' ? [String(r.reason?.message ?? r.reason)] : []));
+  const errors = [called, decided].flatMap((r) =>
+    r.status === 'rejected' ? [String(r.reason?.message ?? r.reason)] : [],
+  );
   const c = called.status === 'fulfilled' ? called.value : null;
   const d = decided.status === 'fulfilled' ? decided.value : null;
   // create_task's arguments are escalate's without level and reason. answer_question routes nothing.
   const routed = c?.tool === 'create_task' || c?.tool === 'escalate';
   const agent = routed ? (c.args as z.infer<typeof CreateTaskArgs> & Partial<z.infer<typeof EscalateArgs>>) : null;
   // The agent overrules the gate's "someone is needed", but not a life-threatening read.
-  const replied = c?.tool === 'answer_question' && d?.priority.choice !== 'P1' ? (c.args as z.infer<typeof AnswerArgs>) : null;
+  const replied =
+    c?.tool === 'answer_question' && d?.priority.choice !== 'P1' ? (c.args as z.infer<typeof AnswerArgs>) : null;
   const answer = replied?.answer.trim() || null;
 
   // Priority: the classifier's calibrated reading (a step up when it's unsure). The agent's counts when it says P1,
   // or when the classifier failed (then at least P2). Taking the higher of the two every time inflated routine
   // reports to P2 (scripts/check-intake.ts). A festival-goer's message the gate called routine, with nothing in the
   // venue facts for it, stays P3: no step up.
-  let priority: Priority = d ? (gate && isRoutine(d) ? 'P3' : modelPriority(d.priority)) : moreUrgent(agent?.priority ?? none.priority, 'P2');
+  let priority: Priority = d
+    ? gate && isRoutine(d)
+      ? 'P3'
+      : modelPriority(d.priority)
+    : moreUrgent(agent?.priority ?? none.priority, 'P2');
   if (agent?.priority === 'P1') priority = 'P1';
 
   const team = agent?.team ?? (d ? (d.team.choice as Triage['team']) : none.team);
-  const asked = c?.tool === 'escalate' && agent?.level && agent.reason?.trim() ? { level: agent.level, reason: agent.reason.trim().slice(0, 140) } : null;
+  const asked =
+    c?.tool === 'escalate' && agent?.level && agent.reason?.trim()
+      ? { level: agent.level, reason: agent.reason.trim().slice(0, 140) }
+      : null;
   // No model said which language: it stays unknown rather than English.
   const said = iso(agent?.language ?? replied?.language);
   const language = said ?? none.language;
   const triage: Triage = {
-    team, priority,
+    team,
+    priority,
     category: agent?.category ?? TEAM_CATEGORY[team],
     title: (agent?.title ?? none.title).slice(0, 60),
     summary: (agent?.summary ?? none.summary).slice(0, 280),
@@ -288,17 +357,35 @@ async function assess(i: Heard, zs: Zone[], o: CallOptions, gate?: Promise<Class
 
   const log = run({
     route: answer ? 'ai_resolved' : 'escalated_to_triage',
-    reason: answer ? 'The agent answered it' : errors.length ? 'A model failed; sent to a person' : triage.escalate?.reason ?? null,
+    reason: answer
+      ? 'The agent answered it'
+      : errors.length
+        ? 'A model failed; sent to a person'
+        : (triage.escalate?.reason ?? null),
     confidence: d?.routine.noul ?? null,
     team: {
       team,
       confidence: d?.team.confidence ?? null,
-      alternates: d ? Object.entries(d.team.probabilities).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, confidence]) => ({ team: t, confidence })) : [],
+      alternates: d
+        ? Object.entries(d.team.probabilities)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([t, confidence]) => ({ team: t, confidence }))
+        : [],
       tool: c?.tool ?? null,
       escalate: triage.escalate,
     },
     priority: d ? { priority, confidence: d.priority.confidence, signals: [] } : null,
-    rewrite: agent ? { title: triage.title, summary: triage.summary, category: triage.category, zoneSlug: triage.zoneSlug, locationHint: triage.locationHint, language: triage.language } : null,
+    rewrite: agent
+      ? {
+          title: triage.title,
+          summary: triage.summary,
+          category: triage.category,
+          zoneSlug: triage.zoneSlug,
+          locationHint: triage.locationHint,
+          language: triage.language,
+        }
+      : null,
     models: { agent: toolModelId(), classifier: decideModelId() },
     latencyMs: Date.now() - t0,
     error: errors.length ? errors.join('; ') : null,
@@ -348,10 +435,13 @@ export class SparkInterpreter implements Interpreter {
           return {
             value: { kind: 'answer', answer, language: out.language.toLowerCase().slice(0, 2) } satisfies Understood,
             run: run({
-              route: 'ai_resolved', reason: 'Routine question', confidence: d.routine.noul,
+              route: 'ai_resolved',
+              reason: 'Routine question',
+              confidence: d.routine.noul,
               team: { team: d.team.choice, confidence: d.team.confidence, alternates: [], tool: null, escalate: null },
               priority: { priority: 'P3', confidence: d.priority.confidence, signals: [] },
-              models: { classifier: decideModelId(), writer: chatModelId() }, latencyMs: Date.now() - t0,
+              models: { classifier: decideModelId(), writer: chatModelId() },
+              latencyMs: Date.now() - t0,
             }),
           };
         }
@@ -361,7 +451,9 @@ export class SparkInterpreter implements Interpreter {
     }
     const { triage, answer, run: log } = await assess(i, zs, OPTS, gate);
     const error = [log.error, writerError].filter(Boolean).join('; ') || null;
-    const value: Understood = answer ? { kind: 'answer', answer, language: triage.language } : { kind: 'task', ...triage };
+    const value: Understood = answer
+      ? { kind: 'answer', answer, language: triage.language }
+      : { kind: 'task', ...triage };
     return { value, run: { ...log, error, latencyMs: Date.now() - t0 } };
   }
 
@@ -384,9 +476,13 @@ export class SparkInterpreter implements Interpreter {
     let error: string | null = null;
     let p: number | null = null;
     try {
-      const { worse: q } = await decide({ original_report: i.before, update: i.text }, {
-        worse: noul('Does the update say the situation has got worse or more dangerous than the original report?'),
-      }, OPTS);
+      const { worse: q } = await decide(
+        { original_report: i.before, update: i.text },
+        {
+          worse: noul('Does the update say the situation has got worse or more dangerous than the original report?'),
+        },
+        OPTS,
+      );
       p = q.noul;
       worse = q.noul >= 0.6;
     } catch (e) {
@@ -404,17 +500,28 @@ export class SparkInterpreter implements Interpreter {
     if (!candidates.length) return { value: null, run: run() };
     const t0 = Date.now();
     const labels = Object.fromEntries(candidates.map((t, n) => [`task_${n + 1}`, `${t.title}. ${t.summary}`]));
-    const log = (over: Partial<Run>) => run({ models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, ...over });
+    const log = (over: Partial<Run>) =>
+      run({ models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, ...over });
     try {
-      const d = await decide({ new_report: i.text, open_tasks: labels }, {
-        about: choice('Which open task is the new report about?', { ...labels, new: 'None of them: a different incident' }),
-        priority: choice('Taking the open task and the new report together, how urgent is it now?', PRIORITIES),
-        sorted: noul('Does the new report say the problem is over or sorted?'),
-      }, { ...OPTS, urgent });
+      const d = await decide(
+        { new_report: i.text, open_tasks: labels },
+        {
+          about: choice('Which open task is the new report about?', {
+            ...labels,
+            new: 'None of them: a different incident',
+          }),
+          priority: choice('Taking the open task and the new report together, how urgent is it now?', PRIORITIES),
+          sorted: noul('Does the new report say the problem is over or sorted?'),
+        },
+        { ...OPTS, urgent },
+      );
       const task = candidates[Number(d.about.choice.replace('task_', '')) - 1];
       // Merging two incidents hides one of them: only a sure answer joins a task.
       if (!task || d.about.confidence < 0.6) return { value: null, run: log({ confidence: d.about.confidence }) };
-      const value: Match = { taskId: task.id, read: { priority: modelPriority(d.priority), resolved: d.sorted.noul >= 0.5 } };
+      const value: Match = {
+        taskId: task.id,
+        read: { priority: modelPriority(d.priority), resolved: d.sorted.noul >= 0.5 },
+      };
       return { value, run: log({ confidence: d.about.confidence }) };
     } catch (e) {
       return { value: null, run: log({ error: String((e as Error).message) }) };
@@ -423,7 +530,8 @@ export class SparkInterpreter implements Interpreter {
 
   /**
    * A reply to the task you're on, or a new report. When the classifier is down, slow or under 0.6 sure, it's a
-   * report: a person reads it. A helper can only finish. Long utterances are reports even if they say "done".
+   * report: a person reads it. Helpers reply to their own slot: notified accepts or declines, accepted finishes.
+   * Long utterances are reports even if they say "done".
    */
   async interpret({ tasks, meId, text }: { tasks: Task[]; meId: string; text: string }): Promise<Interpretation> {
     const t0 = Date.now();
@@ -433,16 +541,28 @@ export class SparkInterpreter implements Interpreter {
     // No task, nothing to reply to: skip the model.
     if (!active) return report;
     const helping = active.assigneeId !== meId;
+    const helper = active.helpers.find((entry) => entry.volunteerId === meId);
     const ms = Number(process.env.AI_INTERPRET_MS ?? 1_500);
     try {
       // The signal bounds the whole call, queue wait and retries included, and frees its Spark slot when it fires.
-      const { kind } = await decide({
-        utterance: heard,
-        current_task: {
-          title: active.title, summary: active.summary, volunteer_is: helping ? 'a helper' : 'the owner',
-          asked_by: active.requestId ? 'a festival-goer, who can read messages' : 'staff',
+      const { kind } = await decide(
+        {
+          utterance: heard,
+          current_task: {
+            title: active.title,
+            summary: active.summary,
+            volunteer_is: helping ? `a helper (${helper?.status ?? 'unknown'} assignment)` : 'the owner',
+            asked_by: active.requestId ? 'a festival-goer, who can read messages' : 'staff',
+          },
         },
-      }, { kind: choice('What is the volunteer doing with this message?', active.requestId ? { ...REPLIES, ...TELL_GUEST } : REPLIES) }, { urgent: true, signal: AbortSignal.timeout(ms) });
+        {
+          kind: choice(
+            'What is the volunteer doing with this message?',
+            active.requestId ? { ...REPLIES, ...TELL_GUEST } : REPLIES,
+          ),
+        },
+        { urgent: true, signal: AbortSignal.timeout(ms) },
+      );
       console.log(`interpret ${kind.choice} (${kind.confidence.toFixed(2)}) ${Date.now() - t0} ms`);
       if (kind.confidence < 0.6) return report;
       // Any length: it goes to them as said.
@@ -451,7 +571,9 @@ export class SparkInterpreter implements Interpreter {
       }
       const reply = ReplyKind.safeParse(kind.choice);
       const short = heard.split(/\s+/).length <= 12;
-      if (!reply.success || !short || (helping && reply.data !== 'done')) return report;
+      const helperReplies = helper ? availableHelperReplies(helper.status) : null;
+      const helperAllowed = helperReplies ? [helperReplies.primary, ...helperReplies.secondary] : [];
+      if (!reply.success || !short || (helping && !helperAllowed.includes(reply.data))) return report;
       return { heard, intent: { kind: 'reply', taskId: active.id, reply: reply.data } };
     } catch (e) {
       console.warn(`interpret read it as a report after ${Date.now() - t0} ms: ${(e as Error).message}`);
@@ -468,31 +590,52 @@ export class SparkInterpreter implements Interpreter {
     const t0 = Date.now();
     const said = i.text.trim();
     const log = (value: RespondCommand | null, over: Partial<Run>): Judged<RespondCommand | null> => {
-      const r = run({ reason: value?.kind ?? null, models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, ...over });
+      const r = run({
+        reason: value?.kind ?? null,
+        models: { classifier: decideModelId() },
+        latencyMs: Date.now() - t0,
+        ...over,
+      });
       return { value, run: r };
     };
     if (!i.available.length && !i.canPass) return { value: null, run: run() };
 
     const actions = offered(i);
-    const people = Object.fromEntries(i.people.map((p, n) => [
-      `person_${n + 1}`, [p.name, p.free ? 'free' : 'busy', p.minutes != null ? `${p.minutes} min walk` : null].filter(Boolean).join(', '),
-    ]));
+    const people = Object.fromEntries(
+      i.people.map((p, n) => [
+        `person_${n + 1}`,
+        [p.name, p.free ? 'free' : 'busy', p.minutes != null ? `${p.minutes} min walk` : null]
+          .filter(Boolean)
+          .join(', '),
+      ]),
+    );
     const ms = Number(process.env.AI_RESPOND_MS ?? 2_500);
     try {
-      const d = await decide({
-        lead_said: said,
-        task: { title: i.task.title, summary: i.task.summary, situation: i.quiet ? 'the volunteer went quiet' : 'the volunteer asked for help' },
-        ...(i.people.length ? { teammates: people } : {}),
-      }, {
-        action: choice('What does the team lead want done about this task?', actions),
-        ...(i.people.length ? { who: choice('Which teammate does the lead name, if any?', { ...people, nobody: 'Nobody by name' }) } : {}),
-      }, { urgent: true, signal: AbortSignal.timeout(ms) });
+      const d = await decide(
+        {
+          lead_said: said,
+          task: {
+            title: i.task.title,
+            summary: i.task.summary,
+            situation: i.quiet ? 'the volunteer went quiet' : 'the volunteer asked for help',
+          },
+          ...(i.people.length ? { teammates: people } : {}),
+        },
+        {
+          action: choice('What does the team lead want done about this task?', actions),
+          ...(i.people.length
+            ? { who: choice('Which teammate does the lead name, if any?', { ...people, nobody: 'Nobody by name' }) }
+            : {}),
+        },
+        { urgent: true, signal: AbortSignal.timeout(ms) },
+      );
       console.log(`respond ${d.action.choice} (${d.action.confidence.toFixed(2)}) ${Date.now() - t0} ms`);
       if (d.action.confidence < 0.6) return log(null, { confidence: d.action.confidence });
       const command = toCommand(d.action.choice as Action, said);
       if (command?.kind === 'backup' || command?.kind === 'reassign') {
         const who = 'who' in d ? (d.who as Choice) : null;
-        const picked = who && who.confidence >= 0.6 ? i.people[Number(who.choice.replace('person_', '')) - 1]?.id : undefined;
+        const picked =
+          who && who.confidence >= 0.6 ? i.people[Number(who.choice.replace('person_', '')) - 1]?.id : undefined;
         command.volunteerId = picked;
       }
       return log(command, { route: command ? 'ai_resolved' : 'escalated_to_triage', confidence: d.action.confidence });

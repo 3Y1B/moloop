@@ -10,12 +10,17 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({
   id, title: id, summary: id, category: 'medical', priority: 'P2', teamSlug: 'first-aid', zoneSlug: 'food-alley', locationHint: null,
   status: 'accepted', assigneeId: 'priya', reporter: { kind: 'volunteer', quote: id, language: 'en' }, handledBy: 'human',
   createdAt: NOW - 5 * MIN, assignedAt: null, etaAt: null, lastActivityAt: NOW, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null,
-  resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: null, ...over,
+  resolvedAt: null, escalation: null, requiredCount: 1, helpers: [], resolution: null, requestId: null, mobilizationId: null, ...over,
 });
 
 const ids = (tasks: Task[]) => tasks.map((t) => t.id);
 
 describe('nearbyOpenTasks: what a new report might be about', () => {
+  it('does not treat a Mobilization operation or future report as an existing incident', () => {
+    const tasks = [task('incident'), task('crowd-operation', { mobilizationId: 'mobilization' }), task('future', { createdAt: NOW + MIN })];
+    expect(ids(nearbyOpenTasks(tasks, 'food-alley', NOW))).toEqual(['incident']);
+  });
+
   it('is the open tasks in the same zone or a short walk away, not across the site', () => {
     const tasks = [
       task('here'),
