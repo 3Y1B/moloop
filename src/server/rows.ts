@@ -46,6 +46,7 @@ export const reportRow = (t: Task, ids: Ids, reporterId: string | null) => ({
   channel: (t.reporter.kind === 'festivalgoer' ? 'text' : 'voice') as Enums['report_channel'],
   reporter_kind: t.reporter.kind, reporter_id: reporterId, raw_text: t.reporter.quote, detected_language: t.reporter.language,
   speaker_needed: t.reporter.speakerNeeded ?? null,
+  text_en: t.reporter.english ?? null,
   zone_id: idOf(ids.zones, t.zoneSlug), location_hint: t.locationHint, received_at: fromMs(t.createdAt),
 });
 

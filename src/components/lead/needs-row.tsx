@@ -1,6 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { PrioritySignal } from '@/components/task/badges';
+import { Untranslated } from '@/components/task/untranslated';
 import { StatusLine } from '@/components/ui/status-line';
 import { Radius, Type } from '@/constants/theme';
 import { useLookups, useRepo, useTaskStatus, type NeedsItem } from '@/data/hooks';
@@ -19,8 +21,14 @@ export function NeedsRow({ item }: { item: NeedsItem }) {
   const { task, kind } = item;
   return (
     <TeamRow label={task.title} onPress={() => openNeed(item)}>
+      <View style={styles.signal}>
+        <PrioritySignal priority={task.priority} size={12} />
+      </View>
       <View style={styles.body}>
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{task.title}</Text>
+        <View style={styles.top}>
+          <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{task.title}</Text>
+          <Untranslated task={task} />
+        </View>
         <NeedStatus item={item} />
       </View>
       {kind === 'handover' && (
@@ -57,8 +65,10 @@ function ApprovalLine({ proposal }: { proposal: Proposal }) {
 }
 
 const styles = StyleSheet.create({
+  signal: { alignSelf: 'flex-start', paddingTop: 4 },
   body: { flex: 1, gap: 2 },
-  title: { fontSize: Type.body, fontWeight: '500' },
+  top: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  title: { flexShrink: 1, fontSize: Type.body, fontWeight: '500' },
   action: { paddingHorizontal: 12, height: 30, borderRadius: Radius.pill, justifyContent: 'center' },
   actionText: { fontSize: Type.footnote, fontWeight: '600' },
 });

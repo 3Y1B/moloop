@@ -80,7 +80,7 @@ type ShiftRow = {
   starts_at: string; ends_at: string; team_id: string; requires: string[];
 };
 type TaskRow = Row<'tasks'> & {
-  reporter_kind: Enums['reporter_kind']; raw_text: string | null; detected_language: string | null; speaker_needed: string | null;
+  reporter_kind: Enums['reporter_kind']; raw_text: string | null; detected_language: string | null; speaker_needed: string | null; text_en: string | null;
   reporter_name: string | null;
 };
 
@@ -132,7 +132,7 @@ export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
     ...actions.filter((a) => named.has(a.id)).map((a) => a.task_id!),
   ];
   const taskRows = await q<TaskRow[]>`
-    select t.*, r.reporter_kind, r.raw_text, r.detected_language, r.speaker_needed, rp.full_name as reporter_name
+    select t.*, r.reporter_kind, r.raw_text, r.detected_language, r.speaker_needed, r.text_en, rp.full_name as reporter_name
     from tasks t
     join reports r on r.id = t.report_id
     left join profiles rp on rp.id = r.reporter_id
@@ -145,7 +145,7 @@ export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
   if (more.length) requestRows.push(...(await requestsById(q, more)));
 
   const tasks = taskRows.map((t) => toTask(t, refs, toReporter({
-    reporter_kind: t.reporter_kind, raw_text: t.raw_text, detected_language: t.detected_language, speaker_needed: t.speaker_needed,
+    reporter_kind: t.reporter_kind, raw_text: t.raw_text, detected_language: t.detected_language, speaker_needed: t.speaker_needed, text_en: t.text_en,
     reporter: t.reporter_name ? { full_name: t.reporter_name } : null,
   })));
   const shifts = byId(shiftRows.map((r): RosteredShift => ({

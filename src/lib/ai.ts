@@ -19,10 +19,12 @@ export type Triage = {
   summary: string;
   zoneSlug: string | null;
   locationHint: string | null;
-  /** ISO 639-1 of what the reporter wrote ("es"): replies and "translated from" follow it. */
+  /** ISO 639-1 of what the reporter wrote ("es"): replies and "translated from" follow it. "und": unknown. */
   language: string;
   /** ISO 639-1 of a language someone there needs a volunteer to speak, else null (Reporter.speakerNeeded). */
   speakerNeeded: string | null;
+  /** What the reporter wrote, in English, when the AI read it. Absent from the keyword fallback. */
+  english?: string;
   /** Set when the intake agent escalated instead of creating a task for the allocator. */
   escalate: EscalateTo | null;
 };
@@ -32,8 +34,8 @@ export type Understood =
   | { kind: 'answer'; answer: string; language: string }
   | ({ kind: 'task' } & Triage);
 
-/** Did the festival-goer's added detail make it worse? */
-export type DetailRead = { worse: boolean };
+/** Did the festival-goer's added detail make it worse? `english`: the detail in English, when the AI read it. */
+export type DetailRead = { worse: boolean; english?: string };
 
 /** A new report read together with the task it's about: how urgent it is now, and whether it says it's sorted. */
 export type Reread = { priority: Priority; resolved: boolean };
@@ -68,7 +70,13 @@ const titleFrom = (text: string) => {
  * When no model read it: a P2 for Info with their words as the title, and a lead decides. Nothing guesses from
  * keywords; a person reads it.
  */
+/**
+ * Without the AI nothing can tell a report's language, so it says "und" (ISO 639 for undetermined), not English,
+ * and carries no translation: screens show it as written, marked as not translated.
+ */
+export const UNKNOWN_LANGUAGE = 'und';
+
 export const unread = (text: string, zoneSlug: string | null = null, locationHint: string | null = null): Triage => ({
   team: 'info', priority: 'P2', category: TEAM_CATEGORY.info, title: titleFrom(text), summary: text, zoneSlug, locationHint,
-  language: 'en', speakerNeeded: null, escalate: { level: 'lead', reason: 'No model read it: needs a lead' },
+  language: UNKNOWN_LANGUAGE, speakerNeeded: null, escalate: { level: 'lead', reason: 'No model read it: needs a lead' },
 });

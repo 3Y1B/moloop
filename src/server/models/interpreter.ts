@@ -77,6 +77,21 @@ async function toGuest(text: string): Promise<string> {
     return text;
   }
 }
+/** A festival-goer's words in English, or null when they're already English or the model is down or slow. */
+async function toEnglish(text: string): Promise<string | null> {
+  try {
+    const { language, english } = await generate({
+      system: 'A festival-goer added this to their request for help. Say which language it is in (ISO 639-1) and give it '
+        + 'in English, faithful to what they said, names and places kept as written. If it is already English, repeat it.',
+      prompt: text,
+      schema: z.object({ language: z.string().min(2).max(8), english: z.string().min(1).max(2000) }),
+    }, { signal: AbortSignal.timeout(Number(process.env.AI_TRANSLATE_MS ?? 3_000)) });
+    return language.toLowerCase().startsWith('en') ? null : english.trim();
+  } catch (e) {
+    console.warn(`toEnglish kept the original: ${(e as Error).message}`);
+    return null;
+  }
+}
 const moreUrgent = (a: Priority, b: Priority) => (URGENCY.indexOf(a) <= URGENCY.indexOf(b) ? a : b);
 
 const run = (over: Partial<Run> = {}): Run => ({
@@ -251,7 +266,9 @@ async function assess(i: Heard, zs: Zone[], o: CallOptions, gate?: Promise<Class
 
   const team = agent?.team ?? (d ? (d.team.choice as Triage['team']) : none.team);
   const asked = c?.tool === 'escalate' && agent?.level && agent.reason?.trim() ? { level: agent.level, reason: agent.reason.trim().slice(0, 140) } : null;
-  const language = iso(agent?.language ?? replied?.language) ?? 'en';
+  // No model said which language: it stays unknown rather than English.
+  const said = iso(agent?.language ?? replied?.language);
+  const language = said ?? none.language;
   const triage: Triage = {
     team, priority,
     category: agent?.category ?? TEAM_CATEGORY[team],
@@ -260,8 +277,9 @@ async function assess(i: Heard, zs: Zone[], o: CallOptions, gate?: Promise<Class
     zoneSlug: dropUnknownZone(agent?.zone ?? null, zs) ?? i.zoneSlug,
     locationHint: agent?.place ?? i.locationHint,
     language,
+    ...(agent?.english?.trim() ? { english: agent.english.trim().slice(0, 2000) } : {}),
     // The agent's read; a report written in another language always needs it.
-    speakerNeeded: needsSpeaker(agent?.speaker_needed) ?? needsSpeaker(language),
+    speakerNeeded: needsSpeaker(agent?.speaker_needed) ?? needsSpeaker(said),
     // Without the agent nothing checked whether a lead or Mo must decide: a lead does.
     escalate: aboveSender(higher(asked, agent || answer ? null : none.escalate), i.from, team),
   };
@@ -357,6 +375,8 @@ export class SparkInterpreter implements Interpreter {
       return { value: { worse: triage.priority !== 'P3', triage }, run };
     }
     const t0 = Date.now();
+    // Staff read the detail in English. The classifier only scores it, so a small call translates it alongside.
+    const translating = toEnglish(i.text);
     // Unread, it goes to the lead as worse.
     let worse = true;
     let error: string | null = null;
@@ -370,7 +390,11 @@ export class SparkInterpreter implements Interpreter {
     } catch (e) {
       error = String((e as Error).message);
     }
-    return { value: { worse }, run: run({ confidence: p, models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, error }) };
+    const english = await translating;
+    return {
+      value: { worse, ...(english ? { english } : {}) },
+      run: run({ confidence: p, models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, error }),
+    };
   }
 
   /** One typed call: which open task this is about (or none), how urgent that is now, and whether it says it's sorted. */

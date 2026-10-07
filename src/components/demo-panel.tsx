@@ -37,8 +37,8 @@ const onOpen = (l: () => void) => {
 
 const usePinned = () => useSyncExternalStore(subscribe, () => getPinned() !== null);
 
-export function DemoButton() {
-  return <MapButton label="Testing tools" sf="slider.horizontal.3" md="tune" onPress={() => setOpen(!open)} />;
+export function DemoButton({ flat = false }: { flat?: boolean }) {
+  return <MapButton label="Testing tools" sf="slider.horizontal.3" md="tune" flat={flat} onPress={() => setOpen(!open)} />;
 }
 
 /** The demo panel when it's open, and the joystick while my location is set by hand. */

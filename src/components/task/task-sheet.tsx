@@ -1,13 +1,14 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/icon';
 import { Type } from '@/constants/theme';
 import { useLookups, useMe, useRouteTo, useSnapshot, useTaskEvents, useTaskStatus } from '@/data/hooks';
-import { clockTime, languageName } from '@/lib/format';
+import { clockTime } from '@/lib/format';
+import { quoteFor } from '@/lib/quote';
 import type { Task } from '@/lib/schema';
 import { taskStatusFor } from '@/lib/status';
 import { useTheme } from '@/hooks/use-theme';
@@ -45,23 +46,28 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
   const extra = hint && hint.toLowerCase() !== zone?.name.toLowerCase() ? hint : null;
   const place = zone ? (extra ? `${zone.name}, ${extra}` : zone.name) : task.locationHint;
 
+  // English first; a tap on a translated quote shows what they actually said, and another tap goes back.
+  const [original, setOriginal] = useState(false);
   const entries = useMemo((): LogEntry[] => {
     const r = task.reporter;
     const by = r.name ?? (r.kind === 'festivalgoer' ? 'Festival-goer' : 'Reporter');
+    const q = quoteFor(r);
+    const shown = original && q.original ? q.original : { text: q.text, label: q.label };
     return [
       {
         id: 'quote',
         at: task.createdAt,
-        who: r.language !== 'en' ? `${by} · translated from ${languageName(r.language)}` : by,
-        text: `“${r.quote}”`,
+        who: shown.label ? `${by} · ${shown.label}` : by,
+        text: `“${shown.text}”`,
         quote: true,
+        onPress: q.original ? () => setOriginal((o) => !o) : undefined,
       },
       { id: 'summary', at: task.createdAt, who: 'Moloop', text: task.summary },
       ...events
         .filter((e) => e.kind !== 'created')
         .map((e): LogEntry => ({ id: e.id, at: e.at, text: e.text, note: e.note })),
     ];
-  }, [task.createdAt, task.reporter, task.summary, events]);
+  }, [task.createdAt, task.reporter, task.summary, events, original]);
 
   return (
     <Animated.View key={task.id} entering={FadeIn.duration(220)}>

@@ -2,6 +2,7 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload, Session, Supabase
 
 import type { Database } from '@/lib/database.types';
 import type { Fix } from '@/lib/presence';
+import type { Summary, SummaryScope } from '@/lib/summary';
 import { applyReply } from '@/lib/lifecycle';
 import type { Duty, GuestRequest, Message, Proposal, ReplyKind, Task, TaskEvent, Volunteer } from '@/lib/schema';
 import type { BroadcastScope, Heard, Interpretation, Recording, Repo, RespondInput, Snapshot, VoiceResponse } from './repo';
@@ -166,6 +167,10 @@ export class SupabaseRepo implements Repo {
 
   commit(interpretation: Interpretation) {
     return this.post<{ confirmation: string }>('commit', { interpretation });
+  }
+
+  summarize(scope: SummaryScope) {
+    return this.post<Summary>('summarize', scope);
   }
 
   async markRead(messageIds: string[]) {

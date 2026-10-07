@@ -1,6 +1,7 @@
 import type { RespondInput } from '@/lib/lifecycle';
 import type { Fix } from '@/lib/presence';
 import type { RespondCommand } from '@/lib/ai';
+import type { Summary, SummaryScope } from '@/lib/summary';
 import type { Duty, GuestRequest, Message, Position, Proposal, ReplyKind, Task, TaskEvent, Team, TeamSlug, Volunteer, Zone } from '@/lib/schema';
 
 export type { RespondInput };
@@ -71,6 +72,8 @@ export interface Repo {
   /** Commit an interpretation the volunteer confirmed. */
   commit(interpretation: Interpretation): Promise<{ confirmation: string }>;
   markRead(messageIds: string[]): Promise<void>;
+  /** Leads and Mo: a short summary of the shift or one task (AI, or plain counts if the model is down). */
+  summarize(scope: SummaryScope): Promise<Summary>;
   /** Where my phone is. Written straight to `presence`, not through the server: high volume, no logic. */
   sharePosition(fix: Fix): Promise<void>;
 

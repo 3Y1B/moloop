@@ -41,6 +41,7 @@ const Incident = {
   zone: z.string().nullable().describe('Slug of the place named in the message, from the list, else null'),
   place: z.string().nullable().describe('The location as the person described it, else null'),
   language: z.string().describe('ISO 639-1 code of the language the message is written in, e.g. "en", "es"'),
+  english: z.string().describe('The whole message in English, faithful to what they said, names and places kept as written. If it is already English, repeat it unchanged.'),
   speaker_needed: z.string().nullable().describe('ISO 639-1 code of a language other than English that someone there '
     + 'needs a volunteer to speak: the message\'s own language if it isn\'t English, or one it says someone speaks or '
     + 'that they speak little English ("his wife only speaks Mandarin" is "zh"), or a visitor\'s nationality when they '

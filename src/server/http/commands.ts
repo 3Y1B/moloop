@@ -14,6 +14,7 @@ import { ReplyKind, TeamSlug, type Task, type Volunteer } from '@/lib/schema';
 import { interpreter } from '../models/interpreter';
 import { judgeReport } from '../retriage';
 import { understandLater } from '../understand';
+import { summarize } from '../summarize';
 import { ownClip } from '../voice';
 import { read, sql, transact, type Loaded } from '../world';
 import type { AuthEnv, Caller } from './auth';
@@ -321,3 +322,12 @@ route('guestReopen', 'any', RequestArgs, async (a, caller) => {
   // Sorted by an AI answer goes back to the AI; a no-op for one with a task.
   understandLater(a.requestId);
 });
+
+// ── Mo ──
+
+/** A short AI summary of the shift or one task. The server reads the world itself; the body only says which. */
+const SummaryScope = z.discriminatedUnion('scope', [
+  z.object({ scope: z.literal('shift') }),
+  z.object({ scope: z.literal('task'), taskId: Id }),
+]);
+route('summarize', 'lead', SummaryScope, (a) => summarize(a));

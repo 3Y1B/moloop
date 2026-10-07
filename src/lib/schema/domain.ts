@@ -8,6 +8,8 @@ import type { IncidentCategory, Priority, ReplyKind, TaskStatus, TeamSlug } from
 export type Team = {
   slug: TeamSlug;
   name: string;
+  /** For tight spaces like Mo's team pills: "First Aid", not "First Aid & Heat". */
+  short: string;
   color: string;
   /** SF Symbol name; Android falls back to `md`. */
   sf: string;
@@ -74,12 +76,15 @@ export type Reporter = {
   name?: string;
   /** What they actually said, in their language. */
   quote: string;
+  /** ISO 639-1 of `quote`; "und" when the AI was down and nobody could tell. */
   language: string;
   /**
    * The language someone there needs a volunteer to speak: their own when it isn't English, or one the report names
    * ("his wife only speaks Mandarin"). Null when English will do; missing on reports from before intake said.
    */
   speakerNeeded?: string | null;
+  /** `quote` in English, when the AI read it. Shown first to staff (see lib/quote). */
+  english?: string;
 };
 
 export type Task = {

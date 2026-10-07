@@ -100,7 +100,7 @@ export default function SignInScreen() {
       <View style={[styles.column, { paddingTop: insets.top + Spacing.four, paddingBottom: insets.bottom + Spacing.four }]}>
         <Animated.View layout={layout} style={{ flex: form ? 0 : 1 }} />
 
-        <Animated.View layout={layout} style={[styles.markWrap, { height: SIZE * (form ? SMALL : 1) * 1.2 }]}>
+        <Animated.View layout={layout} style={{ height: SIZE * (form ? SMALL : 1) * 1.2 }}>
           <Animated.View style={[styles.mark, markStyle]}>
             <Wordmark size={SIZE} spin={!!busy || loading} draw />
           </Animated.View>
@@ -174,9 +174,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   column: { flex: 1, width: '100%', maxWidth: 480, alignSelf: 'center', paddingHorizontal: Spacing.four },
 
-  markWrap: { justifyContent: 'flex-end' },
-  // Shrinks toward its bottom-left corner so it settles where the heading of the form would be.
-  mark: { alignSelf: 'flex-start', transformOrigin: 'left bottom' },
+  // Shrinks toward its bottom-left corner so it settles where the heading of the form would be. Absolute, so it
+  // always lays out at full size: in the short wrap of the form step it would be squeezed, and iOS clips the letters.
+  mark: { position: 'absolute', left: 0, bottom: 0, transformOrigin: 'left bottom' },
   tagline: { fontSize: Type.title, fontWeight: '500', marginTop: Spacing.two },
 
   form: { marginTop: Spacing.five },

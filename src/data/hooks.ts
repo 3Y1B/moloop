@@ -1,14 +1,19 @@
-import { useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import { rankCandidates } from '@/lib/candidates';
-import { isActive, isHeld, isOnTask, isQuiet, needsResponse, quietSince } from '@/lib/lifecycle';
+import { crewFor, teamStats, type TeamStat } from '@/lib/crew';
+import { isActive, isOnTask } from '@/lib/lifecycle';
+import { needsFor, type NeedsItem } from '@/lib/needs';
 import { meetingPoint, onSite, placeOf, PRESENCE, type Place } from '@/lib/presence';
 import { routeBetween } from '@/lib/route';
 import type { GuestRequest, Proposal, Task, Team, TeamSlug, Volunteer, VolunteerRole } from '@/lib/schema';
 import { NODES, toPlan, VENUE_ZONES, type Point } from './venue';
 import { getLatest, getPinned, subscribe as onFix } from './location';
 import { guestStage, memberStatus, taskStatusFor, type GuestStatus, type Status } from '@/lib/status';
-import { useSnapshot } from './provider';
+import { chosenTeam, onTeamChange } from '@/lib/team-pill';
+import { fallbackSummary, type Summary } from '@/lib/summary';
+import { taskLog, type LogFilter } from '@/lib/task-log';
+import { useRepo, useSnapshot } from './provider';
 
 export { useRepo, useSnapshot } from './provider';
 
@@ -145,100 +150,82 @@ export function useRouteTo(task: Task | undefined) {
 
 // ── Leads and Mo ──
 
-export type NeedsKind = 'help' | 'escalated' | 'quiet' | 'approval' | 'handover' | 'unassigned';
-export type NeedsItem = {
-  kind: NeedsKind;
-  task: Task;
-  /** For approvals. */
-  proposal?: Proposal;
-  /** When it started needing someone (help asked, went quiet, proposed, handover sent, reported). */
-  since: number;
-};
+export type { NeedsItem, NeedsKind } from '@/lib/needs';
 
-const NEEDS_ORDER: NeedsKind[] = ['help', 'escalated', 'quiet', 'approval', 'handover', 'unassigned'];
-
-/**
- * The lead's or Mo's "Needs you" list. Lead: their team's help requests and AI escalations (still shown after a
- * bump), quiet tasks, pending approvals, handovers waiting on "Arrived", unassigned tasks.
- * Mo: what was bumped or escalated to Mo (or has no lead), P1 approvals, unassigned P1/P2. Volunteers get nothing.
- */
+/** The lead's or Mo's "Needs you" list (lib/needs). */
 export function useNeedsMe(): NeedsItem[] {
   const s = useSnapshot();
-  return useMemo(() => {
-    const me = s.meId ? s.volunteers[s.meId] : undefined;
-    if (!me || me.role === 'volunteer') return [];
-    const lead = me.role === 'team_lead';
-    const hasLead = (team: TeamSlug | null) => Object.values(s.volunteers).some((v) => v.role === 'team_lead' && v.teamSlug === team);
-    const mine = (t: Task) => (lead ? t.teamSlug === me.teamSlug : !hasLead(t.teamSlug));
-    const pending = new Map(Object.values(s.proposals).filter((p) => p.status === 'pending').map((p) => [p.taskId, p]));
-    const items: NeedsItem[] = [];
-
-    for (const t of Object.values(s.tasks)) {
-      const e = t.escalation;
-      if (needsResponse(t) && (lead ? mine(t) : e?.level === 'coordinator')) {
-        items.push({ kind: 'help', task: t, since: e?.at ?? t.lastActivityAt });
-      } else if (isHeld(t)) {
-        if (lead ? mine(t) : e?.level === 'coordinator') items.push({ kind: 'escalated', task: t, since: e?.at ?? t.createdAt });
-      } else if (t.status === 'escalated' && e?.response?.kind === 'handover' && (lead ? mine(t) : e.response.byId === me.id)) {
-        items.push({ kind: 'handover', task: t, since: e.response.at });
-      } else if (isQuiet(t) && mine(t)) {
-        items.push({ kind: 'quiet', task: t, since: quietSince(t) });
-      } else if (t.status === 'open') {
-        const p = pending.get(t.id);
-        if (p && (lead ? mine(t) : t.priority === 'P1' || mine(t))) items.push({ kind: 'approval', task: t, proposal: p, since: p.createdAt });
-        else if (!p && (lead ? mine(t) : t.priority !== 'P3')) items.push({ kind: 'unassigned', task: t, since: t.createdAt });
-      }
-    }
-    return items.sort((a, b) =>
-      NEEDS_ORDER.indexOf(a.kind) - NEEDS_ORDER.indexOf(b.kind) || a.task.priority.localeCompare(b.task.priority) || a.since - b.since);
-  }, [s.tasks, s.proposals, s.volunteers, s.meId]);
+  return useMemo(() => needsFor(s, s.meId), [s.tasks, s.proposals, s.volunteers, s.meId]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-export type TeamMember = { volunteer: Volunteer; status: Status; task?: Task; helping?: Task };
-
-const TONE_RANK: Record<Status['tone'], number> = { danger: 0, warning: 1, tint: 2, neutral: 3, success: 3 };
+export type { TeamMember } from '@/lib/crew';
+export type { TeamStat } from '@/lib/crew';
 
 /** A team at a glance: members (most urgent first, not me), their tasks, and the team's open and active tasks. Defaults to my team. */
 export function useTeam(teamSlug?: TeamSlug | null) {
   const s = useSnapshot();
   const slug = teamSlug === undefined ? (s.meId ? s.volunteers[s.meId]?.teamSlug ?? null : null) : teamSlug;
   return useMemo(() => {
-    const all = Object.values(s.tasks);
-    const teamTasks = all.filter((t) => t.teamSlug === slug);
-    const members: TeamMember[] = Object.values(s.volunteers)
-      .filter((v) => v.teamSlug === slug && v.id !== s.meId)
-      .map((v) => ({
-        volunteer: v,
-        status: memberStatus(v, all, s.now, s),
-        task: all.filter((t) => t.assigneeId === v.id && isActive(t)).sort(byPriorityThenAge)[0],
-        helping: all.find((t) => isActive(t) && t.helperIds.includes(v.id)),
-      }))
-      .sort((a, b) => TONE_RANK[a.status.tone] - TONE_RANK[b.status.tone] || a.volunteer.name.localeCompare(b.volunteer.name));
+    const { members, openTasks } = slug ? crewFor(s, s.meId, slug) : { members: [], openTasks: [] };
     return {
       team: slug ? (s.teams[slug] as Team | undefined) : undefined,
       members,
       /** Unassigned and queued, most urgent first. */
-      openTasks: teamTasks.filter((t) => t.status === 'open' || t.status === 'queued').sort(byPriorityThenAge),
-      activeTasks: teamTasks.filter(isActive).sort(byPriorityThenAge),
+      openTasks,
+      activeTasks: Object.values(s.tasks).filter((t) => t.teamSlug === slug && isActive(t)).sort(byPriorityThenAge),
     };
   }, [s, slug]);
 }
 
-/** Everyone on the crew but me, as team members, and every unassigned or queued task: Mo's map. */
-export function useCrew() {
+/** Everyone on the crew but me (or one team's people), most urgent first, and their unassigned or queued tasks: Mo's list and map. */
+export function useCrew(team: TeamSlug | null = null) {
   const s = useSnapshot();
-  return useMemo(() => {
-    const all = Object.values(s.tasks);
-    const members: TeamMember[] = Object.values(s.volunteers)
-      .filter((v) => v.id !== s.meId)
-      .map((v) => ({
-        volunteer: v,
-        status: memberStatus(v, all, s.now, s),
-        task: all.filter((t) => t.assigneeId === v.id && isActive(t)).sort(byPriorityThenAge)[0],
-        helping: all.find((t) => isActive(t) && t.helperIds.includes(v.id)),
-      }));
-    return { members, openTasks: all.filter((t) => t.status === 'open' || t.status === 'queued').sort(byPriorityThenAge) };
-  }, [s]);
+  return useMemo(() => crewFor(s, s.meId, team), [s, team]);
+}
+
+/** Per team: on duty, on a task, free, on break, and the lead. For Mo's team pills. */
+export function useTeamStats(): TeamStat[] {
+  const s = useSnapshot();
+  return useMemo(() => teamStats(s, s.meId), [s]);
+}
+
+/** The team pill Mo has picked, shared by the Crew list and the maps. All (`null`) once nobody is rostered on it. */
+export function useChosenTeam(): TeamSlug | null {
+  const chosen = useSyncExternalStore(onTeamChange, chosenTeam);
+  const stats = useTeamStats();
+  return chosen && stats.some((t) => t.slug === chosen) ? chosen : null;
+}
+
+/** Every task this shift with its newest event, filtered, most recent activity first, and the counts: Mo's Tasks tab. */
+export function useTaskLog(filter: LogFilter) {
+  const s = useSnapshot();
+  return useMemo(() => taskLog(s, filter), [s.tasks, s.events, filter.status, filter.team]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/**
+ * A short summary of the shift (no `taskId`) or one task, from the server. Asked again whenever something new happens
+ * (the newest event changes); the server answers from its cache until then. If the request fails, plain counts from
+ * the snapshot, marked `ai: false`. Null while the first one loads.
+ */
+export function useSummary(taskId?: string): Summary | null {
+  const repo = useRepo();
+  const s = useSnapshot();
+  const newest = useMemo(
+    () => s.events.reduce<string | null>((id, e) => (taskId && e.taskId !== taskId ? id : e.id), null),
+    [s.events, taskId],
+  );
+  const [got, setGot] = useState<{ summary?: Summary; failed?: boolean }>({});
+  useEffect(() => {
+    let live = true;
+    repo.summarize(taskId ? { scope: 'task', taskId } : { scope: 'shift' })
+      .then((summary) => live && setGot({ summary }))
+      .catch(() => live && setGot((g) => ({ ...g, failed: !g.summary })));
+    return () => {
+      live = false;
+    };
+  }, [repo, taskId, newest]);
+  if (got.summary) return got.summary;
+  return got.failed ? { ...fallbackSummary(s, taskId ? { scope: 'task', taskId } : { scope: 'shift' }), ai: false, at: s.now } : null;
 }
 
 /** The whole event, for Mo and the map: every active task, every unassigned one, everyone on duty. */
