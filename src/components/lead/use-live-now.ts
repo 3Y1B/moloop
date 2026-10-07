@@ -1,18 +1,14 @@
 import { useEffect, useState } from 'react';
 
-import { useRepo } from '@/data/hooks';
-
 /**
- * The repo clock, ticking every second. The snapshot's `now` only moves with the scheduler (every few
- * seconds), which is too coarse for a countdown. Follows the dev clock offset on the mock.
+ * The clock, ticking every second. The snapshot's `now` only moves every few seconds, which is too coarse
+ * for a countdown.
  */
 export function useLiveNow(intervalMs = 1_000) {
-  const repo = useRepo();
-  const read = () => Date.now() + (repo.dev?.clockOffsetMs() ?? 0);
-  const [now, setNow] = useState(read);
+  const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now() + (repo.dev?.clockOffsetMs() ?? 0)), intervalMs);
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
     return () => clearInterval(id);
-  }, [repo, intervalMs]);
+  }, [intervalMs]);
   return now;
 }

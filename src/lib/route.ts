@@ -234,7 +234,7 @@ function turnAt(a: Point, b: Point, c: Point): Step['turn'] {
 }
 
 /** What a turn is called after: the nearest landmark if one's close (not the one you set off from), else the thing it goes round. */
-function placeName(p: Corner, start: string): string | undefined {
+function placeName(p: Corner, start: string | undefined): string | undefined {
   let best: { name: string; d: number } | undefined;
   for (const n of Object.values(NODES)) {
     const d = dist(n, p);
@@ -244,22 +244,50 @@ function placeName(p: Corner, start: string): string | undefined {
   return best?.name ?? p.name;
 }
 
+/** One end of a walk: a zone (by slug), or a spot on the plan, such as where someone's phone says they are. */
+export type Spot = string | Point | null | undefined;
+
+/** Closer than this to where you're going and you're there. GPS on a phone is good to a few metres. */
+const ARRIVED_M = 12;
+
+/** A spot as a point, and the landmark it's at (so the first step isn't "head toward" where you're standing). */
+function resolve(spot: Spot): { at: Point; node?: string; zone?: boolean } | null {
+  if (spot == null) return null;
+  if (typeof spot === 'string') {
+    const zone = VENUE_ZONES[spot];
+    return zone ? { at: NODES[zone.node], node: zone.node, zone: true } : null;
+  }
+  const near = Object.values(NODES).find((n) => dist(n, spot) < ARRIVED_M);
+  return { at: spot, node: near?.id };
+}
+
 const walks = new Map<string, Corner[]>();
 
-/** Walking route between two zones, with spoken-style turn-by-turn steps. */
-export function routeBetween(fromZone: string | null, toZone: string | null, hint?: string | null): Route | null {
-  const from = fromZone ? VENUE_ZONES[fromZone] : undefined;
-  const to = toZone ? VENUE_ZONES[toZone] : undefined;
+/**
+ * Walking route between two spots, with spoken-style turn-by-turn steps. Zone to zone is worked out once and
+ * kept; from a live position it's worked out each time, which is quick enough to follow someone walking.
+ */
+export function routeBetween(fromSpot: Spot, toSpot: Spot, hint?: string | null): Route | null {
+  const from = resolve(fromSpot);
+  const to = resolve(toSpot);
   if (!from || !to) return null;
 
-  const arrive: Step = { text: hint ?? `You’re at ${NODES[to.node].name}`, meters: 0, turn: 'arrive' };
-  if (from.node === to.node) return { points: [NODES[to.node]], meters: 0, minutes: 0, steps: [arrive], here: true };
+  const toName = to.node ? NODES[to.node].name : 'them';
+  const arrive: Step = { text: hint ?? (to.node ? `You’re at ${toName}` : 'You’re there'), meters: 0, turn: 'arrive' };
+  if ((from.node && from.node === to.node && (from.zone || to.zone)) || dist(from.at, to.at) < ARRIVED_M) {
+    return { points: [to.at], meters: 0, minutes: 0, steps: [arrive], here: true };
+  }
 
-  const key = `${from.node}>${to.node}`;
-  if (!walks.has(key)) walks.set(key, walk(NODES[from.node], NODES[to.node]));
-  const points = walks.get(key)!;
+  let points: Corner[];
+  if (from.zone && to.zone) {
+    const key = `${from.node}>${to.node}`;
+    if (!walks.has(key)) walks.set(key, walk(from.at, to.at));
+    points = walks.get(key)!;
+  } else {
+    points = walk(from.at, to.at);
+  }
 
-  const toward = (i: number) => (i === points.length - 1 ? NODES[to.node].name : placeName(points[i], from.node) ?? NODES[to.node].name);
+  const toward = (i: number) => (i === points.length - 1 ? toName : placeName(points[i], from.node) ?? toName);
   const steps: Step[] = [{ text: `Head toward ${toward(1)}`, meters: dist(points[0], points[1]), turn: 'start' }];
   for (let i = 1; i < points.length - 1; i++) {
     const turn = turnAt(points[i - 1], points[i], points[i + 1]);

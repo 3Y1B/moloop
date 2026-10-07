@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
+import { DemoButton } from '@/components/demo-panel';
 import { goBack } from '@/components/guest/go-back';
 import { RequestMap } from '@/components/guest/request-map';
 import { StepTracker } from '@/components/guest/step-tracker';
@@ -37,7 +38,7 @@ export default function RequestScreen() {
     <MapTopBar
       top={layout.barTop}
       left={<MapButton label="Back" sf="chevron.left" md="chevron_left" onPress={goBack} />}
-      right={repo.dev && <MapButton label="Demo controls" sf="slider.horizontal.3" md="tune" onPress={() => router.push('/dev')} />}
+      right={<DemoButton />}
     />
   );
 
@@ -63,7 +64,7 @@ export default function RequestScreen() {
         <Hero view={view} />
         {stage === 'answered' && <Answer view={view} />}
         {open && <Help view={view} />}
-        {stage === 'sorted' && <StillNeedHelp requestId={request.id} />}
+        {stage === 'sorted' && <Sorted requestId={request.id} />}
         {stage === 'cancelled' && <Button label="New request" variant="tinted" onPress={goBack} />}
         {thread.length > 0 && (
           <Section title="Messages">
@@ -189,14 +190,14 @@ function CancelRequest({ requestId }: { requestId: string }) {
   );
 }
 
-/** Sorted: one question, only to catch a request closed too early. No rating. */
-function StillNeedHelp({ requestId }: { requestId: string }) {
+/** Sorted: Done is the expected tap; reopening is there to catch a request closed too early. No rating. */
+function Sorted({ requestId }: { requestId: string }) {
   const theme = useTheme();
   const repo = useRepo();
   return (
-    <View style={[styles.still, { backgroundColor: theme.backgroundElement }]}>
-      <Text style={[styles.question, { color: theme.text }]}>Still need help?</Text>
-      <Button label="Yes" size="small" variant="tinted" onPress={() => repo.guestReopen(requestId)} />
+    <View style={styles.actions}>
+      <Button label="Still need help" variant="tinted" color={theme.textSecondary} onPress={() => repo.guestReopen(requestId)} style={styles.flex} />
+      <Button label="Done" haptic="success" onPress={goBack} style={styles.flex} />
     </View>
   );
 }
@@ -222,6 +223,4 @@ const styles = StyleSheet.create({
   sub: { fontSize: Type.footnote },
   where: { fontSize: Type.body, fontWeight: '500' },
   actions: { flexDirection: 'row', gap: 8 },
-  still: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: Radius.card, borderCurve: 'continuous' },
-  question: { fontSize: Type.title - 1, fontWeight: '600' },
 });

@@ -2,8 +2,9 @@ import { StyleSheet } from 'react-native';
 
 import { VenueMap, zoneSpot, type MapMarker } from '@/components/map/venue-map';
 import type { Point } from '@/data/venue';
-import { useLookups, useNow, type RequestView } from '@/data/hooks';
+import { useLookups, useMyPlace, useNow, usePlaceOf, type RequestView } from '@/data/hooks';
 import { initials } from '@/lib/format';
+import { meetingPoint } from '@/lib/presence';
 import { routeBetween, type Route } from '@/lib/route';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -24,16 +25,22 @@ function along(points: Point[], t: number): { at: Point; next: number } {
 
 /**
  * Both dots: the festival-goer, and whoever is coming, walking the route toward them (or where they are, while matched).
- * Full-bleed behind the sheet. Until GPS lands, the volunteer's dot is placed by time: how far into their walk they should be.
+ * Full-bleed behind the sheet. Both are where their phones say. Without a live position the volunteer's dot is placed
+ * by time (how far into their walk they should be), and the festival-goer stands at the zone they picked.
  */
 export function RequestMap({ view, frame }: { view: RequestView; frame: { top: number; bottom: number } }) {
   const theme = useTheme();
   const now = useNow();
   const { teams } = useLookups();
   const { request, task, status, volunteer } = view;
+  const mine = useMyPlace();
+  const theirs = usePlaceOf(volunteer?.id);
 
   const zone = request.zoneSlug ?? task?.zoneSlug ?? null;
-  const here = zoneSpot(zone);
+  // Me where my phone says. Help walks to me if I'm at what I reported, else to the zone.
+  const meet = meetingPoint(mine, zone);
+  const here = mine ?? zoneSpot(zone);
+  const goal = meet && typeof meet === 'object' ? meet : zoneSpot(zone);
   if (!here) return <VenueMap route={null} me={null} fit="site" frame={frame} style={StyleSheet.absoluteFill} />;
 
   const markers: MapMarker[] = [];
@@ -44,14 +51,19 @@ export function RequestMap({ view, frame }: { view: RequestView; frame: { top: n
     const walk = status.stage === 'coming' && status.arriveAt ? routeBetween(volunteer.zoneSlug, zone) : null;
     // Matched but not walking over yet (finishing a task): wherever they are now. Otherwise, with the festival-goer.
     let at = (status.stage === 'finding' ? zoneSpot(volunteer.zoneSlug, 1) : null) ?? zoneSpot(zone, 1) ?? here;
-    if (walk && walk.points.length > 1) {
+    if (theirs) {
+      // Their phone says where they are: the dot is there, and the line is the walk they have left.
+      at = theirs.at;
+      const left = status.stage === 'coming' && !theirs.stale ? routeBetween(theirs.at, goal) : null;
+      if (left && !left.here) route = left;
+    } else if (walk && walk.points.length > 1) {
       const start = task?.assignedAt ?? task?.createdAt ?? now;
       const span = (status.arriveAt ?? now) - start;
       const p = along(walk.points, span > 0 ? (now - start) / span : 1);
       at = p.at;
       route = { ...walk, points: [p.at, ...walk.points.slice(p.next)] };
     }
-    markers.push({ kind: 'volunteer', id: volunteer.id, at, color, initials: initials(volunteer.name), onTask: true });
+    markers.push({ kind: 'volunteer', id: volunteer.id, at, color, initials: initials(volunteer.name), onTask: true, stale: theirs?.stale });
   }
   markers.push({ kind: 'person', id: 'me', at: here, color: theme.tint });
 

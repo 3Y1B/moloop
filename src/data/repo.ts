@@ -1,12 +1,12 @@
 import type { RespondInput } from '@/lib/lifecycle';
-import type { Duty, GuestRequest, Message, Priority, Proposal, ReplyKind, Task, TaskEvent, Team, TeamSlug, Volunteer, Zone } from '@/lib/schema';
+import type { Fix } from '@/lib/presence';
+import type { Duty, GuestRequest, Message, Position, Proposal, ReplyKind, Task, TaskEvent, Team, TeamSlug, Volunteer, Zone } from '@/lib/schema';
 
 export type { RespondInput };
 
 /**
- * The only thing screens talk to. A Repo is a local, reactive cache plus commands:
- *  - MockRepo: in-memory, runs the lifecycle locally. Zero setup.
- *  - SupabaseRepo (later): hydrates from queries, stays fresh via realtime, commands hit /api/*.
+ * The only thing screens talk to. A Repo is a local, reactive cache plus commands: SupabaseRepo hydrates from
+ * queries, stays fresh via realtime, and sends every command to the server.
  * Snapshots are immutable; a new object is emitted on every change (useSyncExternalStore-friendly).
  */
 export type Snapshot = {
@@ -24,6 +24,8 @@ export type Snapshot = {
   messages: Message[];
   requests: Record<string, GuestRequest>;
   proposals: Record<string, Proposal>;
+  /** Live GPS by person id: everyone this caller may see (crew see crew; a festival-goer, who's coming). */
+  positions: Record<string, Position>;
 };
 
 /** Who a broadcast goes to. Neither set = everyone on duty. */
@@ -52,13 +54,15 @@ export interface Repo {
   setDuty(duty: Duty): Promise<void>;
   /** Speech → text, for the "Heard" check. Nothing happens until it's sent. */
   transcribe(recording: Recording): Promise<Heard>;
-  /** A playable URL for a spoken message (`Message.audio`). Only the live backend renders speech. */
-  speechUrl?(path: string): Promise<string>;
-  /** Speech/text → intent. Server-side classifier later; nothing is executed here. */
+  /** A playable URL for a spoken message (`Message.audio`). */
+  speechUrl(path: string): Promise<string>;
+  /** Speech/text → intent, decided on the server. Nothing is executed here. */
   interpret(text: string): Promise<Interpretation>;
   /** Commit an interpretation the volunteer confirmed. */
   commit(interpretation: Interpretation): Promise<{ confirmation: string }>;
   markRead(messageIds: string[]): Promise<void>;
+  /** Where my phone is. Written straight to `presence`, not through the server: high volume, no logic. */
+  sharePosition(fix: Fix): Promise<void>;
 
   // ── Leads and Mo (acting as meId) ──
 
@@ -89,32 +93,5 @@ export interface Repo {
 
   /** Volunteer → festival-goer, on a task that came from a request. */
   guestReply(taskId: string, text: string): Promise<void>;
-
-  /** Demo controls. Only the mock implements these. */
-  dev?: DevControls;
 }
 
-export interface DevControls {
-  setMe(volunteerId: string): void;
-  /** Move the simulated clock forward (drives nudges). */
-  advance(ms: number): void;
-  clockOffsetMs(): number;
-  spawnIncoming(priority?: Priority): void;
-  reset(): void;
-
-  // Scenarios (docs/SCREENS.md, dev panel).
-  /** Priya accepts her task if needed, then asks for help with a reason. */
-  askForHelp(volunteerId?: string): void;
-  /** The volunteer's active task goes silent: nudged, then the lead is alerted. */
-  goQuiet(volunteerId?: string): void;
-  /** A festival-goer question the AI answers. */
-  guestQuestion(): void;
-  /** A P3 festival-goer report, dispatched straight away. */
-  guestReport(): void;
-  /** A P1 festival-goer report that waits for approval, auto-assigning after POLICY.autoAssignMs. */
-  guestP1Report(): void;
-  /** Act as Mo: answer every escalation bumped to Mo (backup, or medics if nobody is free). */
-  moRespond(): number;
-  /** Act as Mo: broadcast to everyone on duty. */
-  moBroadcast(body?: string): void;
-}

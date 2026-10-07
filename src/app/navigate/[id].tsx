@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { CircleButton } from '@/components/ui/circle-button';
 import { Icon } from '@/components/ui/icon';
 import { Radius, Type } from '@/constants/theme';
-import { useLookups, useMe, useRepo, useRouteTo, useTask } from '@/data/hooks';
+import { useLookups, useMe, useMyDot, useRepo, useReporterPlace, useRouteTo, useSnapshot, useTask } from '@/data/hooks';
 import { NODES, VENUE_ZONES } from '@/data/venue';
 import { initials, REPLY_LABEL, REPLY_SF } from '@/lib/format';
+import { placeOf } from '@/lib/presence';
 import { formatMeters, type Step } from '@/lib/route';
 import type { ReplyKind } from '@/lib/schema';
 import { usePriorityColors, useTheme } from '@/hooks/use-theme';
@@ -33,6 +34,9 @@ export default function NavigateScreen() {
   const task = useTask(id);
   const me = useMe();
   const route = useRouteTo(task);
+  const dot = useMyDot();
+  const reporter = useReporterPlace(task);
+  const { positions, now } = useSnapshot();
   const { zones, volunteers } = useLookups();
   const accent = usePriorityColors()[task?.priority ?? 'P3'];
   const [fit, setFit] = useState<'route' | 'site'>('route');
@@ -40,15 +44,16 @@ export default function NavigateScreen() {
   if (!task) return null;
 
   const mapHeight = Math.round(height * 0.5);
-  const myZone = me?.zoneSlug ? VENUE_ZONES[me.zoneSlug] : undefined;
   const zone = task.zoneSlug ? zones[task.zoneSlug] : undefined;
 
-  // Teammates on shift, so you can see who's nearby if you need a hand.
+  // Teammates on shift, so you can see who's nearby if you need a hand: where their phone is, else by their zone.
   const people: MapPerson[] = Object.values(volunteers)
-    .filter((v) => v.id !== me?.id && v.teamSlug === me?.teamSlug && v.duty === 'on_duty' && v.zoneSlug && VENUE_ZONES[v.zoneSlug])
-    .map((v) => {
-      const n = NODES[VENUE_ZONES[v.zoneSlug!].node];
-      return { id: v.id, initials: initials(v.name), color: theme.textTertiary, at: { x: n.x + 10, y: n.y - 10 } };
+    .filter((v) => v.id !== me?.id && v.teamSlug === me?.teamSlug && v.duty === 'on_duty')
+    .flatMap((v) => {
+      const live = placeOf(positions, v.id, now);
+      const zone = v.zoneSlug ? VENUE_ZONES[v.zoneSlug] : undefined;
+      const at = live?.at ?? (zone ? { x: NODES[zone.node].x + 10, y: NODES[zone.node].y - 10 } : null);
+      return at ? [{ id: v.id, initials: initials(v.name), color: theme.textTertiary, at }] : [];
     });
 
   const mine = task.assigneeId === me?.id;
@@ -58,10 +63,11 @@ export default function NavigateScreen() {
     <View style={[styles.flex, { backgroundColor: theme.mapGround }]}>
       <VenueMap
         route={route}
-        me={myZone ? NODES[myZone.node] : null}
+        me={dot}
         target={task.zoneSlug}
         targetColor={accent}
         people={people}
+        markers={reporter ? [{ kind: 'person', id: 'reporter', at: reporter, color: accent }] : undefined}
         fit={fit}
         frame={{ top: 0, bottom: 40 / (mapHeight + 40) }}
         style={{ height: mapHeight + 40 }}

@@ -6,7 +6,6 @@ import { useRole, useSnapshot } from '@/data/hooks';
 export default function GuestLayout() {
   const s = useSnapshot();
   const role = useRole();
-  // Live backend only: the mock always has someone signed in.
   if (!s.meId) return s.status === 'ready' ? <Redirect href="/sign-in" /> : null;
   if (role && role !== 'guest') return <Redirect href="/(staff)" />;
   return (

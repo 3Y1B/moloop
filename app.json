@@ -44,6 +44,16 @@
           "enableBackgroundPlayback": false,
           "enableBackgroundRecording": false
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Moloop shows where you are on the festival map and shares it with whoever is coming to help.",
+          "locationAlwaysAndWhenInUsePermission": "On duty, Moloop shares where you are with your lead, even with the phone in your pocket.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
       ]
     ],
     "experiments": {

@@ -109,7 +109,7 @@ route('commit', 'crew', z.object({ interpretation: Interpretation }), async ({ i
   return transact({ taskIds }, (b) => {
     if (i.intent.kind === 'reply') mustBeOn(taskOf(b, i.intent.taskId), caller);
     const { confirmation, later } = C.commit(b, caller.id, i, judged?.value);
-    // The mock waits to mimic triage; here it has already run.
+    // Triage has already run.
     if (later) b.send(later.recipientId, 'system', later.body, { taskId: later.taskId });
     return { confirmation };
   }, { reporterId: caller.id, clips, run: judged?.run });

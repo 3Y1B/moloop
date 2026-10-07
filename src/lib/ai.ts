@@ -3,7 +3,6 @@ import type { IncidentCategory, Priority, TeamSlug } from '@/lib/schema';
 /**
  * What the models decide, as plain data. The shared commands (src/lib/commands.ts) are pure and synchronous, so a
  * model call can't happen inside one: the server asks first, outside the world lock, and hands the answer in.
- * MockRepo hands in the keyword stand-ins from heuristics.ts.
  */
 
 /** A report or request, understood: where it goes, how urgent, and how to say it to a lead on a phone. */

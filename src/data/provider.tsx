@@ -1,22 +1,14 @@
 import { createContext, use, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
 
-import { MockRepo } from './mock/mock-repo';
 import type { Repo, Snapshot } from './repo';
+import { getSupabase } from './supabase/client';
+import { SupabaseRepo } from './supabase-repo';
 
 const RepoContext = createContext<Repo | null>(null);
 
-/** Which backend the app runs on. Explicit: `.env.local` sets the Supabase URL either way. */
-export const LIVE = process.env.EXPO_PUBLIC_REPO === 'supabase';
-
-/** `EXPO_PUBLIC_REPO=supabase`: the shared world (sign-in, realtime, server commands). Anything else: the mock. */
+/** The shared world: sign-in, realtime, server commands. */
 function createRepo(): Repo {
-  if (!LIVE) return new MockRepo();
-  // Loaded only when live, so the mock never touches the Supabase client or expo-sqlite.
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  const { SupabaseRepo } = require('./supabase-repo') as typeof import('./supabase-repo');
-  const { getSupabase } = require('./supabase/client') as typeof import('./supabase/client');
-  /* eslint-enable @typescript-eslint/no-require-imports */
   const repo = new SupabaseRepo(getSupabase());
   // Back from the background: realtime may have dropped changes while the phone slept.
   if (Platform.OS !== 'web') AppState.addEventListener('change', (state) => state === 'active' && repo.resync());

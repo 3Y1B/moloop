@@ -13,7 +13,7 @@ Everything below is the gap between today and that video. The site plan is alrea
 | Pipeline | `src/server/pipeline`: route → triage → assign, each report handled once | The same pipeline plus re-triage of follow-ups, writing to Supabase |
 | Models | Keyword stand-ins by default; with `USE_LIVE_MODELS=1`, OpenAI (GPT-6 Luna for typed decisions and chat) decides everything the server decides, or the Spark first with `MODEL_PROVIDER=spark` | Add Spark `qwen3-asr` for speech-to-text and `qwen3-tts` for text-to-speech (phase 4) |
 | Voice | Hold the pill → `expo-audio` → `/api/transcribe` → Qwen3-ASR → "Heard: …"; spoken briefs through Qwen3-TTS (phase 4) | Spark reachable on the day |
-| Location | Volunteers sit at their zone's node | GPS stream → presence → map, routes and assignment distance |
+| Location | GPS → `presence` → maps, routes, assignment distance and the festival-goer's countdown (phase 5) | A dev build on every phone |
 | Alerts | In-app messages only | Push notification when the phone is locked; spoken brief when the app is open |
 | Schema | `supabase/migrations/…_init.sql` covers reports, tasks, assignments, events, messages | Add guest requests, presence, escalation and helpers on tasks |
 | Devices | iOS simulator dev build | A dev build on every phone in the shoot |
@@ -85,7 +85,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - **Server, command routes:** one route per `Repo` command (`reply`, `respond`, `assign`, `approve`, `guestAsk`, …). Each one loads the task, runs the matching `lifecycle.ts` function, and writes the task plus its `task_events` in one transaction.
 - Port `MockRepo`'s behaviour, not its code. It's the spec for what each command does. Anything it does outside `lifecycle.ts` moves into shared functions, so the server and the demo-day simulator both use them.
 - **Server, scheduler:** every 5 s, run `tick()` over active tasks and `proposalDue()` over pending proposals, and write any changes.
-- Make `createRepo()` in `src/data/provider.tsx` pick `SupabaseRepo` when `EXPO_PUBLIC_REPO=supabase` (explicit: `.env.local` always sets the Supabase URL). The dev panel keeps working against the mock only.
+- `createRepo()` in `src/data/provider.tsx` always builds `SupabaseRepo`. The in-memory mock and its dev panel are gone (2026-10-07).
 
 **Status, client side:** done locally. `src/data/supabase-repo.ts` with the row mappers in `src/data/supabase/rows.ts`, sign-in at `src/app/sign-in.tsx` (crew by email code, festival-goers anonymous), and `npm run repo:check` (real sessions, realtime timings, the command contract against a stub server). The `/api/*` command routes are the server's half.
 
@@ -194,7 +194,6 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - **Not done:**
   - The lock-screen push (phase 7).
   - The same measurements on Spark over 4G.
-  - The mock can't hear: a hold there returns a canned line.
 
 ### 5. Live location
 
@@ -210,6 +209,31 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - Mark presence stale after 60 s without an update, so the map greys the dot instead of lying.
 
 **Done when:** walking the site moves your dot on Mo's map and shortens the route on the reporter's phone.
+
+**Status:** done locally, checked with real sessions by `npm run presence:check`. Needs a new dev build (`expo-location`, `expo-task-manager`, `expo-keep-awake`).
+
+- **Who shares.** Crew while on duty; a festival-goer only while a request is open. Everyone sees their own dot while the app is open. Nothing is shared from the web build (Mo's laptop).
+- **Sending** (`src/data/location.ts`, `src/components/location-sharing.tsx`).
+  - The phone upserts its own `presence` row straight from supabase-js: at most every 3 s while moving, after 5 m, and a heartbeat every 20 s standing still. Fixes vaguer than 75 m are dropped.
+  - Foreground it's `watchPositionAsync`. Crew on duty are asked once for "Always"; with it, a background task (`startLocationUpdatesAsync`) replaces the watch and keeps going with the phone in a pocket.
+  - Without "Always", the screen stays on while they're on a task (`expo-keep-awake`).
+- **Reading.** `Snapshot.positions`, hydrated and kept live over realtime (about 0.5 s from a phone moving to Mo's map). Someone who becomes visible (a volunteer put on your request, the festival-goer behind your task) is fetched straight away, not on their next move.
+- **Rules** (`src/lib/presence.ts`, shared with the server):
+  - fresh under 60 s
+  - stale after that: the dot fades, and routes and assignment go back to the zone
+  - ignored after 10 minutes, or more than 40 m off the site
+- **Routes start anywhere.** `routeBetween` takes a zone or a plan point at either end, on the open-ground router, at about 0.3 ms a route, so it recomputes on every fix.
+  - A volunteer's route runs from their phone to the festival-goer's phone, when the festival-goer is within 60 m of what they reported. Otherwise it ends at the zone.
+- **Assignment** ranks by walking distance from presence: `rankCandidates` on the phone, and on the server through `World.positions`. Backup ETAs use it too.
+- **Maps.**
+  - Leads see their team where they really are; Mo sees the whole crew.
+  - The task map and teammates on Directions follow presence.
+  - The festival-goer sees their helper's real dot, the walk they have left, "Priya is coming · N min" counting down, and "Priya is here" within 12 m.
+  - A festival-goer's report takes the zone closest to their phone. Without a fix on site, the AI reads the place from what they said.
+- **Not done:**
+  - Walking the oval with real phones.
+  - Battery on a full shift with the background task.
+  - Android's foreground-service notification on a real device.
 
 ### 6. Re-triage: the part that should look smartest on camera
 

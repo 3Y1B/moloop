@@ -17,12 +17,11 @@ export function useSpokenBriefs() {
   const { messages, meId } = useSnapshot();
 
   useEffect(() => {
-    const url = repo.speechUrl?.bind(repo);
-    if (!url || !meId || AppState.currentState !== 'active') return;
+    if (!meId || AppState.currentState !== 'active') return;
     const now = Date.now();
     const due = messages
       .filter((m) => m.recipientId === meId && m.delivery === 'spoken' && m.audio && !m.read && now - m.at < FRESH_MS)
       .sort((a, b) => a.at - b.at);
-    for (const m of due) speakOnce({ id: m.id, url: () => url(m.audio!) });
+    for (const m of due) speakOnce({ id: m.id, url: () => repo.speechUrl(m.audio!) });
   }, [repo, messages, meId]);
 }

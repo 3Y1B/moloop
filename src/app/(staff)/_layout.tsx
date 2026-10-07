@@ -9,7 +9,6 @@ export default function StaffLayout() {
   const role = useRole();
   // New tasks and backup calls are read out while the app is open.
   useSpokenBriefs();
-  // Live backend only: the mock always has someone signed in.
   if (!s.meId) return s.status === 'ready' ? <Redirect href="/sign-in" /> : null;
   if (role === 'guest') return <Redirect href="/(guest)" />;
   return (

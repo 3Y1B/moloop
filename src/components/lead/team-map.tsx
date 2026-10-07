@@ -1,28 +1,32 @@
 import { StyleSheet } from 'react-native';
 
 import { VenueMap, zoneSpot, type MapMarker } from '@/components/map/venue-map';
-import { NODES, VENUE_ZONES } from '@/data/venue';
-import type { TeamMember } from '@/data/hooks';
+import type { Point } from '@/data/venue';
+import { useLookups, useSnapshot, type TeamMember } from '@/data/hooks';
 import { initials } from '@/lib/format';
 import { needsResponse } from '@/lib/lifecycle';
+import { placeOf } from '@/lib/presence';
 import type { Task } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
  * The whole site with the team on it: a dot per member (ring when on a task, red when they asked for help),
- * a pin per open task, and me. Full-bleed behind the sheet; markers sharing a zone fan out around it.
+ * a pin per open task, and me. Full-bleed behind the sheet. A member is where their phone says, faded once it
+ * has gone quiet; without one they stand at their zone, and markers sharing a zone fan out around it.
  */
-export function TeamMap({ members, tasks, color, myZone, frame, onPerson, onTask }: {
+export function TeamMap({ members, tasks, color, me, frame, onPerson, onTask }: {
   members: TeamMember[];
   tasks: Task[];
-  /** Team colour for the dots. */
+  /** Dot colour for anyone without a team colour of their own. */
   color: string;
-  myZone: string | null;
+  me: Point | null;
   frame: { top: number; bottom: number };
   onPerson: (volunteerId: string) => void;
   onTask: (taskId: string) => void;
 }) {
   const theme = useTheme();
+  const { teams } = useLookups();
+  const { positions, now } = useSnapshot();
 
   // Index 0 is the zone's centre, where I'm drawn; everyone else spreads around it.
   const used: Record<string, number> = {};
@@ -38,25 +42,27 @@ export function TeamMap({ members, tasks, color, myZone, frame, onPerson, onTask
     if (at) markers.push({ kind: 'task', id: t.id, at, priority: t.priority });
   }
   for (const m of members) {
-    if (m.volunteer.duty === 'off_shift') continue;
-    const at = spot(m.volunteer.zoneSlug);
+    const v = m.volunteer;
+    if (v.duty === 'off_shift') continue;
+    const live = placeOf(positions, v.id, now);
+    const at = live?.at ?? spot(v.zoneSlug);
     if (!at) continue;
     markers.push({
       kind: 'volunteer',
-      id: m.volunteer.id,
+      id: v.id,
       at,
-      color: m.volunteer.duty === 'on_break' ? theme.textTertiary : color,
-      initials: initials(m.volunteer.name),
+      color: v.duty === 'on_break' ? theme.textTertiary : (v.teamSlug && teams[v.teamSlug]?.color) || color,
+      initials: initials(v.name),
       onTask: !!m.task || !!m.helping,
       needsHelp: !!m.task && needsResponse(m.task),
+      stale: live?.stale,
     });
   }
 
-  const mine = myZone ? VENUE_ZONES[myZone] : undefined;
   return (
     <VenueMap
       route={null}
-      me={mine ? NODES[mine.node] : null}
+      me={me}
       markers={markers}
       onMarkerPress={(m) => (m.kind === 'task' ? onTask(m.id) : onPerson(m.id))}
       fit="site"

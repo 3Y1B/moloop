@@ -1,9 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 
 import { rankCandidates } from '@/lib/candidates';
 import { isActive, isOnTask, isQuiet, needsResponse, quietSince } from '@/lib/lifecycle';
+import { meetingPoint, onSite, placeOf, PRESENCE, type Place } from '@/lib/presence';
 import { routeBetween } from '@/lib/route';
 import type { GuestRequest, Proposal, Task, Team, TeamSlug, Volunteer, VolunteerRole } from '@/lib/schema';
+import { NODES, toPlan, VENUE_ZONES, type Point } from './venue';
+import { getLatest, getPinned, subscribe as onFix } from './location';
 import { guestStage, memberStatus, taskStatusFor, type GuestStatus, type Status } from '@/lib/status';
 import { useSnapshot } from './provider';
 
@@ -78,13 +81,65 @@ export function useLookups() {
   return { teams: s.teams, zones: s.zones, volunteers: s.volunteers };
 }
 
-/** Walking route from where I am to a task's location. Null if either end is unknown. */
+/**
+ * Where I am on the plan: my phone's GPS straight away, else what I last shared, else null (on the site, and
+ * recent, or not at all). The map falls back to my zone.
+ */
+export function useMyPlace(): Point | null {
+  const s = useSnapshot();
+  const fix = useSyncExternalStore(onFix, getLatest);
+  return useMemo(() => {
+    // Set by hand: always where I am, however old the fix.
+    if (fix && (getPinned() || s.now - fix.at <= PRESENCE.staleMs)) {
+      const p = toPlan([fix.lng, fix.lat]);
+      if (onSite(p)) return p;
+    }
+    const shared = placeOf(s.positions, s.meId, s.now);
+    return shared && !shared.stale ? shared.at : null;
+  }, [fix, s.now, s.positions, s.meId]);
+}
+
+/** Where to draw me: my live position, else my zone. */
+export function useMyDot(): Point | null {
+  const me = useMe();
+  const here = useMyPlace();
+  const zone = me?.zoneSlug ? VENUE_ZONES[me.zoneSlug] : undefined;
+  return here ?? (zone ? NODES[zone.node] : null);
+}
+
+/** Someone else's live position, if any: `stale` once their phone has gone quiet for a minute. */
+export function usePlaceOf(id: string | null | undefined): Place | null {
+  const s = useSnapshot();
+  return useMemo(() => placeOf(s.positions, id, s.now), [s.positions, id, s.now]);
+}
+
+/**
+ * The festival-goer behind a task, where their phone says they are (they share it while someone's coming), when
+ * that's where help is going: at or near what they reported (see meetingPoint).
+ */
+export function useReporterPlace(task: Task | undefined): Point | null {
+  const s = useSnapshot();
+  const guestId = task?.requestId ? s.requests[task.requestId]?.guestId : undefined;
+  const zone = task?.zoneSlug ?? null;
+  return useMemo(() => {
+    const place = placeOf(s.positions, guestId, s.now);
+    const meet = meetingPoint(place && !place.stale ? place.at : null, zone);
+    return meet && typeof meet === 'object' ? meet : null;
+  }, [s.positions, guestId, zone, s.now]);
+}
+
+/**
+ * Walking route from where I am to a task: from my phone's position as I walk (else my zone), to the
+ * festival-goer if their phone says where they are (else the task's zone). Null if either end is unknown.
+ */
 export function useRouteTo(task: Task | undefined) {
   const me = useMe();
-  const from = me?.zoneSlug ?? null;
+  const here = useMyPlace();
+  const there = useReporterPlace(task);
+  const from = here ?? me?.zoneSlug ?? null;
   return useMemo(
-    () => (task ? routeBetween(from, task.zoneSlug, task.locationHint) : null),
-    [from, task?.zoneSlug, task?.locationHint], // eslint-disable-line react-hooks/exhaustive-deps
+    () => (task ? routeBetween(from, there ?? task.zoneSlug, task.locationHint) : null),
+    [from, there, task?.zoneSlug, task?.locationHint], // eslint-disable-line react-hooks/exhaustive-deps
   );
 }
 
@@ -167,6 +222,23 @@ export function useTeam(teamSlug?: TeamSlug | null) {
   }, [s, slug]);
 }
 
+/** Everyone on the crew but me, as team members, and every unassigned or queued task: Mo's map. */
+export function useCrew() {
+  const s = useSnapshot();
+  return useMemo(() => {
+    const all = Object.values(s.tasks);
+    const members: TeamMember[] = Object.values(s.volunteers)
+      .filter((v) => v.id !== s.meId)
+      .map((v) => ({
+        volunteer: v,
+        status: memberStatus(v, all, s.now, s),
+        task: all.filter((t) => t.assigneeId === v.id && isActive(t)).sort(byPriorityThenAge)[0],
+        helping: all.find((t) => isActive(t) && t.helperIds.includes(v.id)),
+      }));
+    return { members, openTasks: all.filter((t) => t.status === 'open' || t.status === 'queued').sort(byPriorityThenAge) };
+  }, [s]);
+}
+
 /** The whole event, for Mo and the map: every active task, every unassigned one, everyone on duty. */
 export function useAllActive() {
   const s = useSnapshot();
@@ -205,8 +277,11 @@ export function useCandidates(taskId: string | undefined, exclude: string[] = []
   const key = exclude.join(',');
   return useMemo(() => {
     const task = taskId ? s.tasks[taskId] : undefined;
-    return task ? rankCandidates(task, Object.values(s.volunteers), Object.values(s.tasks), { exclude: key ? key.split(',') : [] }) : [];
-  }, [s.tasks, s.volunteers, taskId, key]);
+    return task
+      ? rankCandidates(task, Object.values(s.volunteers), Object.values(s.tasks), { exclude: key ? key.split(',') : [], positions: s.positions, now: s.now })
+      : [];
+    // Positions move every few seconds: re-rank with them, not with every tick of the clock.
+  }, [s.tasks, s.volunteers, s.positions, taskId, key]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 export function useProposal(id: string | undefined): Proposal | undefined {

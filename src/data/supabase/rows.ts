@@ -9,11 +9,12 @@
  */
 import type { Database, Json, Tables } from '@/lib/database.types';
 import type {
-  Duty, Escalation, GuestRequest, GuestThreadEntry, Message, Proposal, ProposalStatus, ReplyKind, Reporter, Task,
+  Duty, Escalation, GuestRequest, GuestThreadEntry, Message, Position, Proposal, ProposalStatus, ReplyKind, Reporter, Task,
   TaskEvent, TaskEventKind, Team, TeamSlug, Volunteer, VolunteerRole, Zone,
 } from '@/lib/schema';
 import { POLICY } from '@/lib/lifecycle';
-import { TEAMS } from '../mock/fixtures';
+import { toPlan } from '../venue';
+import { TEAMS } from '../teams';
 
 export type Row<T extends keyof Database['public']['Tables']> = Tables<T>;
 
@@ -201,11 +202,20 @@ export function toTaskEvent(row: Row<'task_events'>, actorName?: string): TaskEv
   };
 }
 
+// ── presence ──
+
+/** A presence row on the plan. Rows carry lng/lat; everything on the phone works in plan metres. */
+export function toPosition(row: Pick<Row<'presence'>, 'person_id' | 'lat' | 'lng' | 'accuracy' | 'heading' | 'at'>): Position {
+  const { x, y } = toPlan([row.lng, row.lat]);
+  return { personId: row.person_id, x, y, accuracy: row.accuracy, heading: row.heading, at: toMs(row.at) };
+}
+
 // ── festival-goers ──
 
 export function toGuestRequest(row: Row<'guest_requests'>, refs: Refs): GuestRequest {
   return {
     id: row.id,
+    guestId: row.guest_id,
     createdAt: toMs(row.created_at),
     heard: row.heard,
     zoneSlug: zoneSlug(refs, row.zone_id),
