@@ -1,7 +1,8 @@
 /**
  * A queue in front of a model server: at most `max` calls in flight and `perMinute` started in any 60 s.
  * Spark allows 4 at once and 30 a minute per key, so a burst of reports waits its turn instead of eating 429s.
- * Urgent calls (a volunteer holding the pill) go ahead of background ones (a festival-goer's request).
+ * Urgent calls (a volunteer holding the pill or reporting) go ahead of background ones (a festival-goer's request).
+ * A call whose `signal` aborts while it waits leaves the queue without using a slot.
  */
 export class Limiter {
   private active = 0;
@@ -11,17 +12,28 @@ export class Limiter {
 
   constructor(private max: number, private perMinute: number) {}
 
-  run<T>(urgent: boolean, fn: () => Promise<T>): Promise<T> {
+  run<T>(urgent: boolean, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     return new Promise((resolve, reject) => {
-      const go = () => {
-        (async () => fn())().then(resolve, reject).finally(() => {
-          this.active--;
-          this.pump();
-        });
+      if (signal?.aborted) return reject(signal.reason);
+      const entry = {
+        urgent,
+        go: () => {
+          signal?.removeEventListener('abort', drop);
+          (async () => fn())().then(resolve, reject).finally(() => {
+            this.active--;
+            this.pump();
+          });
+        },
       };
+      const drop = () => {
+        const i = this.queue.indexOf(entry);
+        if (i >= 0) this.queue.splice(i, 1);
+        reject(signal!.reason);
+      };
+      signal?.addEventListener('abort', drop, { once: true });
       const at = urgent ? this.queue.findIndex((q) => !q.urgent) : -1;
-      if (urgent && at >= 0) this.queue.splice(at, 0, { go, urgent });
-      else this.queue.push({ go, urgent });
+      if (urgent && at >= 0) this.queue.splice(at, 0, entry);
+      else this.queue.push(entry);
       this.pump();
     });
   }

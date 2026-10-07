@@ -117,10 +117,10 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - `LunaLlm.generate`:
   - chat completions with JSON-schema output
   - one repair retry on a zod failure
-  - after that, fail closed to a human (the API route already returns `pipeline_failed`)
+  - after that, fail closed to a human
 - `JevClassifier.classify`: `/v1/systemone` with the label set. Confirm the request and response contract against `docs/local-llm-api-docs.md`, since the stub's contract is assumed.
 - `Repo.interpret` moves server-side. The classifier decides whether the words are a reply to my task or a new report, so "Heard: on my way" becomes `accept` on the current task.
-- Localise the reporter reply (the TODO in `pipeline/index.ts`).
+- Localise what the reporter hears back.
 - Set a latency budget and measure it on the oval over 4G: from letting go of the pill to "Heard" in under 1.5 s, and from send to the task on the lead's screen in under 4 s.
 
 **Done when:** typed reports go through the live models end to end, and `triage_runs` shows the model ids and latencies.
@@ -134,14 +134,17 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - **Safety rules in code, not prompts.**
   - The AI answers only when the chat model and the classifier both say routine, the priority reads P3, and no red-flag word is in the text.
   - Words like "collapsed", "not breathing", "not moving" force P1 whatever a model says. A model that isn't sure of the priority rounds up.
-  - If a model is down or fails twice, the request becomes a task for a person at P2 or above. It is never answered by the AI.
-- **`Repo.interpret` is server-side.** "Heard: on my way" becomes `accept` on the current task when the classifier is at least 0.6 sure, the utterance is 12 words or fewer, and a helper only ever gets `done`. Typically 0.2 to 0.25 s; if it takes over `AI_INTERPRET_MS` (1.5 s) keywords answer instead.
-- **Localised.** The answer comes back in the language written; `reporter.language` is what the model detected, so assignment can prefer a volunteer who speaks it.
-- **Logged.** Every decision writes a `triage_runs` row (model ids, team and priority with confidences, the rewrite, latency, error) on the task's report, or on the request when the AI answered. Migration `…_triage_runs_for_requests.sql`.
-- **Rate limits.** Spark allows 4 calls at once and 30 a minute per key. One queue in front of it (`SPARK_CONCURRENCY`, `SPARK_RPM`) lets a volunteer's utterance jump ahead of a festival-goer's request. A typed report costs two calls, so about 14 a minute is the ceiling on Spark. Luna on OpenRouter has no such cap.
-- **Stuck requests.** The scheduler picks up any request left at "Understanding" (a restart, a dead call).
+  - If the classifier is down or fails, the request becomes a task for a person at P2 or above. If only the chat model fails, the classifier's priority stands, and the request still goes to a person. Either way it is never answered by the AI.
+  - "Talk to a person" on an AI answer is P3, unless one of the rules above raises it.
+- **`Repo.interpret` is server-side.** "Heard: on my way" becomes `accept` on the current task when the classifier is at least 0.6 sure, the utterance is 12 words or fewer, and a helper only ever gets `done`. Typically 0.2 to 0.25 s. If the classifier is less sure, or takes over `AI_INTERPRET_MS` (1.5 s, queue wait included), keywords answer instead.
+- **Localised, in part.** The AI's answer comes back in the language written, and `reporter.language` is what the model detected, so assignment can prefer a volunteer who speaks it. Everything else a festival-goer reads is still in English.
+- **Logged.** Every decision that makes or changes a task or a request writes a `triage_runs` row (model ids, team and priority with confidences, the rewrite, latency, error) on the task's report, or on the request when the AI answered. Migration `…_triage_runs_for_requests.sql`. `interpret` comes before any report exists, so it logs to the server console only.
+- **Rate limits.** Spark allows 4 calls at once and 30 a minute per key. One queue in front of it (`SPARK_CONCURRENCY`, `SPARK_RPM`) lets a volunteer's utterance or report jump ahead of a festival-goer's request. A call that gives up while waiting leaves the queue without using a slot. A typed report costs two calls, so about 14 a minute is the ceiling on Spark. Luna on OpenRouter has no such cap.
+- **Stuck requests.** The scheduler picks up any request left at "Understanding" (a restart, a dead call). The sweep runs beside the scheduler passes, so a slow or dead model never holds up a nudge.
 - **Checks.** `npm run models:check` runs 18 real utterances against the live models and prints latencies. `npm run commands:check` passes against both the keyword server and a `USE_LIVE_MODELS=1` server.
-- **Not done:** the latency budget over 4G on the oval. It needs phones and the Spark box, and the speech leg (phase 4) comes before "Heard".
+- **Not done:**
+  - The latency budget over 4G on the oval. It needs phones and the Spark box, and the speech leg (phase 4) comes before "Heard".
+  - Localising what festival-goers read besides the AI's answer.
 
 ### 4. Voice in and out
 

@@ -46,7 +46,8 @@ function chatConfig(): Chat {
 export const chatModelId = () => chatConfig().model;
 export const decideModelId = () => 'qwen3.5:4b';
 
-export type CallOptions = { urgent?: boolean; timeoutMs?: number };
+/** `urgent` jumps the queue; `timeoutMs` bounds each attempt; `signal` bounds the whole call, queue wait and retries included. */
+export type CallOptions = { urgent?: boolean; timeoutMs?: number; signal?: AbortSignal };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const RETRY = new Set([408, 429, 500, 502, 503, 504]);
@@ -61,13 +62,14 @@ async function chat(c: Chat, messages: { role: string; content: string }[], sche
   });
   for (let attempt = 0; ; attempt++) {
     try {
+      const timeout = AbortSignal.timeout(o.timeoutMs ?? 12_000);
       const res = await c.limiter.run(!!o.urgent, () =>
         fetch(`${c.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${c.apiKey}` },
           body,
-          signal: AbortSignal.timeout(o.timeoutMs ?? 12_000),
-        }));
+          signal: o.signal ? AbortSignal.any([o.signal, timeout]) : timeout,
+        }), o.signal);
       if (RETRY.has(res.status) && attempt < 2) {
         await sleep(Math.min(Number(res.headers.get('retry-after') ?? 0) * 1000 || 400 * 2 ** attempt, 4_000));
         continue;
@@ -123,7 +125,11 @@ export async function decide<const Q extends Questions>(
   o: CallOptions = {},
 ) {
   sdk ??= new TypeSafeClient({ timeout: o.timeoutMs ?? 6_000, retry: { maxRetries: 2 } });
-  const { answers } = await sparkLimiter().run(!!o.urgent, () => sdk!.systemOne({ state, questions }, { timeout: o.timeoutMs ?? 6_000 }));
+  const { answers } = await sparkLimiter().run(
+    !!o.urgent,
+    () => sdk!.systemOne({ state, questions }, { timeout: o.timeoutMs ?? 6_000, signal: o.signal }),
+    o.signal,
+  );
   return answers;
 }
 

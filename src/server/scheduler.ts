@@ -12,13 +12,20 @@ export const schedulerPass = () => transact({}, (b) => schedulerStep(b));
 
 export function startScheduler(everyMs: number) {
   let running = false;
+  let sweeping = false;
   const timer = setInterval(async () => {
+    // Requests whose AI step never finished (a restart, a dead model call). Model calls take seconds, more when
+    // Spark is down, so the sweep runs beside the passes and never holds up a nudge.
+    if (!sweeping) {
+      sweeping = true;
+      sweepUnderstanding(live ? 30_000 : 5_000)
+        .catch((e) => console.error('understanding sweep failed', e))
+        .finally(() => (sweeping = false));
+    }
     if (running) return;
     running = true;
     try {
       await schedulerPass();
-      // Requests whose AI step never finished (a restart, a dead model call).
-      await sweepUnderstanding(live ? 30_000 : 5_000);
     } catch (e) {
       console.error('scheduler pass failed', e);
     } finally {

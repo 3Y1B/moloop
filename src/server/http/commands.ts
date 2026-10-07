@@ -93,8 +93,9 @@ route('interpret', 'crew', z.object({ text: Text }), async (a, caller) =>
 
 route('commit', 'crew', z.object({ interpretation: Interpretation }), async ({ interpretation: i }, caller) => {
   const taskIds = i.intent.kind === 'reply' ? [i.intent.taskId] : [];
-  // A new report is triaged before the lock is taken: the model takes seconds.
-  const judged = i.intent.kind === 'report' ? await interpreter.triage({ text: i.heard, zoneSlug: null, locationHint: null }) : undefined;
+  // A new report is triaged before the lock is taken: the model takes seconds. A volunteer's report goes ahead of
+  // festival-goers' requests in the model queue.
+  const judged = i.intent.kind === 'report' ? await interpreter.triage({ text: i.heard, zoneSlug: null, locationHint: null, urgent: true }) : undefined;
   return transact({ taskIds }, (b) => {
     if (i.intent.kind === 'reply') mustBeOn(taskOf(b, i.intent.taskId), caller);
     const { confirmation, later } = C.commit(b, caller.id, i, judged?.value);
@@ -174,7 +175,7 @@ async function ownRequest(requestId: string, caller: Caller) {
 
 route('guestRequestHuman', 'any', RequestArgs, async (a, caller) => {
   const { request } = await ownRequest(a.requestId, caller);
-  const judged = request.taskId ? undefined : await interpreter.triage({ text: request.heard, zoneSlug: request.zoneSlug, locationHint: request.locationHint });
+  const judged = request.taskId ? undefined : await interpreter.person({ text: request.heard, zoneSlug: request.zoneSlug, locationHint: request.locationHint });
   await transact({ requestIds: [a.requestId] }, (b, w) => {
     mustOwn(w, a.requestId, caller);
     C.guestRequestHuman(b, a.requestId, judged?.value);

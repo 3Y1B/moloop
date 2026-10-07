@@ -2,7 +2,7 @@ import type { DetailRead, Triage, Understood } from '@/lib/ai';
 import { AGENT, Batch, CommandError, FESTIVALGOER, SCHEDULER, TRIAGE_AGENT, type Actor } from '@/lib/batch';
 import { rankCandidates } from '@/lib/candidates';
 import { REPLY_LABEL } from '@/lib/format';
-import { heuristicDetail, heuristicTriage, heuristicUnderstanding, noteFor, replyIn, TEAM_CATEGORY, teamForPerson } from '@/lib/heuristics';
+import { heuristicDetail, heuristicPerson, heuristicTriage, heuristicUnderstanding, noteFor, replyIn } from '@/lib/heuristics';
 import {
   applyReply, assignOrQueue, handoverArrived, HANDOVER_NAME, isActive, isBusy, isOnTask, needsApproval, nextQueued,
   passUp, POLICY, proposalDue, respondToEscalation, tick, type RespondInput,
@@ -303,13 +303,11 @@ export function understand(b: Batch, requestId: string, ai?: Understood) {
   else createGuestTask(b, r, u);
 }
 
-/** "Talk to a person" on an AI answer: a P3 task for the team that fits (Info if nothing does). */
+/** "Talk to a person" on an AI answer: a task for the team that fits, P3 unless `ai` raised it. */
 export function guestRequestHuman(b: Batch, requestId: string, ai?: Triage) {
   const r = b.requests[requestId];
   if (!r || r.taskId) return;
-  const team = ai?.team ?? teamForPerson(r.heard);
-  const t = ai ?? heuristicTriage(r.heard, r.zoneSlug, r.locationHint);
-  createGuestTask(b, r, { ...t, team, category: ai ? t.category : TEAM_CATEGORY[team], priority: 'P3' });
+  createGuestTask(b, r, ai ?? heuristicPerson(r.heard, r.zoneSlug, r.locationHint));
 }
 
 /** "What's changed?" A note for the volunteer, or a priority bump that alerts the lead. */

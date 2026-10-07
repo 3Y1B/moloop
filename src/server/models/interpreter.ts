@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 import type { DetailRead, Triage, Understood } from '@/lib/ai';
 import {
-  heuristicDetail, heuristicTriage, heuristicUnderstanding, replyIn, soundsCritical, soundsUrgent, TEAM_CATEGORY,
+  heuristicDetail, heuristicPerson, heuristicTriage, heuristicUnderstanding, soundsCritical, soundsUrgent, TEAM_CATEGORY,
 } from '@/lib/heuristics';
-import { activeTaskOf, type Intent } from '@/lib/commands';
+import { activeTaskOf, interpretHeuristic } from '@/lib/commands';
 import { IncidentCategory, ReplyKind, TEAM_SLUGS, type Priority, type Task } from '@/lib/schema';
 import type { Interpretation } from '@/data/repo';
 import { choice, chatModelId, decide, decideModelId, generate, noul, type CallOptions } from './spark';
@@ -33,13 +33,17 @@ export type Run = {
 
 export type Judged<T> = { value: T; run: Run };
 
+type Heard = { text: string; zoneSlug: string | null; locationHint: string | null };
+
 export interface Interpreter {
   /** A festival-goer's words: a routine answer, or a task. */
-  understand(i: { text: string; zoneSlug: string | null; locationHint: string | null }): Promise<Judged<Understood>>;
-  /** Where a report goes and how urgent it is. */
-  triage(i: { text: string; zoneSlug: string | null; locationHint: string | null }): Promise<Judged<Triage>>;
+  understand(i: Heard): Promise<Judged<Understood>>;
+  /** Where a report goes and how urgent it is. `urgent` puts it ahead of festival-goers' requests (a volunteer's report). */
+  triage(i: Heard & { urgent?: boolean }): Promise<Judged<Triage>>;
+  /** "Talk to a person" on an AI answer: the team that fits, P3 unless a safety rule raises it. */
+  person(i: Heard): Promise<Judged<Triage>>;
   /** Added detail on an open task: is it worse? On a closed one: triage the whole account instead. */
-  detail(i: { text: string; before: string; open: boolean; zoneSlug: string | null; locationHint: string | null }): Promise<Judged<DetailRead & { triage?: Triage }>>;
+  detail(i: Heard & { before: string; open: boolean }): Promise<Judged<DetailRead & { triage?: Triage }>>;
   /** Speech or text from a volunteer: a reply to their task, or a new report. */
   interpret(i: { tasks: Task[]; meId: string; text: string }): Promise<Interpretation>;
 }
@@ -55,21 +59,24 @@ const run = (over: Partial<Run> = {}): Run => ({
 });
 
 export class KeywordInterpreter implements Interpreter {
-  async understand(i: { text: string; zoneSlug: string | null; locationHint: string | null }) {
+  async understand(i: Heard) {
     const value = heuristicUnderstanding(i.text, i.zoneSlug, i.locationHint);
     return { value, run: run({ route: value.kind === 'answer' ? 'ai_resolved' : 'escalated_to_triage' }) };
   }
-  async triage(i: { text: string; zoneSlug: string | null; locationHint: string | null }) {
+  async triage(i: Heard) {
     return { value: heuristicTriage(i.text, i.zoneSlug, i.locationHint), run: run() };
   }
-  async detail(i: { text: string; before: string; open: boolean; zoneSlug: string | null; locationHint: string | null }) {
+  async person(i: Heard) {
+    return { value: heuristicPerson(i.text, i.zoneSlug, i.locationHint), run: run() };
+  }
+  async detail(i: Heard & { before: string; open: boolean }) {
     return {
       value: { ...heuristicDetail(i.text), ...(i.open ? {} : { triage: heuristicTriage(`${i.before}. ${i.text}`, i.zoneSlug, i.locationHint) }) },
       run: run(),
     };
   }
   async interpret({ tasks, meId, text }: { tasks: Task[]; meId: string; text: string }) {
-    return interpretWith(tasks, meId, text, () => null);
+    return interpretHeuristic(tasks, meId, text);
   }
 }
 
@@ -123,10 +130,12 @@ ${zs.map((z) => `${z.slug}: ${z.name}`).join('\n')}`;
 
 const dropUnknownZone = (slug: string | null, zs: Zone[]) => (slug && zs.some((z) => z.slug === slug) ? slug : null);
 
-type Heard = { text: string; zoneSlug: string | null; locationHint: string | null };
-
-/** Chat model writes the account; typed questions pick team and priority. In parallel: they don't depend on each other. */
-async function assess(i: Heard, canAnswer: boolean, o: CallOptions) {
+/**
+ * Chat model writes the account; typed questions pick team and priority. In parallel: they don't depend on each other.
+ * `canAnswer`: the chat model may answer a routine question. `answered`: the AI already answered it and the person
+ * asked for a human anyway, so it stays P3 unless a safety rule below raises it.
+ */
+async function assess(i: Heard, { canAnswer = false, answered = false }, o: CallOptions) {
   const t0 = Date.now();
   const zs = await zones();
   const where = [zs.find((z) => z.slug === i.zoneSlug)?.name, i.locationHint].filter(Boolean).join(', ');
@@ -159,6 +168,7 @@ async function assess(i: Heard, canAnswer: boolean, o: CallOptions) {
   } else {
     priority = moreUrgent(priority, 'P2');
   }
+  if (answered && d && priority !== 'P1') priority = 'P3';
   if (soundsCritical(i.text)) priority = 'P1';
   else if (soundsUrgent(i.text)) priority = moreUrgent(priority, 'P2');
 
@@ -193,20 +203,26 @@ const OPTS: CallOptions = { timeoutMs: 12_000 };
 
 export class SparkInterpreter implements Interpreter {
   async understand(i: Heard) {
-    const { triage, answer, run } = await assess(i, true, OPTS);
+    const { triage, answer, run } = await assess(i, { canAnswer: true }, OPTS);
     const value: Understood = answer ? { kind: 'answer', answer, language: triage.language } : { kind: 'task', ...triage };
     return { value, run };
   }
 
-  async triage(i: Heard) {
-    const { triage, run } = await assess(i, false, OPTS);
+  async triage({ urgent, ...i }: Heard & { urgent?: boolean }) {
+    const { triage, run } = await assess(i, {}, { ...OPTS, urgent });
+    return { value: triage, run };
+  }
+
+  async person(i: Heard) {
+    const { triage, run } = await assess(i, { answered: true }, OPTS);
     return { value: triage, run };
   }
 
   async detail(i: Heard & { before: string; open: boolean }) {
     if (!i.open) {
-      const { triage, run } = await assess({ ...i, text: `${i.before}. ${i.text}` }, false, OPTS);
-      return { value: { worse: false, triage }, run };
+      const { triage, run } = await assess({ ...i, text: `${i.before}. ${i.text}` }, {}, OPTS);
+      // The task may reopen before this lands; then `worse` is what counts, so keywords still read it.
+      return { value: { worse: heuristicDetail(i.text).worse, triage }, run };
     }
     const t0 = Date.now();
     let worse = heuristicDetail(i.text).worse;
@@ -224,53 +240,36 @@ export class SparkInterpreter implements Interpreter {
     return { value: { worse }, run: run({ confidence: p, models: { classifier: decideModelId() }, latencyMs: Date.now() - t0, error }) };
   }
 
-  async interpret({ tasks, meId, text }: { tasks: Task[]; meId: string; text: string }) {
+  /**
+   * A reply to the task you're on, or a new report. When the classifier is down, slow or under 0.6 sure, keywords
+   * decide, same as without a model. A helper can only finish. Long utterances are reports even if they say "done":
+   * 12 words here, 8 for keywords, which match "done" inside any sentence.
+   */
+  async interpret({ tasks, meId, text }: { tasks: Task[]; meId: string; text: string }): Promise<Interpretation> {
     const t0 = Date.now();
+    const heard = text.trim();
     const active = activeTaskOf(tasks, meId);
     // No task, nothing to reply to: skip the model.
-    if (!active) return interpretWith(tasks, meId, text, () => null);
+    if (!active) return interpretHeuristic(tasks, meId, text);
+    const helping = active.assigneeId !== meId;
     const ms = Number(process.env.AI_INTERPRET_MS ?? 1_500);
-    return interpretWith(tasks, meId, text, async () => {
-      try {
-        const { kind } = await deadline(decide({
-          utterance: text.trim(),
-          current_task: { title: active.title, summary: active.summary, volunteer_is: active.assigneeId === meId ? 'the owner' : 'a helper' },
-        }, { kind: choice('What is the volunteer doing with this message?', REPLIES) }, { urgent: true, timeoutMs: ms }), ms);
-        console.log(`interpret ${kind.choice} (${kind.confidence.toFixed(2)}) ${Date.now() - t0} ms`);
-        return kind.confidence >= 0.6 ? kind.choice : null;
-      } catch (e) {
-        console.warn(`interpret fell back to keywords after ${Date.now() - t0} ms: ${(e as Error).message}`);
-        return undefined;
-      }
-    });
+    try {
+      // The signal bounds the whole call, queue wait and retries included, and frees its Spark slot when it fires.
+      const { kind } = await decide({
+        utterance: heard,
+        current_task: { title: active.title, summary: active.summary, volunteer_is: helping ? 'a helper' : 'the owner' },
+      }, { kind: choice('What is the volunteer doing with this message?', REPLIES) }, { urgent: true, timeoutMs: ms, signal: AbortSignal.timeout(ms) });
+      console.log(`interpret ${kind.choice} (${kind.confidence.toFixed(2)}) ${Date.now() - t0} ms`);
+      if (kind.confidence < 0.6) return interpretHeuristic(tasks, meId, text);
+      const reply = ReplyKind.safeParse(kind.choice);
+      const short = heard.split(/\s+/).length <= 12;
+      if (!reply.success || !short || (helping && reply.data !== 'done')) return { heard, intent: { kind: 'report' } };
+      return { heard, intent: { kind: 'reply', taskId: active.id, reply: reply.data } };
+    } catch (e) {
+      console.warn(`interpret fell back to keywords after ${Date.now() - t0} ms: ${(e as Error).message}`);
+      return interpretHeuristic(tasks, meId, text);
+    }
   }
-}
-
-const deadline = <T>(p: Promise<T>, ms: number) =>
-  Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`no answer in ${ms} ms`)), ms))]);
-
-/**
- * A reply to the task you're on, or a new report. `ask` returns the model's pick (a reply kind or "new_report"),
- * null when it isn't sure (a report: the safe reading), or undefined when it couldn't answer (keywords decide).
- * Long utterances are reports even if they contain "done". A helper can only finish.
- */
-async function interpretWith(
-  tasks: Task[], meId: string, text: string, ask: () => Promise<string | null | undefined> | null,
-): Promise<Interpretation> {
-  const heard = text.trim();
-  const active = activeTaskOf(tasks, meId);
-  const report: Intent = { kind: 'report' };
-  if (!active) return { heard, intent: report };
-  const helping = active.assigneeId !== meId;
-  const picked = (await ask()) ?? undefined;
-  if (picked === undefined) {
-    const kind = replyIn(heard, helping);
-    return { heard, intent: kind ? { kind: 'reply', taskId: active.id, reply: kind } : report };
-  }
-  const parsed = ReplyKind.safeParse(picked);
-  const short = heard.split(/\s+/).length <= 12;
-  if (!parsed.success || !short || (helping && parsed.data !== 'done')) return { heard, intent: report };
-  return { heard, intent: { kind: 'reply', taskId: active.id, reply: parsed.data } };
 }
 
 /**

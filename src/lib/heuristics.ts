@@ -107,4 +107,10 @@ export function heuristicUnderstanding(text: string, zoneSlug: string | null = n
   return answer ? { kind: 'answer', answer, language: 'en' } : { kind: 'task', ...heuristicTriage(text, zoneSlug, locationHint) };
 }
 
+/** "Talk to a person" on an AI answer: a P3 task for the team that fits (Info if nothing does). */
+export function heuristicPerson(text: string, zoneSlug: string | null = null, locationHint: string | null = null): Triage {
+  const team = teamForPerson(text);
+  return { ...heuristicTriage(text, zoneSlug, locationHint), team, category: TEAM_CATEGORY[team], priority: 'P3' };
+}
+
 export const heuristicDetail = (text: string): DetailRead => ({ worse: soundsWorse(text) });
