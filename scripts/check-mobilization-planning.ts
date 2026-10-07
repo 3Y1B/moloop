@@ -10,7 +10,7 @@ import {
 } from "../src/lib/mobilization-contracts";
 import type { Task, Volunteer } from "../src/lib/schema";
 import { inputAvailability, missingRequiredInputs } from "../src/lib/mobilization-inputs";
-import { buildEvidence, MOBILIZATION_OUTPUT_TOKEN_BUDGET } from "../src/server/predict/simulation";
+import { buildEvidence, MOBILIZATION_OUTPUT_TOKEN_BUDGET } from "../src/server/predict/plan";
 import { groundMobilizationPlans, validateMobilizationOutput, validateScenario } from "../src/server/predict/validate";
 
 const assert = {
@@ -58,14 +58,14 @@ const action = (key: string, zoneSlug: string) => ({
   teamSlug: "first-aid" as const, zoneSlug, peopleNeeded: 2,
   reason: "Protect people while the possible contribution of heat is assessed",
   requiredSkills: ["first-aid-cert"], completionCriteria: "Affected people assessed and escalation recorded",
-  addressesFindingIds: ["heat-risk"], evidenceRefs: ["demo-weather", "demo-incident-0"], playbookRefs: [],
+  addressesFindingIds: ["heat-risk"], evidenceRefs: ["weather-latest", "reported-0"], playbookRefs: [],
 });
 const output: MobilizationOutput = {
   decision: "propose",
   assessment: { summary: "Coordinated assessment is warranted", severity: "concerning",
     findings: [{ id: "heat-risk", risk: "People are feeling faint in high temperatures",
       possibleCause: "Heat may contribute", uncertainty: "Symptoms do not establish a diagnosis",
-      evidenceRefs: ["demo-weather", "demo-incident-0"] }], missingInputs: [], playbookAssessments: [] },
+      evidenceRefs: ["weather-latest", "reported-0"] }], missingInputs: [], playbookAssessments: [] },
   mobilizations: [{ title: "Heat response", priority: "P2", rationale: "Assess and protect people in separate locations",
     tasks: [action("assess-water", "water-2"), action("assess-stage", "lawn-stage")], unmetRequirements: [] }],
 };
@@ -121,7 +121,7 @@ check("cited published playbook must actions are covered or explicitly unmet", (
   const value = copy(output);
   value.mobilizations[0].tasks[0].playbookRefs.push({ slug: "heat-response", version: 2, actionId: "assess" });
   value.assessment.playbookAssessments.push({ slug: "heat-response", version: 2, applicability: "applicable",
-    reason: "Heat symptoms are reported", evidenceRefs: ["demo-incident-0"], missingInputs: [] });
+    reason: "Heat symptoms are reported", evidenceRefs: ["reported-0"], missingInputs: [] });
   const withBook = { ...snapshot, playbooks: [book] };
   assert.ok(errorsFor(value, withBook).some((error) => error.includes("omits required playbook action")));
   value.mobilizations[0].unmetRequirements.push({ playbookRef: { slug: "heat-response", version: 2, actionId: "recheck" }, reason: "Needs later specialist review" });
@@ -134,7 +134,7 @@ check("every supplied published SOP gets an auditable applicability assessment",
   const value = copy(output);
   const review: MobilizationOutput["assessment"]["playbookAssessments"][number] = {
     slug: "heat-response", version: 2, applicability: "not_applicable", reason: "Test exclusion reason",
-    evidenceRefs: ["demo-weather"], missingInputs: [],
+    evidenceRefs: ["weather-latest"], missingInputs: [],
   };
   value.assessment.playbookAssessments = [review];
   assert.deepEqual(errorsFor(value, withBook), []);
@@ -166,7 +166,7 @@ check("demo overrides do not duplicate the DB schedule; future source incidents 
   const future = { id: "future", report_id: "report-future", title: "Future report", summary: "Not known yet",
     category: "heat" as const, status: "open" as const, zone_slug: "water-2", created_at: "2026-10-07T04:01:00Z" };
   const evidence = buildEvidence(input, context, [future], at);
-  assert.ok(evidence.some((entry) => entry.ref === "demo-set-0"));
+  assert.ok(evidence.some((entry) => entry.ref === "set-0"));
   assert.ok(!evidence.some((entry) => entry.ref === "timetable-set-baseline"));
   assert.ok(!evidence.some((entry) => entry.ref === "incident-future"));
 });

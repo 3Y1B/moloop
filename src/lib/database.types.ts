@@ -365,58 +365,67 @@ export type Database = {
       };
       mobilization_runs: {
         Row: {
+          causes: Json;
           created_at: string;
           error: string | null;
           id: string;
           input_snapshot: Json | null;
           mobilization_ids: string[];
           model: string | null;
+          playbook: string | null;
           prompt_version: string;
           raw_responses: Json;
           request_id: string;
-          requested_by: string;
+          requested_by: string | null;
           result: Json | null;
           status: string;
           system_prompt: string;
           updated_at: string;
           user_prompt: string;
           validation_errors: Json;
+          zone_slug: string | null;
         };
         Insert: {
+          causes?: Json;
           created_at?: string;
           error?: string | null;
           id?: string;
           input_snapshot?: Json | null;
           mobilization_ids?: string[];
           model?: string | null;
+          playbook?: string | null;
           prompt_version: string;
           raw_responses?: Json;
           request_id: string;
-          requested_by: string;
+          requested_by?: string | null;
           result?: Json | null;
           status: string;
           system_prompt?: string;
           updated_at?: string;
           user_prompt?: string;
           validation_errors?: Json;
+          zone_slug?: string | null;
         };
         Update: {
+          causes?: Json;
           created_at?: string;
           error?: string | null;
           id?: string;
           input_snapshot?: Json | null;
           mobilization_ids?: string[];
           model?: string | null;
+          playbook?: string | null;
           prompt_version?: string;
           raw_responses?: Json;
           request_id?: string;
-          requested_by?: string;
+          requested_by?: string | null;
           result?: Json | null;
           status?: string;
           system_prompt?: string;
           updated_at?: string;
           user_prompt?: string;
           validation_errors?: Json;
+          zone_slug?: string | null;
         };
         Relationships: [
           {
@@ -431,6 +440,7 @@ export type Database = {
       mobilizations: {
         Row: {
           analysis_run_id: string | null;
+          causes: Json;
           created_at: string;
           decided_at: string | null;
           decided_by: string | null;
@@ -442,11 +452,13 @@ export type Database = {
           status: Database["public"]["Enums"]["mobilization_status"];
           steps: Json;
           title: string;
+          trigger_playbook: string | null;
           urgency: Database["public"]["Enums"]["priority"];
           zone_id: string | null;
         };
         Insert: {
           analysis_run_id?: string | null;
+          causes?: Json;
           created_at?: string;
           decided_at?: string | null;
           decided_by?: string | null;
@@ -458,11 +470,13 @@ export type Database = {
           status?: Database["public"]["Enums"]["mobilization_status"];
           steps: Json;
           title: string;
+          trigger_playbook?: string | null;
           urgency: Database["public"]["Enums"]["priority"];
           zone_id?: string | null;
         };
         Update: {
           analysis_run_id?: string | null;
+          causes?: Json;
           created_at?: string;
           decided_at?: string | null;
           decided_by?: string | null;
@@ -474,6 +488,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["mobilization_status"];
           steps?: Json;
           title?: string;
+          trigger_playbook?: string | null;
           urgency?: Database["public"]["Enums"]["priority"];
           zone_id?: string | null;
         };
@@ -653,6 +668,44 @@ export type Database = {
           },
         ];
       };
+      readings: {
+        Row: {
+          created_at: string;
+          id: string;
+          key: string;
+          observed_at: string;
+          source: string;
+          value: Json;
+          zone_id: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          key: string;
+          observed_at?: string;
+          source: string;
+          value: Json;
+          zone_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          key?: string;
+          observed_at?: string;
+          source?: string;
+          value?: Json;
+          zone_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "readings_zone_id_fkey";
+            columns: ["zone_id"];
+            isOneToOne: false;
+            referencedRelation: "zones";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       reports: {
         Row: {
           channel: Database["public"]["Enums"]["report_channel"];
@@ -663,6 +716,8 @@ export type Database = {
           lng: number | null;
           location_hint: string | null;
           media_url: string | null;
+          playbook: string | null;
+          playbook_sure: boolean | null;
           raw_text: string | null;
           received_at: string;
           reporter_contact: string | null;
@@ -682,6 +737,8 @@ export type Database = {
           lng?: number | null;
           location_hint?: string | null;
           media_url?: string | null;
+          playbook?: string | null;
+          playbook_sure?: boolean | null;
           raw_text?: string | null;
           received_at?: string;
           reporter_contact?: string | null;
@@ -701,6 +758,8 @@ export type Database = {
           lng?: number | null;
           location_hint?: string | null;
           media_url?: string | null;
+          playbook?: string | null;
+          playbook_sure?: boolean | null;
           raw_text?: string | null;
           received_at?: string;
           reporter_contact?: string | null;
@@ -1227,6 +1286,30 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      trigger_checks: {
+        Row: {
+          checked_at: string;
+          id: string;
+          playbook: string | null;
+          task_ids: string[];
+          zone_slug: string;
+        };
+        Insert: {
+          checked_at?: string;
+          id?: string;
+          playbook?: string | null;
+          task_ids: string[];
+          zone_slug: string;
+        };
+        Update: {
+          checked_at?: string;
+          id?: string;
+          playbook?: string | null;
+          task_ids?: string[];
+          zone_slug?: string;
+        };
+        Relationships: [];
       };
       volunteer_skills: {
         Row: {

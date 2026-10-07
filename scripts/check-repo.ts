@@ -13,7 +13,6 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { CommandError, SupabaseRepo } from '../src/data/supabase-repo';
 import type { Snapshot } from '../src/data/repo';
 import type { Database } from '../src/lib/database.types';
-import type { SimulationRunResult } from '../src/lib/mobilization-contracts';
 
 const url = process.env.SUPABASE_URL!;
 const secret = process.env.SUPABASE_SECRET_KEY!;
@@ -34,20 +33,6 @@ function expect(label: string, ok: boolean, detail?: unknown) {
 type Recorded = { method: string; auth: string | null; body: Record<string, unknown> };
 const recorded: Recorded[] = [];
 let requestIdForAsk = '';
-// Transport fixture only: never creates a database run or Mobilization.
-const planningRun: SimulationRunResult = {
-  runId: '00000000-0000-4000-8000-000000000002',
-  status: 'configuration_required',
-  decision: null,
-  output: null,
-  mobilizationIds: [],
-  validationErrors: [],
-  error: 'Test model not configured',
-  snapshot: null,
-  promptVersion: 'mobilization.v2',
-  model: null,
-  createdAt: '2026-10-07T00:00:00.000Z',
-};
 function answer(method: string, body: Record<string, unknown>): [number, unknown] {
   if (body.taskId === 'conflict') return [409, { error: 'task_changed' }];
   if (method === 'setDuty' && body.duty === 'off_shift') return [502, { error: 'pipeline_failed' }];
@@ -60,8 +45,6 @@ function answer(method: string, body: Record<string, unknown>): [number, unknown
       return [200, { requestId: requestIdForAsk }];
     case 'guestAddDetail':
       return [200, { escalated: true }];
-    case 'getMobilizationRun':
-      return [200, planningRun];
     default:
       return [200, {}];
   }
@@ -561,9 +544,6 @@ try {
   await priyaRepo.guestReply(T.tom, 'on my way');
   await priyaRepo.setDuty('on_break');
   // Stub transport checks, not lead authorization: real Mo-only guards are covered by API tests.
-  const planningResults = {
-    recoveredRun: await leadRepo.mobilizations.getRun(planningRun.runId),
-  };
   await leadRepo.mobilizations.approve('transport-mobilization');
   await leadRepo.mobilizations.reject('transport-mobilization');
   await leadRepo.mobilizations.standDown('transport-mobilization', 'stood_down');
@@ -592,7 +572,6 @@ try {
     ['guestReopen', gToken, { requestId: request.id }],
     ['guestReply', pToken, { taskId: T.tom, text: 'on my way' }],
     ['setDuty', pToken, { duty: 'on_break' }],
-    ['getMobilizationRun', jToken, { runId: planningRun.runId }],
     ['approveMobilization', jToken, { mobilizationId: 'transport-mobilization' }],
     ['rejectMobilization', jToken, { mobilizationId: 'transport-mobilization' }],
     ['standDown', jToken, { mobilizationId: 'transport-mobilization', outcome: 'stood_down' }],
@@ -615,12 +594,6 @@ try {
       results.guestAddDetail.escalated === true,
     results,
   );
-  expect(
-    'planning transport: a saved analysis comes back typed',
-    planningResults.recoveredRun.runId === planningRun.runId &&
-      planningResults.recoveredRun.status === 'configuration_required',
-  );
-
   // Optimistic: markRead and setDuty show at once (the stub doesn't write, so this is the local change).
   expect(
     'optimistic: markRead flips read straight away',

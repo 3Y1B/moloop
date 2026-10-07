@@ -70,6 +70,13 @@ All task keys must be unique ACROSS all plans. No numeric aliases, defaults or i
 Do not drop findings, contextual gaps, uncertainty, operational instructions or completion criteria
 to shorten output. Canonical semantic and full-retrieval checks still run after exact expansion.`;
 
+/** The same contract when the server read the one triggered SOP and put it in the prompt (no get_playbooks call). */
+export const TRIGGERED_SUPPLEMENT = promptSupplement
+  .replace("The tool's requiredInputChecks lists each selected playbookKey", 'retrievedPlaybooks.requiredInputChecks lists the playbookKey')
+  .replace('EVERY action in the SOPs actually read by get_playbooks', 'EVERY action in the SOP in retrievedPlaybooks');
+if (TRIGGERED_SUPPLEMENT.includes('get_playbooks') || TRIGGERED_SUPPLEMENT.includes("The tool's"))
+  throw new Error('Triggered prompt supplement still refers to the retrieval tool');
+
 const bookKey = (slug: string, version: number) => `${slug}:${version}`;
 const actionKey = (ref: PlaybookActionRef) => `${bookKey(ref.slug, ref.version)}:${ref.actionId}`;
 const unique = (values: readonly string[], where: string) => {
@@ -84,6 +91,7 @@ const unique = (values: readonly string[], where: string) => {
 export function createActionMobilizationOutput(
   snapshot: PlanningSnapshot,
   getSelectedKeys: () => readonly string[],
+  supplement = promptSupplement,
 ): ActionMobilizationOutputContract {
   const captured = structuredClone(snapshot);
   const compact = createCompactMobilizationOutput(captured);
@@ -128,7 +136,7 @@ export function createActionMobilizationOutput(
   };
 
   return {
-    schema: resolveSchema, promptSupplement,
+    schema: resolveSchema, promptSupplement: supplement,
     expand(output) {
       const wire = resolveSchema().parse(output);
       const { actionCoverage, ...value } = wire;

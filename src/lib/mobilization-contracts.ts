@@ -5,6 +5,15 @@ import { ObservationSchema } from "./mobilization-observations";
 export { ObservationSchema, type MobilizationObservation } from "./mobilization-observations";
 
 const Text = z.string().trim().min(1).max(2000);
+
+/** The festival's playbooks (src/server/playbooks/festival.ts). Intake names one of these, or none. */
+export const PLAYBOOK_SLUGS = [
+  "severe-weather-main-stage",
+  "crowd-crush-main-stage",
+  "extreme-heat-water-shortage",
+  "gate-breach-uncontrolled-ingress",
+] as const;
+export type PlaybookSlug = (typeof PLAYBOOK_SLUGS)[number];
 const Key = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/);
 export const PLAYBOOK_INPUTS = [
   "weather.temperatureC", "weather.trendCPerHour", "weather.condition", "weather.warning",
@@ -43,11 +52,12 @@ export type ManagedPlaybook = {
 
 export const SimulationInputSchema = z.object({
   requestId: z.string().min(16).max(128),
+  // From the latest readings (src/server/predict/plan.ts). Null when nothing has measured it.
   weather: z.object({
-    temperatureC: z.number().min(-20).max(60),
+    temperatureC: z.number().min(-20).max(60).nullable(),
     trendCPerHour: z.number().min(-20).max(20).nullable(),
-    condition: z.enum(["clear", "rain", "storm"]),
-    warning: z.enum(["none", "heat", "storm"]),
+    condition: z.enum(["clear", "rain", "storm"]).nullable(),
+    warning: z.enum(["none", "heat", "storm"]).nullable(),
     warningInMinutes: z.number().int().min(0).max(1440).nullable(),
   }),
   upcomingSets: z.array(z.object({

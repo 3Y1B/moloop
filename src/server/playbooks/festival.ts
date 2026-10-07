@@ -1,6 +1,6 @@
 import type { z } from "zod";
 
-import type { PlaybookContentSchema } from "@/lib/mobilization-contracts";
+import type { PlaybookContentSchema, PlaybookSlug } from "@/lib/mobilization-contracts";
 
 /** The festival's playbooks. The planner reads these; change them here, in code. */
 export const FESTIVAL_PLAYBOOKS: z.input<typeof PlaybookContentSchema>[] = [
@@ -478,3 +478,11 @@ export const FESTIVAL_PLAYBOOKS: z.input<typeof PlaybookContentSchema>[] = [
     source: "festival.ts"
   }
 ];
+
+/** What Mo reads as a plan's title, before the place: "Severe storm, Oval Stage". */
+export const PLAYBOOK_NAMES: Record<PlaybookSlug, string> = {
+  "severe-weather-main-stage": "Severe storm",
+  "crowd-crush-main-stage": "Crowd surge",
+  "extreme-heat-water-shortage": "Extreme heat",
+  "gate-breach-uncontrolled-ingress": "Gate breach",
+};

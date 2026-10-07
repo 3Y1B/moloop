@@ -1,7 +1,6 @@
 import type { RespondInput } from '@/lib/lifecycle';
 import type { Fix } from '@/lib/presence';
 import type { RespondCommand } from '@/lib/ai';
-import type { SimulationRunResult } from '@/lib/mobilization-contracts';
 import type { Summary, SummaryScope } from '@/lib/summary';
 import type {
   Duty,
@@ -156,8 +155,7 @@ export interface MobilizationControls {
   approve(mobilizationId: string, review?: MobilizationReview): Promise<void>;
   reject(mobilizationId: string): Promise<void>;
   standDown(mobilizationId: string, outcome: 'stood_down' | 'cancelled'): Promise<void>;
-  getRun(id: string): Promise<SimulationRunResult>;
 }
 
-/** An explicit Mo review of the immutable analysis, including any known execution gaps. */
-export type MobilizationReview = { reviewedRunId?: string; acknowledgeGaps?: boolean };
+/** The run Mo reviewed: approval checks the plan still matches it. */
+export type MobilizationReview = { reviewedRunId?: string };

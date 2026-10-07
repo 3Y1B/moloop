@@ -351,6 +351,8 @@ async function assess(i: Heard, zs: Zone[], o: CallOptions, gate?: Promise<Class
     speakerNeeded: needsSpeaker(agent?.speaker_needed) ?? needsSpeaker(said),
     // Null when the agent didn't say: the picker falls back to the category.
     firstAidNeeded: typeof agent?.first_aid_needed === 'boolean' ? agent.first_aid_needed : null,
+    playbook: agent?.playbook && agent.playbook !== 'none' ? agent.playbook : null,
+    playbookSure: !!agent?.playbook && agent.playbook !== 'none' && agent.playbook_sure === true,
     // Without the agent nothing checked whether a lead or Mo must decide: a lead does.
     escalate: aboveSender(higher(asked, agent || answer ? null : none.escalate), i.from, team),
   };

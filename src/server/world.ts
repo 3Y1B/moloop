@@ -364,15 +364,16 @@ export async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch,
 
   for (const id of d.mobilizations) {
     const m = b.mobilizations[id];
-    const row = {
+    const { causes, ...row } = {
       ...mobilizationRow(m, ids),
       steps: json(m.steps),
       evidence: m.evidence == null ? null : json(m.evidence),
     };
+    // After the insert, causes belong to the triggers (src/server/triggers.ts), which add to them outside this lock.
     if (id in world.mobilizations) {
       await tx`update mobilizations set ${tx(row)} where id = ${id}`;
     } else {
-      await tx`insert into mobilizations ${tx({ id, ...row })}`;
+      await tx`insert into mobilizations ${tx({ id, ...row, causes: json(causes) })}`;
     }
   }
 

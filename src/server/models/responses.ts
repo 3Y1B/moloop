@@ -136,6 +136,34 @@ export class ReadToolResponses {
     return resultValue;
   }
 
+  /**
+   * One strict response, no tool: for a planner whose source material (one playbook, already read and audited by the
+   * caller) is in the prompt. Half the round trips of `generate`.
+   */
+  async generateDirect<T extends z.ZodType>(
+    { system, prompt, schema }: { system: string; prompt: string; schema: T },
+    options: ResponsesOptions,
+  ): Promise<z.infer<T>> {
+    if (typeof options.onResponse !== 'function') throw new ModelAuditError();
+    const tier = validatedServiceTier(options.serviceTier);
+    const diagnostics: Diagnostics = { callback: options.onDiagnostic, startedAt: Date.now(), request: 1, attempt: 1,
+      requestedServiceTier: tier };
+    const final = await this.complete({
+      model: this.configuration.model,
+      reasoning: { effort: options.reasoningEffort },
+      store: false,
+      truncation: 'disabled',
+      ...(tier == null ? {} : { service_tier: tier }),
+      input: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+      max_output_tokens: boundedTokens(options.maxTokens, 12_000),
+      text: { verbosity: 'low', format: { type: 'json_schema', name: 'output', strict: true, schema: jsonSchemaOf(schema) } },
+    }, options, diagnostics);
+    const resultValue = parseFinal(final, schema);
+    options.signal?.throwIfAborted();
+    report(diagnostics, { stage: 'complete' });
+    return resultValue;
+  }
+
   private async complete(body: Record<string, unknown>, options: ResponsesOptions, diagnostics: Diagnostics): Promise<ResponseEnvelope> {
     options.signal?.throwIfAborted();
     const response = await postWithRetry(this.http, '/responses', JSON.stringify(body), options.signal, {

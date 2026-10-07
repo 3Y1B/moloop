@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { PLAYBOOK_SLUGS } from '@/lib/mobilization-contracts';
 import { IncidentCategory, TEAM_SLUGS } from '@/lib/schema';
 import type { Tool } from '.';
 import { venueFacts, type Zone } from './venue';
@@ -51,6 +52,14 @@ const Incident = {
     + 'unconscious, can\'t stand, heavily intoxicated (very drunk or high, even if not hurt), overdosed or spiked, '
     + 'trouble breathing or chest pain, bleeding, heat illness, a seizure. False when nobody is hurt or ill: a panic '
     + 'attack alone, a lost child who is unhurt, crowding, a stall, security alone, noise, facilities'),
+  playbook: z.enum([...PLAYBOOK_SLUGS, 'none']).describe('The festival emergency this is part of, if any. '
+    + `${PLAYBOOK_SLUGS[0]}: a storm, lightning or damaging wind at a stage or open-air area. `
+    + `${PLAYBOOK_SLUGS[1]}: people being crushed, pushed against a barrier, falling in a crowd, a crowd surge. `
+    + `${PLAYBOOK_SLUGS[2]}: several people affected by heat, or drinking water running out in the heat. `
+    + `${PLAYBOOK_SLUGS[3]}: people forcing or rushing in through a gate or fence, a failed entry barrier or scanners. `
+    + 'none for anything one or two volunteers can handle: one person fainting, a single fight, a spill, a question'),
+  playbook_sure: z.boolean().describe('True only when the message plainly says that emergency is happening now, to '
+    + 'many people. False for a worry, a forecast, a rumour, something unclear, or when playbook is none'),
 };
 
 export const CreateTaskArgs = z.object(Incident);

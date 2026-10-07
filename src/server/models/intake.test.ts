@@ -36,6 +36,8 @@ const called = (name: 'create_task' | 'escalate', over: Record<string, unknown> 
                   language: 'en',
                   speaker_needed: null,
                   first_aid_needed: false,
+                  playbook: 'none',
+                  playbook_sure: false,
                   english: 'Stop the set at the Oval',
                   ...(name === 'escalate' ? { level: 'lead', reason: 'Needs a decision' } : {}),
                   ...over,
@@ -206,6 +208,22 @@ describe('intake: the agent picks create_task or escalate, code has the last wor
     expect(drunk.value.firstAidNeeded).toBe(true);
     expect(noise.value.firstAidNeeded).toBe(false);
     expect(failed.value.firstAidNeeded).toBeNull();
+  });
+
+  it('keeps the festival playbook a report reads as, null for none', async () => {
+    queue.chat.push(
+      called('create_task', { playbook: 'crowd-crush-main-stage', playbook_sure: true, team: 'crowd', priority: 'P1' }),
+      called('create_task'),
+    );
+    queue.decisions.push(decided('crowd', 'P1', 0.1), decided('ops', 'P3', 0.1));
+
+    const crush = await ai.triage(heard('kids getting crushed at the barrier at the oval'));
+    const spill = await ai.triage(heard('spill by the bar'));
+
+    expect(crush.value.playbook).toBe('crowd-crush-main-stage');
+    expect(crush.value.playbookSure).toBe(true);
+    expect(spill.value.playbook).toBeNull();
+    expect(spill.value.playbookSure).toBe(false);
   });
 
   it('sends it to a lead when the agent fails, with the classifier’s team and priority', async () => {

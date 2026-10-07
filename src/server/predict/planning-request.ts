@@ -1,8 +1,12 @@
 import type { MobilizationOutput, PlanningSnapshot } from '@/lib/mobilization-contracts';
-import { createActionMobilizationOutput } from './action-output';
+import { createActionMobilizationOutput, TRIGGERED_SUPPLEMENT } from './action-output';
 import { focusedPlanningInput } from './focused-input';
 import { createPlaybookRetrieval } from './playbook-retrieval';
-import { MOBILIZATION_TOOL_PROMPT_VERSION, MOBILIZATION_TOOL_SYSTEM_PROMPT } from './prompts/mobilization-tools';
+import {
+  MOBILIZATION_TOOL_PROMPT_VERSION,
+  MOBILIZATION_TOOL_SYSTEM_PROMPT,
+  TRIGGERED_SYSTEM_PROMPT,
+} from './prompts/mobilization-tools';
 import { validateMobilizationOutput } from './validate';
 
 /** One immutable request contract, shared by transport and persisted audit; no DB mutations. */
@@ -40,5 +44,39 @@ export function createMobilizationPlanningRequest(snapshot: PlanningSnapshot) {
       return [...retrieval.validate(output),
         ...validateMobilizationOutput(output, captured, captured.skills.map((skill) => skill.slug))];
     },
+  };
+}
+
+/** Recorded on a triggered run from the moment it's saved (src/server/triggers.ts). */
+export const TRIGGERED_PROMPT_VERSION = `${MOBILIZATION_TOOL_PROMPT_VERSION}.triggered.v1`;
+
+/** What set a triggered run off, in the words and evidence refs the model reads. */
+export type TriggerBrief = { playbookKey: string; zoneSlug: string | null; why: string[]; evidenceRefs: string[] };
+
+/**
+ * A run a trigger started (src/server/triggers.ts): the snapshot holds the one playbook it chose, read here in full
+ * and handed to the model in the prompt, so there's one model call and no retrieval round. `audit` records the read
+ * before anything is sent.
+ */
+export async function createTriggeredPlanningRequest(
+  snapshot: PlanningSnapshot,
+  trigger: TriggerBrief,
+  audit: (read: unknown) => Promise<void>,
+) {
+  const captured = structuredClone(snapshot);
+  const retrieval = createPlaybookRetrieval(captured);
+  const read = retrieval.read({ playbookKeys: [trigger.playbookKey] });
+  await audit(read);
+  const contract = createActionMobilizationOutput(captured, () => [trigger.playbookKey], TRIGGERED_SUPPLEMENT);
+  return {
+    promptVersion: TRIGGERED_PROMPT_VERSION,
+    system: `${TRIGGERED_SYSTEM_PROMPT}\n${contract.promptSupplement}`,
+    prompt: JSON.stringify({ ...focusedPlanningInput(captured), trigger, retrievedPlaybooks: read }),
+    schema: contract.schema(),
+    expand: (wire: unknown) => contract.expand(wire),
+    validate: (output: MobilizationOutput) => [
+      ...retrieval.validate(output),
+      ...validateMobilizationOutput(output, captured, captured.skills.map((skill) => skill.slug)),
+    ],
   };
 }

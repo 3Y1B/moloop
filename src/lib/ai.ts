@@ -29,6 +29,10 @@ export type Triage = {
   english?: string;
   /** Set when the intake agent escalated instead of creating a task for the allocator. */
   escalate: EscalateTo | null;
+  /** The festival playbook this reads as (Reporter.playbook), else null or missing. */
+  playbook?: string | null;
+  /** The agent is sure of `playbook` (Reporter.playbookSure). */
+  playbookSure?: boolean;
 };
 
 /** A festival-goer's request: a routine question the AI answers itself, or a task for people. */

@@ -262,12 +262,11 @@ describe('compactPlanningInput', () => {
       expect(projected.inputAvailability[key]).toMatchObject({ available: false, completeness: 'unknown' });
   });
 
-  it.each(['value', 'timestamp', 'source', 'kind'] as const)('keeps scenario facts when the evidence %s differs', (reason) => {
+  it.each(['value', 'timestamp', 'kind'] as const)('keeps scenario facts when the evidence %s differs', (reason) => {
     const input = snapshot();
     const evidence = input.evidence.find((fact) => fact.ref === 'demo-weather')!;
     if (reason === 'value') evidence.value.temperatureC = 40;
     if (reason === 'timestamp') evidence.observedAt = atMinutesAgo(1);
-    if (reason === 'source') evidence.source = 'database';
     if (reason === 'kind') evidence.kind = 'weather_forecast';
     expect(compactPlanningInput(input).scenario?.weather).toEqual(input.scenario.weather);
   });

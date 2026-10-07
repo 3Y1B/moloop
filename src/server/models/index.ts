@@ -180,6 +180,44 @@ export function generateWithReadTool<T extends z.ZodType, A extends z.ZodType>(
   return withFallback(null, attempts[0] ?? null, limits(LIMITS.chat, o));
 }
 
+/** Mobilization's planner with its one playbook already in the prompt: one audited strict response, no tool round. */
+export function generatePlan<T extends z.ZodType>(
+  args: { system: string; prompt: string; schema: T },
+  o: CallOptions,
+): Promise<z.infer<T>> {
+  if (!o.onAttempt || !o.onResponse) return Promise.reject(new ModelAuditError());
+  let configured: ReturnType<typeof mobilizationConfiguration>;
+  try {
+    configured = mobilizationConfiguration();
+  } catch (error) {
+    return Promise.reject(error);
+  }
+  const { readiness, providers } = configured;
+  if (!readiness.ready)
+    return Promise.reject(
+      new MobilizationModelConfigurationError('provider', `Model configuration required: ${readiness.missing.join('; ')}`),
+    );
+  const attempts = providers.map((provider): Attempt<z.infer<T>> => {
+    const identity: ModelIdentity = { provider: provider.provider, model: provider.model };
+    const responses = new ReadToolResponses(provider);
+    const call = async (signal: AbortSignal) => {
+      await audited(() => o.onAttempt!(identity));
+      const result = await responses.generateDirect(args, {
+        signal,
+        maxTokens: o.maxTokens,
+        reasoningEffort: o.reasoningEffort ?? provider.reasoningEffort,
+        serviceTier: provider.serviceTier,
+        onResponse: (response) => audited(() => o.onResponse!(response, identity)),
+        onDiagnostic: o.onDiagnostic && ((diagnostic) => o.onDiagnostic!(diagnostic, identity)),
+      });
+      if (signal.aborted) throw signal.reason;
+      return result;
+    };
+    return { id: `${identity.provider}:${identity.model}`, call };
+  });
+  return withFallback(null, attempts[0] ?? null, limits(LIMITS.chat, o));
+}
+
 /** The model calls one of `tools` (arguments validated), or replies in plain text. */
 export function callTool(
   args: { system: string; prompt: string; tools: Tool[] },

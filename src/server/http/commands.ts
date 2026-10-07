@@ -6,7 +6,6 @@ import type { VoiceResponse } from '@/data/repo';
 import { CommandError, type Batch } from '@/lib/batch';
 import { rankCandidates } from '@/lib/candidates';
 import * as C from '@/lib/commands';
-import { simulationRun } from '../predict/simulation';
 import {
   availableResponses,
   HANDOVER_NAME,
@@ -334,7 +333,7 @@ route('sendDirect', 'lead', z.object({ volunteerId: Id, body: Text }), async (a,
 });
 
 // ── mobilizations ──
-// `proposeMobilization` has no route: only validated server-side simulation creates AI proposals.
+// `proposeMobilization` has no route: only the planner (src/server/predict/plan.ts), started by a trigger, proposes.
 
 const MobilizationStepInput = z.object({
   teamSlug: TeamSlug,
@@ -365,7 +364,6 @@ route(
   z.object({
     mobilizationId: Id,
     reviewedRunId: Id.optional(),
-    acknowledgeGaps: z.boolean().optional(),
   }),
   async (a, caller) => {
     await transact(
@@ -376,18 +374,13 @@ route(
         return { proposal, ...result };
       },
       {},
-      async (tx, { proposal, taskIds }, b) => {
+      async (tx, { proposal }, b) => {
         const rows = proposal.analysisRunId
           ? await tx<ReviewRun[]>`
       select id, status, result, input_snapshot, validation_errors, mobilization_ids
       from mobilization_runs where id = ${proposal.analysisRunId} for share`
           : [];
-        assertMobilizationReview(
-          proposal,
-          rows[0] ?? null,
-          a,
-          taskIds.map((id) => b.tasks[id]),
-        );
+        assertMobilizationReview(proposal, rows[0] ?? null, a);
         if (proposal.analysisRunId)
           await tx`
       update mobilization_runs set raw_responses = raw_responses || ${tx.json([
@@ -395,7 +388,6 @@ route(
           event: 'approval_review',
           mobilizationId: proposal.id,
           reviewedRunId: a.reviewedRunId,
-          acknowledgedGaps: a.acknowledgeGaps === true,
           reviewedBy: caller.id,
           occurredAt: new Date(b.now).toISOString(),
         },
@@ -419,13 +411,6 @@ route(
     );
   },
 );
-
-route('getMobilizationRun', 'mo', z.object({ runId: Id }), async ({ runId }) => {
-  // Like mobilization_runs RLS, all Mo-role reviewers may inspect the audit behind a shared proposal.
-  const run = await simulationRun(runId);
-  if (!run) throw new CommandError('not_found', 'No simulation run');
-  return run;
-});
 
 // ── festival-goers ──
 

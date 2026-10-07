@@ -92,7 +92,7 @@ function compactScenario(snapshot: PlanningSnapshot): RemainingScenario | undefi
   const used = new Set<number>();
   const matched = (kind: string, zoneSlug: string | null, expected: object, observedAt: string) => {
     const index = snapshot.evidence.findIndex((entry, i) => !used.has(i) && entry.kind === kind &&
-      entry.source === 'manual_demo' && entry.zoneSlug === zoneSlug && entry.observedAt === observedAt &&
+      entry.zoneSlug === zoneSlug && entry.observedAt === observedAt &&
       contains(entry.value, expected));
     if (index < 0) return false;
     used.add(index); // A single evidence row cannot erase two independent equal observations.

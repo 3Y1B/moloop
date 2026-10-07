@@ -270,6 +270,7 @@ export function fileReport(
       language: t.language,
       speakerNeeded: t.speakerNeeded,
       firstAidNeeded: t.firstAidNeeded,
+      ...(t.playbook ? { playbook: t.playbook, playbookSure: !!t.playbookSure } : {}),
       ...(t.english ? { english: t.english } : {}),
     },
     createdAt: b.now,
@@ -785,6 +786,7 @@ function createGuestTask(b: Batch, r: GuestRequest, t: Triage) {
       language: t.language,
       speakerNeeded: t.speakerNeeded,
       firstAidNeeded: t.firstAidNeeded,
+      ...(t.playbook ? { playbook: t.playbook, playbookSure: !!t.playbookSure } : {}),
       ...(t.english ? { english: t.english } : {}),
     },
     createdAt: b.now,
@@ -1158,6 +1160,8 @@ export function proposeMobilization(
     steps: MobilizationStep[];
     evidence?: MobilizationEvidence;
     analysisRunId?: string;
+    /** The playbook a trigger planned it from: one pending or running plan per playbook and zone. */
+    triggerPlaybook?: string;
   },
 ): Mobilization {
   assertMobilizationSteps(draft.steps);
@@ -1168,7 +1172,7 @@ export function proposeMobilization(
         ? m.analysisRunId === draft.analysisRunId &&
           m.title === draft.title &&
           m.steps.map((s) => s.stepKey).join('|') === draft.steps.map((s) => s.stepKey).join('|')
-        : !m.analysisRunId && sameSituation(m, draft)),
+        : !!draft.triggerPlaybook && m.triggerPlaybook === draft.triggerPlaybook && m.zoneSlug === draft.zoneSlug),
   );
   // Recheck analysis/action identity at the write boundary; different situations in one zone
   // must remain separate. Request-level idempotency is enforced by mobilization_runs.
@@ -1185,13 +1189,15 @@ export function proposeMobilization(
     evidence: draft.evidence ?? null,
     analysisRunId: draft.analysisRunId ?? null,
     playbookSlug: null,
+    triggerPlaybook: draft.triggerPlaybook ?? null,
+    causes: [],
     createdAt: b.now,
     decidedById: null,
     decidedAt: null,
   };
   b.mobilization(m);
   const mo = b.coordinator();
-  if (mo) b.send(mo.id, 'escalation', `New mobilization needs approval: ${draft.title}.`);
+  if (mo) b.send(mo.id, 'escalation', `Approve: ${draft.title}.`);
   return m;
 }
 
@@ -1300,11 +1306,6 @@ function assertMobilizationSteps(
     if (keys.has(key)) throw new CommandError('invalid', `Mobilization has duplicate action ${key}`);
     keys.add(key);
   }
-}
-
-/** A narrow, explainable dedupe identity for an in-flight venue situation. */
-function sameSituation(mobilization: Mobilization, draft: Pick<Mobilization, 'zoneSlug'>) {
-  return mobilization.zoneSlug === draft.zoneSlug;
 }
 
 /**

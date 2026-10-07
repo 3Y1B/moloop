@@ -4,7 +4,6 @@ import type { Database } from '@/lib/database.types';
 import type { Fix } from '@/lib/presence';
 import type { Summary, SummaryScope } from '@/lib/summary';
 import { applyHelperReply, applyReply } from '@/lib/lifecycle';
-import type { SimulationRunResult } from '@/lib/mobilization-contracts';
 import type { Duty, GuestRequest, Message, Proposal, ReplyKind, Task, TaskEvent, Volunteer } from '@/lib/schema';
 import type {
   BroadcastScope,
@@ -333,7 +332,6 @@ export class SupabaseRepo implements Repo {
     standDown: async (mobilizationId: string, outcome: 'stood_down' | 'cancelled') => {
       await this.post('standDown', { mobilizationId, outcome });
     },
-    getRun: (runId) => this.post<SimulationRunResult>('getMobilizationRun', { runId }),
   };
 
   // ── festival-goer ──

@@ -135,3 +135,28 @@ leave the corresponding SOP action unmet; independently justified safe fact-gath
 Before final JSON check exact evidence IDs, every SOP review, all must-action coverage, covered/unmet
 disjointness and honest uncertainty. The server performs independent semantic validation before
 creating pending Mobilizations; Mo alone approves them.`;
+
+/**
+ * The same rules for a run a trigger started (src/server/triggers.ts): one SOP, already chosen and read by the server,
+ * so no retrieval call, and a lean towards a plan Mo can approve.
+ */
+export const TRIGGERED_SYSTEM_PROMPT = MOBILIZATION_TOOL_SYSTEM_PROMPT.replace(
+  MOBILIZATION_TOOL_SYSTEM_PROMPT.slice(
+    MOBILIZATION_TOOL_SYSTEM_PROMPT.indexOf('First call the read-only get_playbooks'),
+    MOBILIZATION_TOOL_SYSTEM_PROMPT.indexOf('After retrieval return only the schema JSON.') +
+      'After retrieval return only the schema JSON.'.length,
+  ),
+  `A trigger has already chosen ONE published SOP for this run. The trigger field says which, and why:
+the reports and readings that set it off, with their exact evidence refs. The server has read that SOP's
+full rules for you, with requiredInputChecks, in retrievedPlaybooks. There is no tool and no other SOP.
+The trigger is a relevant clue for this SOP: assess it applicable or insufficient_data, never
+not_applicable unless the cited evidence contradicts the trigger. Choose propose: plan every must action
+you can fully plan as a task, and give each one you cannot a concrete blocker. Mo decides. Unknown
+required inputs alone are not a reason to answer insufficient_data or no_mobilization for the whole run.
+Return only the schema JSON.`,
+).replace(
+  'Assess EVERY indexed published SOP exactly once',
+  'Assess the one triggered SOP exactly once',
+);
+if (TRIGGERED_SYSTEM_PROMPT.includes('First call the read-only get_playbooks'))
+  throw new Error('Triggered system prompt still asks for the retrieval tool');

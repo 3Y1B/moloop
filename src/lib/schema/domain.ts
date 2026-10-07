@@ -90,6 +90,10 @@ export type Reporter = {
   firstAidNeeded?: boolean | null;
   /** `quote` in English, when the AI read it. Shown first to staff (see lib/quote). */
   english?: string;
+  /** The festival playbook intake read it as ("kids getting crushed at the barrier" is a crowd surge), else null. */
+  playbook?: string | null;
+  /** Intake is sure of `playbook`: it may start a plan on its own (src/server/triggers.ts). */
+  playbookSure?: boolean | null;
 };
 
 /**
@@ -322,6 +326,24 @@ export type MobilizationStep = {
   playbookRefs?: import('../mobilization-contracts').PlaybookActionRef[];
 };
 
+/** A measurement's value: a number, a flag or a status, as the observation catalog defines the key. */
+export type ReadingValue = number | boolean | string;
+
+/** One thing that set a plan off (src/server/triggers.ts), for the "why" lines on Mo's review. */
+export type MobilizationCause =
+  | { kind: 'report'; taskId: string; title: string; zoneSlug: string | null; priority: Priority; at: number }
+  | {
+      kind: 'reading';
+      readingId: string;
+      key: string;
+      zoneSlug: string | null;
+      value: ReadingValue;
+      /** The line it crossed, in words: "limit 60 km/h". */
+      line: string;
+      source: 'sensor' | 'simulated';
+      at: number;
+    };
+
 /** The observations that supported a detection proposal. A historical snapshot, never a live rollup. */
 export type MobilizationEvidence = {
   observedAt: number;
@@ -370,6 +392,10 @@ export type Mobilization = {
   analysisRunId?: string | null;
   /** Set when created from a playbook template. */
   playbookSlug: string | null;
+  /** The playbook a trigger planned it from (src/server/triggers.ts); one plan per playbook and zone at a time. */
+  triggerPlaybook?: string | null;
+  /** What set it off, oldest first. Later triggers for the same playbook and zone add to it. */
+  causes?: MobilizationCause[];
   createdAt: number;
   decidedById: string | null;
   decidedAt: number | null;
