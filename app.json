@@ -13,7 +13,10 @@
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "Moloop uses Bluetooth to help you and your volunteer find each other in the crowd.",
         "NSNearbyInteractionUsageDescription": "Moloop uses Nearby Interaction to point you to your volunteer, or to the person you’re helping, when you’re close.",
-        "NSCameraUsageDescription": "On newer iPhones, the camera helps Moloop point the way to the person you’re finding. Nothing is recorded."
+        "NSCameraUsageDescription": "On newer iPhones, the camera helps Moloop point the way to the person you’re finding. Nothing is recorded.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       },
       "appleTeamId": "887A69S6QZ"
     },
