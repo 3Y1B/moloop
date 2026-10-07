@@ -124,7 +124,7 @@ export default function SignInScreen() {
               textContentType="oneTimeCode"
               returnKeyType="done"
               onSubmitEditing={() => validCode && run(() => verifyCode(email, code))}
-              style={[inputStyle, styles.code]}
+              style={[inputStyle, code ? styles.code : null]}
             />
             <Button label="Sign in" size="large" disabled={!validCode || busy} onPress={() => run(() => verifyCode(email, code))} />
             <Button label="Resend code" variant="plain" size="small" disabled={busy} onPress={() => run(() => sendCode(email))} />

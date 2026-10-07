@@ -12,17 +12,17 @@ let client: SupabaseClient<Database> | undefined;
  */
 export function getSupabase(): SupabaseClient<Database> {
   if (client) return client;
-  // Installs `localStorage` on iOS and Android; a no-op on web, where the browser has its own.
+  // Installs `localStorage` on iOS and Android; nothing on web, where the browser has its own.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('expo-sqlite/localStorage/install');
+  require('./local-storage');
   const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
   const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) throw new Error('Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (see .env.example)');
 
   const c = createClient<Database>(url, key, {
     auth: {
-      // Undefined while the web build renders on the server.
-      storage: typeof localStorage === 'undefined' ? undefined : localStorage,
+      // None while the web build renders on the server: that session lives in memory and is thrown away.
+      storage: Platform.OS === 'web' && typeof window === 'undefined' ? undefined : localStorage,
       autoRefreshToken: true,
       persistSession: true,
       // Phones have no URL to read a session from.
