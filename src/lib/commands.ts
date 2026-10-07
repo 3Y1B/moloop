@@ -1,20 +1,66 @@
-import type { DetailRead, EscalateTo, Match, Reread, Triage, Understood } from '@/lib/ai';
-import { AGENT, Batch, CommandError, FESTIVALGOER, SCHEDULER, TRIAGE_AGENT, type Actor } from '@/lib/batch';
-import { rankCandidates } from '@/lib/candidates';
-import { REPLY_LABEL } from '@/lib/format';
-import { heuristicDetail, heuristicPerson, heuristicTriage, heuristicUnderstanding, noteFor, replyIn } from '@/lib/heuristics';
+import type { DetailRead, EscalateTo, Match, Reread, Triage, Understood } from "@/lib/ai";
 import {
-  applyReply, assignOrQueue, handoverArrived, HANDOVER_NAME, isActive, isBusy, isOnTask, needsApproval, nextQueued,
-  isHeld, passUp, POLICY, proposalDue, respondToEscalation, tick, type RespondInput,
-} from '@/lib/lifecycle';
-import { walkFrom } from '@/lib/presence';
-import { routeBetween } from '@/lib/route';
-import type { Duty, GuestRequest, Priority, Proposal, ReplyKind, Task, TeamSlug, Volunteer } from '@/lib/schema';
+  AGENT,
+  Batch,
+  CommandError,
+  FESTIVALGOER,
+  SCHEDULER,
+  TRIAGE_AGENT,
+  type Actor,
+} from "@/lib/batch";
+import { rankCandidates } from "@/lib/candidates";
+import { REPLY_LABEL } from "@/lib/format";
+import {
+  heuristicDetail,
+  heuristicPerson,
+  heuristicTriage,
+  heuristicUnderstanding,
+  noteFor,
+  replyIn,
+  TEAM_CATEGORY,
+} from "@/lib/heuristics";
+import {
+  applyHelperReply,
+  applyReply,
+  availableHelperReplies,
+  assignOrQueue,
+  handoverArrived,
+  HANDOVER_NAME,
+  helperIdsOf,
+  isHeld,
+  isActive,
+  isBusy,
+  isOnTask,
+  needsApproval,
+  nextQueued,
+  passUp,
+  POLICY,
+  proposalDue,
+  respondToEscalation,
+  tick,
+  type RespondInput,
+} from "@/lib/lifecycle";
+import { walkFrom } from "@/lib/presence";
+import { routeBetween } from "@/lib/route";
+import type {
+  Duty,
+  GuestRequest,
+  HelperAssignment,
+  Mobilization,
+  MobilizationEvidence,
+  MobilizationStep,
+  Priority,
+  Proposal,
+  ReplyKind,
+  Task,
+  TeamSlug,
+  Volunteer,
+} from "@/lib/schema";
 
 /**
  * What every command does, beyond the task state machine in lifecycle.ts: the events it writes, the messages it
- * sends, proposals, queueing, and festival-goer requests. Pure functions over a Batch, run by the server
- * (src/server/http/commands.ts) and, later, the demo-day simulator.
+ * sends, proposals, queueing, and festival-goer requests. Pure functions over a Batch, shared by MockRepo, the
+ * server (src/server/http/commands.ts) and the demo-day simulator. MockRepo was the spec; this is it, moved.
  */
 
 /** A broadcast's audience. Neither set = everyone on duty. */
@@ -25,12 +71,12 @@ export type Scope = { teamSlug?: TeamSlug; zoneSlug?: string };
 export type Intent = { kind: 'reply'; taskId: string; reply: ReplyKind } | { kind: 'tell_guest'; taskId: string; text: string } | { kind: 'report' };
 
 const MIN = 60_000;
-const BUMP: Record<Priority, Priority> = { P3: 'P2', P2: 'P1', P1: 'P1' };
+const BUMP: Record<Priority, Priority> = { P3: "P2", P2: "P1", P1: "P1" };
 
-const first = (v: Volunteer | undefined) => v?.name.split(' ')[0] ?? 'Someone';
+const first = (v: Volunteer | undefined) => v?.name.split(" ")[0] ?? "Someone";
 /** "Priya S.": what a festival-goer sees. */
 const shortName = (v: Volunteer) => {
-  const [f, l] = v.name.split(' ');
+  const [f, l] = v.name.split(" ");
   return l ? `${f} ${l[0]}.` : f;
 };
 
@@ -41,30 +87,65 @@ export function reply(b: Batch, actorId: string, taskId: string, kind: ReplyKind
   const me = b.volunteers[actorId];
   const lead = task ? b.leadFor(task.teamSlug) : undefined;
   const mo = b.coordinator();
-  if (!task || !me) throw new CommandError('not_found', `No task ${taskId}`);
-  const t = applyReply(task, kind, b.now, note, { leadId: lead?.id ?? null, coordinatorId: mo?.id ?? null });
-  if (!t) throw new CommandError('conflict', `Cannot ${kind} task ${taskId} in status ${task.status}`);
-  if (kind !== 'done' && task.assigneeId !== actorId) throw new CommandError('forbidden', `Only the owner can ${kind} task ${taskId}`);
+  if (!task || !me) throw new CommandError("not_found", `No task ${taskId}`);
+
+  // A recruited helper's own accept/decline on their slot, independent of the task's own status.
+  const helperEntry = task.helpers.find((h) => h.volunteerId === actorId);
+  if (helperEntry && kind !== "done") {
+    if (kind !== "accept" && kind !== "decline")
+      throw new CommandError(
+        "forbidden",
+        `A helper can only accept, decline or finish task ${taskId}`,
+      );
+    const ht = applyHelperReply(task, actorId, kind, b.now);
+    if (!ht) throw new CommandError("conflict", `Cannot ${kind} task ${taskId}`);
+    b.task(ht.task);
+    b.ev(taskId, kind === "decline" ? "reassigned" : "reply", ht.text, b.actor(me.id), {
+      reply: kind,
+      note,
+    });
+    if (kind === "decline") b.send(me.id, "system", `Declined: ${task.title}.`, { taskId });
+    return;
+  }
+
+  const t = applyReply(task, kind, b.now, note, {
+    leadId: lead?.id ?? null,
+    coordinatorId: mo?.id ?? null,
+  });
+  if (!t)
+    throw new CommandError("conflict", `Cannot ${kind} task ${taskId} in status ${task.status}`);
+  if (kind !== "done" && task.assigneeId !== actorId)
+    throw new CommandError("forbidden", `Only the owner can ${kind} task ${taskId}`);
 
   b.task(t.task);
-  b.ev(taskId, kind === 'done' ? 'resolved' : kind === 'need_help' ? 'escalated' : 'reply', t.text, b.actor(me.id), { reply: kind, note });
+  b.ev(
+    taskId,
+    kind === "done" ? "resolved" : kind === "need_help" ? "escalated" : "reply",
+    t.text,
+    b.actor(me.id),
+    { reply: kind, note },
+  );
   // Stand-in for GPS: finishing a task means you were at its zone.
-  if (kind === 'done' && task.zoneSlug) b.volunteer({ ...me, zoneSlug: task.zoneSlug });
+  if (kind === "done" && task.zoneSlug) b.volunteer({ ...me, zoneSlug: task.zoneSlug });
 
-  if (kind === 'need_help') {
-    const owner = t.task.escalation?.level === 'lead' ? lead : mo;
-    b.send(me.id, 'system', `Asked ${owner ? `${first(owner)} ` : ''}for help: ${task.title}.`, { taskId });
-    if (owner) b.send(owner.id, 'escalation', `${first(me)} asked for help: ${task.title}.`, { taskId });
+  if (kind === "need_help") {
+    const owner = t.task.escalation?.level === "lead" ? lead : mo;
+    b.send(me.id, "system", `Asked ${owner ? `${first(owner)} ` : ""}for help: ${task.title}.`, {
+      taskId,
+    });
+    if (owner)
+      b.send(owner.id, "escalation", `${first(me)} asked for help: ${task.title}.`, { taskId });
   }
-  if (kind === 'decline') b.ev(taskId, 'reassigned', 'Back in the pool for reassignment', AGENT);
+  if (kind === "decline") b.ev(taskId, "reassigned", "Back in the pool for reassignment", AGENT);
   // Done from anyone resolves it for everyone on it; each of them pulls their next queued task.
-  if (kind === 'done') {
+  if (kind === "done") {
     for (const id of b.onIt(task)) {
-      if (id !== me.id) b.send(id, 'system', `${first(me)} marked it done: ${task.title}.`, { taskId });
+      if (id !== me.id)
+        b.send(id, "system", `${first(me)} marked it done: ${task.title}.`, { taskId });
       freeUp(b, id);
     }
   }
-  if (kind === 'decline') freeUp(b, me.id);
+  if (kind === "decline") freeUp(b, me.id);
 }
 
 export function setDuty(b: Batch, volunteerId: string, duty: Duty) {
@@ -73,17 +154,28 @@ export function setDuty(b: Batch, volunteerId: string, duty: Duty) {
 }
 
 /** The task a volunteer is on right now, as owner or helper. */
-export const activeTaskOf = (tasks: Task[], volunteerId: string) => tasks.find((t) => isOnTask(t, volunteerId));
+export const activeTaskOf = (tasks: Task[], volunteerId: string) =>
+  tasks.find((t) => isOnTask(t, volunteerId));
 
 /** Keyword stand-in for the reply classifier: a short reply to the task you're on, or a new report. */
-export function interpretHeuristic(tasks: Task[], meId: string | null, text: string): { heard: string; intent: Intent } {
+export function interpretHeuristic(
+  tasks: Task[],
+  meId: string | null,
+  text: string,
+): { heard: string; intent: Intent } {
   const heard = text.trim();
   const active = meId ? activeTaskOf(tasks, meId) : undefined;
-  const kind = active ? replyIn(heard, active.assigneeId !== meId) : null;
-  return { heard, intent: active && kind ? { kind: 'reply', taskId: active.id, reply: kind } : { kind: 'report' } };
+  const helper = active?.helpers.find((slot) => slot.volunteerId === meId);
+  const helperReplies = helper ? availableHelperReplies(helper.status) : null;
+  const matched = active ? replyIn(heard, false) : null;
+  const kind = !matched || !helperReplies || matched === helperReplies.primary || helperReplies.secondary.includes(matched) ? matched : null;
+  return {
+    heard,
+    intent: active && kind ? { kind: "reply", taskId: active.id, reply: kind } : { kind: "report" },
+  };
 }
 
-/** A message to send once triage has had time to run. The server sends it straight away. */
+/** A message to send once triage has had time to run. The mock delays it; the server sends it straight away. */
 export type Later = { recipientId: string; body: string; taskId: string };
 
 /**
@@ -112,44 +204,72 @@ export function commit(
 /** The task a report matched, if it's still open now the lock is held. */
 const openMatch = (b: Batch, match: Match | undefined) => {
   const t = match ? b.tasks[match.taskId] : undefined;
-  return t && t.status !== 'resolved' && t.status !== 'cancelled' ? t : undefined;
+  return t && !t.mobilizationId && t.status !== 'resolved' && t.status !== 'cancelled' ? t : undefined;
 };
 
 /** A volunteer's own report: triage, then straight to a teammate (or queued behind their current task). */
-export function fileReport(b: Batch, reporterId: string, text: string, ai?: Triage): { confirmation: string; later?: Later } {
+export function fileReport(
+  b: Batch,
+  reporterId: string,
+  text: string,
+  ai?: Triage,
+): { confirmation: string; later?: Later } {
   const me = b.volunteers[reporterId];
   const t = ai ?? heuristicTriage(text);
   const { team, priority } = t;
   const tasks = b.all();
   const candidates = Object.values(b.volunteers).filter(
-    (v) => v.teamSlug === team && v.role === 'volunteer' && v.duty === 'on_duty' && v.id !== me?.id,
+    (v) => v.teamSlug === team && v.role === "volunteer" && v.duty === "on_duty" && v.id !== me?.id,
   );
   const free = candidates.find((v) => !isBusy(tasks, v.id));
   const who = free ?? candidates[0];
   const draft: Task = {
-    id: b.id('task'), title: t.title, summary: t.summary, category: t.category, priority, teamSlug: team,
+    id: b.id("task"),
+    title: t.title,
+    summary: t.summary,
+    category: t.category,
+    priority,
+    teamSlug: team,
     // Where they said it's happening, else where they are.
-    zoneSlug: t.zoneSlug ?? me?.zoneSlug ?? null, locationHint: t.locationHint, status: 'open', assigneeId: null, handledBy: 'human',
-    reporter: { kind: 'volunteer', name: me?.name, quote: text, language: t.language },
-    createdAt: b.now, assignedAt: null, etaAt: null, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null,
-    escalation: null, helperIds: [], resolution: null, requestId: null,
+    zoneSlug: t.zoneSlug ?? me?.zoneSlug ?? null,
+    locationHint: t.locationHint,
+    status: "open",
+    assigneeId: null,
+    handledBy: "human",
+    reporter: { kind: "volunteer", name: me?.name, quote: text, language: t.language },
+    createdAt: b.now,
+    assignedAt: null,
+    etaAt: null,
+    lastActivityAt: b.now,
+    nudgeCount: 0,
+    lastNudgeAt: null,
+    leadAlertedAt: null,
+    resolvedAt: null,
+    escalation: null,
+    requiredCount: 1,
+    helpers: [],
+    resolution: null,
+    requestId: null,
+    mobilizationId: null,
   };
-  b.ev(draft.id, 'created', 'Reported by voice', me ? b.actor(me.id) : { kind: 'human' });
+  b.ev(draft.id, "created", "Reported by voice", me ? b.actor(me.id) : { kind: "human" });
   const teamName = b.teams[team]?.name ?? team;
-  // Escalated: a lead or Mo decides before anyone is sent (a P1 still goes to a teammate meanwhile).
   const held = t.escalate ? escalateNew(b, draft, t.escalate) : null;
   if (held?.holding) {
-    const to = held.level === 'lead' ? `the ${teamName} lead` : 'Mo';
+    const to = held.level === "lead" ? `the ${teamName} lead` : "Mo";
     const body = `Your report “${draft.title}” went to ${to} to decide.`;
-    return { confirmation: 'Report sent', later: me ? { recipientId: me.id, body, taskId: draft.id } : undefined };
+    return { confirmation: "Report sent", later: me ? { recipientId: me.id, body, taskId: draft.id } : undefined };
   }
   if (who) place(b, draft, who.id, AGENT, undefined);
   else b.task(draft);
   // Triage + assignment run after Send, so the reporter hears back via Inbox, not inline.
   const body = who
-    ? `Your report “${draft.title}” went to ${teamName}. ${first(who)} ${free ? 'is on it' : 'has it next'}.`
+    ? `Your report “${draft.title}” went to ${teamName}. ${first(who)} ${free ? "is on it" : "has it next"}.`
     : `Your report “${draft.title}” is with ${teamName}. A lead will pick it up.`;
-  return { confirmation: 'Report sent', later: me ? { recipientId: me.id, body, taskId: draft.id } : undefined };
+  return {
+    confirmation: "Report sent",
+    later: me ? { recipientId: me.id, body, taskId: draft.id } : undefined,
+  };
 }
 
 /** Who a report about an open task came from: a volunteer, or a festival-goer's request. */
@@ -188,13 +308,17 @@ const moreUrgent = (a: Priority, than: Priority) => URGENCY.indexOf(a) < URGENCY
 export function guestReply(b: Batch, staffId: string, taskId: string, text: string) {
   const me = b.volunteers[staffId];
   const task = b.tasks[taskId];
-  if (!task) throw new CommandError('not_found', `No task ${taskId}`);
+  if (!task) throw new CommandError("not_found", `No task ${taskId}`);
   const request = task.requestId ? b.requests[task.requestId] : undefined;
-  if (!me || !request) throw new CommandError('conflict', `Task ${taskId} has no festival-goer to reply to`);
-  b.request({ ...request, thread: [...request.thread, { from: 'staff', name: shortName(me), text, at: b.now }] });
+  if (!me || !request)
+    throw new CommandError("conflict", `Task ${taskId} has no festival-goer to reply to`);
+  b.request({
+    ...request,
+    thread: [...request.thread, { from: "staff", name: shortName(me), text, at: b.now }],
+  });
   // Talking to them is an update: nudges start over, same as a reply on the task.
   b.task({ ...task, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null });
-  b.ev(taskId, 'note', 'Replied to the festival-goer', b.actor(me.id), { note: text });
+  b.ev(taskId, "note", "Replied to the festival-goer", b.actor(me.id), { note: text });
 }
 
 // ── leads and Mo ──
@@ -203,57 +327,92 @@ export function guestReply(b: Batch, staffId: string, taskId: string, text: stri
 export function respond(b: Batch, byId: string, taskId: string, input: RespondInput) {
   const task = b.tasks[taskId];
   const by = b.volunteers[byId];
-  if (!task || !by) throw new CommandError('not_found', `Cannot respond to task ${taskId}`);
+  if (!task || !by) throw new CommandError("not_found", `Cannot respond to task ${taskId}`);
   const target = input.volunteerId ? b.volunteers[input.volunteerId] : undefined;
-  if (input.volunteerId && !target) throw new CommandError('invalid', `No volunteer ${input.volunteerId}`);
+  if (input.volunteerId && !target)
+    throw new CommandError("invalid", `No volunteer ${input.volunteerId}`);
+  if (
+    task.mobilizationId &&
+    input.kind === "backup" &&
+    target &&
+    !rankCandidates(task, Object.values(b.volunteers), b.all(), {
+      positions: b.positions,
+      now: b.now,
+      limit: Object.keys(b.volunteers).length,
+    }).some((candidate) => candidate.volunteerId === target.id)
+  )
+    throw new CommandError(
+      "conflict",
+      "Mobilization backup must be free, on duty, qualified and in the required team",
+    );
   const t = respondToEscalation(
-    task, { ...input, etaAt: input.etaAt ?? responseEta(b, task, input) }, byId, b.now,
-    input.kind === 'reassign' && !!target && isBusy(b.all(), target.id),
+    task,
+    { ...input, etaAt: input.etaAt ?? responseEta(b, task, input) },
+    byId,
+    b.now,
+    input.kind === "reassign" && !!target && isBusy(b.all(), target.id),
   );
-  if (!t) throw new CommandError('conflict', `Cannot ${input.kind} task ${taskId} in status ${task.status}`);
+  if (!t)
+    throw new CommandError(
+      "conflict",
+      `Cannot ${input.kind} task ${taskId} in status ${task.status}`,
+    );
 
-  b.task(t.task);
+  // Reassignment is routed through `place` below so multi-person work is topped up again. Every
+  // other response already has its complete next task state from the pure lifecycle function.
+  if (input.kind !== "reassign") b.task(t.task);
   const owner = task.assigneeId ? b.volunteers[task.assigneeId] : undefined;
   const actor = b.actor(byId);
   const note = input.note ? { note: input.note } : {};
 
   switch (input.kind) {
-    case 'backup':
-      b.ev(taskId, 'responded', `${by.name} sent ${target?.name ?? 'backup'}`, actor, note);
-      if (target) b.send(target.id, 'backup', `Help ${first(owner)}: ${task.title}.`, { taskId, delivery: 'spoken' });
-      if (owner) b.send(owner.id, 'backup', `${first(target)} is joining you.`, { taskId });
+    case "backup":
+      b.ev(taskId, "responded", `${by.name} sent ${target?.name ?? "backup"}`, actor, note);
+      if (target)
+        b.send(target.id, "backup", `Help ${first(owner)}: ${task.title}.`, {
+          taskId,
+          delivery: "spoken",
+        });
+      if (owner) b.send(owner.id, "backup", `${first(target)} is joining you.`, { taskId });
       break;
-    case 'handover': {
+    case "handover": {
       const name = HANDOVER_NAME[input.target!];
-      b.ev(taskId, 'responded', `${by.name} handed over to ${name}`, actor, note);
-      if (owner) b.send(owner.id, 'system', `${name[0].toUpperCase()}${name.slice(1)} on the way: ${task.title}.`, { taskId });
+      b.ev(taskId, "responded", `${by.name} handed over to ${name}`, actor, note);
+      if (owner)
+        b.send(
+          owner.id,
+          "system",
+          `${name[0].toUpperCase()}${name.slice(1)} on the way: ${task.title}.`,
+          { taskId },
+        );
       break;
     }
-    case 'reassign': {
-      const queued = t.task.status === 'queued';
-      b.ev(taskId, 'reassigned', `${by.name} moved it to ${target?.name}`, actor, note);
-      b.ev(taskId, queued ? 'queued' : 'assigned', `${queued ? 'Queued for' : 'Assigned to'} ${target?.name}`, actor);
-      if (target) {
-        b.send(target.id, 'task', queued ? `New task queued: ${task.title}. Check the app.` : `New task: ${task.title}. ${task.summary}`, { taskId, delivery: queued ? 'ping' : 'spoken' });
-      }
-      for (const id of b.onIt(task).filter((x) => x !== target?.id)) {
-        b.send(id, 'moved', `Moved to ${first(target)}: ${task.title}.`, { taskId });
+    case "reassign": {
+      b.ev(taskId, "reassigned", `${by.name} moved it to ${target?.name}`, actor, note);
+      const fresh: Task = { ...t.task, status: "open", assigneeId: null };
+      // Replace the old crew before ranking so people released by the reassignment may be recruited
+      // again if they are still genuinely the best fit.
+      b.task(fresh);
+      place(b, fresh, target!.id, actor, `${by.name} reassigned`);
+      const stillOnIt = new Set(b.onIt(b.tasks[taskId]));
+      for (const id of b.onIt(task).filter((x) => x !== target!.id && !stillOnIt.has(x))) {
+        b.send(id, "moved", `Moved to ${first(target)}: ${task.title}.`, { taskId });
         freeUp(b, id);
       }
       break;
     }
-    case 'call':
-      b.ev(taskId, 'responded', `${by.name} called ${owner?.name ?? 'the volunteer'}`, actor, note);
+    case "call":
+      b.ev(taskId, "responded", `${by.name} called ${owner?.name ?? "the volunteer"}`, actor, note);
       break;
-    case 'close':
-      b.ev(taskId, 'resolved', `Closed by ${by.name}`, actor, note);
+    case "close":
+      b.ev(taskId, "resolved", `Closed by ${by.name}`, actor, note);
       for (const id of b.onIt(task)) {
-        b.send(id, 'closed', `Closed by ${first(by)}: ${task.title}.`, { taskId });
+        b.send(id, "closed", `Closed by ${first(by)}: ${task.title}.`, { taskId });
         freeUp(b, id);
       }
       break;
-    case 'carry_on':
-      b.ev(taskId, 'responded', `${by.name}: carry on`, actor, note);
+    case "carry_on":
+      b.ev(taskId, "responded", `${by.name}: carry on`, actor, note);
       break;
   }
 }
@@ -273,58 +432,90 @@ export function passToCoordinator(b: Batch, byId: string, taskId: string) {
   const task = b.tasks[taskId];
   const me = b.volunteers[byId];
   const mo = b.coordinator();
-  if (!task || !me) throw new CommandError('not_found', `No task ${taskId}`);
+  if (!task || !me) throw new CommandError("not_found", `No task ${taskId}`);
   const t = passUp(task, mo?.id ?? null, b.now);
-  if (!t) throw new CommandError('conflict', `Cannot pass task ${taskId} to Mo`);
+  if (!t) throw new CommandError("conflict", `Cannot pass task ${taskId} to Mo`);
   b.task(t.task);
-  b.ev(taskId, 'bumped', `${me.name} passed it to Mo`, b.actor(me.id));
-  if (mo) b.send(mo.id, 'escalation', `${first(me)} passed on: ${task.title}.`, { taskId });
+  b.ev(taskId, "bumped", `${me.name} passed it to Mo`, b.actor(me.id));
+  if (mo) b.send(mo.id, "escalation", `${first(me)} passed on: ${task.title}.`, { taskId });
 }
 
 /** After a handover: they've arrived, the volunteer is freed and the task resolves as handed over. */
 export function arrived(b: Batch, byId: string, taskId: string) {
   const task = b.tasks[taskId];
   const me = b.volunteers[byId];
-  if (!task || !me) throw new CommandError('not_found', `No task ${taskId}`);
+  if (!task || !me) throw new CommandError("not_found", `No task ${taskId}`);
   const t = handoverArrived(task, b.now);
-  if (!t) throw new CommandError('conflict', `Task ${taskId} is not waiting on a handover`);
+  if (!t) throw new CommandError("conflict", `Task ${taskId} is not waiting on a handover`);
   b.task(t.task);
-  b.ev(taskId, 'resolved', t.text, b.actor(me.id));
+  b.ev(taskId, "resolved", t.text, b.actor(me.id));
   for (const id of b.onIt(task)) {
-    b.send(id, 'arrived', `${t.text}: ${task.title}. You’re free.`, { taskId });
+    b.send(id, "arrived", `${t.text}: ${task.title}. You’re free.`, { taskId });
     freeUp(b, id);
   }
 }
 
 /** Give a task to someone (unassigned, queued, or moving it). Settles a pending proposal for it. */
-export function assign(b: Batch, byId: string, taskId: string, volunteerId: string, how: 'assigned' | 'approved' = 'assigned', helperIds: string[] = []) {
+export function assign(
+  b: Batch,
+  byId: string,
+  taskId: string,
+  volunteerId: string,
+  how: "assigned" | "approved" = "assigned",
+  helperIds: string[] = [],
+) {
   const task = b.tasks[taskId];
   const by = b.volunteers[byId];
   const target = b.volunteers[volunteerId];
-  if (!task || !by) throw new CommandError('not_found', `No task ${taskId}`);
-  if (!target) throw new CommandError('invalid', `No volunteer ${volunteerId}`);
-  if (task.status === 'resolved' || task.status === 'cancelled') throw new CommandError('conflict', `Cannot assign task ${taskId}`);
-  const queuedFor = task.status === 'queued' && task.assigneeId ? [task.assigneeId] : [];
-  const helpers = [...new Set(helperIds)].filter((id) => id !== volunteerId && b.volunteers[id]);
-  const prev = [...b.onIt(task), ...queuedFor].filter((id) => id !== volunteerId && !helpers.includes(id));
+  if (!task || !by) throw new CommandError("not_found", `No task ${taskId}`);
+  if (!target) throw new CommandError("invalid", `No volunteer ${volunteerId}`);
+  if (task.status === "resolved" || task.status === "cancelled")
+    throw new CommandError("conflict", `Cannot assign task ${taskId}`);
+  const queuedFor = task.status === "queued" && task.assigneeId ? [task.assigneeId] : [];
+  const selectedIds = [...new Set(helperIds)].filter((id) => id !== volunteerId);
+  // A queued owner cannot safely reserve named helpers: they may be assigned elsewhere before activation.
+  if (selectedIds.length && isBusy(b.all().filter((t) => t.id !== taskId), volunteerId))
+    throw new CommandError("conflict", "Choose a free owner before sending selected helpers");
+  const selectedHelpers = selectedIds.map((id): HelperAssignment => {
+    const helper = b.volunteers[id];
+    if (!helper) throw new CommandError("invalid", `No volunteer ${id}`);
+    if (helper.role !== "volunteer" || helper.duty !== "on_duty" ||
+      (helper.shiftEndsAt != null && helper.shiftEndsAt <= b.now) ||
+      helper.teamSlug !== task.teamSlug ||
+      !(task.requiredSkills ?? []).every((skill) => helper.skills.includes(skill)) ||
+      isBusy(b.all().filter((t) => t.id !== taskId), id))
+      throw new CommandError("conflict", "Selected helpers must be free, on duty, qualified and in the required team");
+    const retained = task.helpers.find((entry) => entry.volunteerId === id);
+    return retained ?? { volunteerId: id, status: "notified", assignedAt: b.now, respondedAt: null };
+  });
+  const prev = [...b.onIt(task), ...queuedFor];
   const fresh: Task = {
-    ...task, status: 'open', assigneeId: null, helperIds: [], escalation: null, etaAt: null,
-    nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, lastActivityAt: b.now,
+    ...task,
+    status: "open",
+    assigneeId: null,
+    helpers: [],
+    // Manual extra picks define the ordinary task's demand; never rewrite an audited Mobilization demand.
+    requiredCount: task.mobilizationId ? task.requiredCount : Math.max(task.requiredCount, 1 + selectedHelpers.length),
+    escalation: null,
+    etaAt: null,
+    nudgeCount: 0,
+    lastNudgeAt: null,
+    leadAlertedAt: null,
+    lastActivityAt: b.now,
   };
-  place(b, fresh, volunteerId, b.actor(byId), `${how === 'approved' ? 'Approved' : 'Assigned'} by ${by.name}`);
-  settleProposal(b, taskId, 'approved', volunteerId, byId);
-  // Picked to go with them: on the task as helpers, same as backup.
-  if (helpers.length) {
-    b.task({ ...b.tasks[taskId], helperIds: helpers });
-    for (const id of helpers) {
-      const h = b.volunteers[id];
-      b.ev(taskId, 'responded', `${by.name} sent ${h.name}`, b.actor(byId));
-      b.send(id, 'backup', `Help ${first(target)}: ${task.title}.`, { taskId, delivery: 'spoken' });
-    }
-    b.send(volunteerId, 'backup', `${helpers.map((id) => first(b.volunteers[id])).join(', ')} ${helpers.length > 1 ? 'are' : 'is'} joining you.`, { taskId });
-  }
-  for (const id of prev) {
-    b.send(id, 'moved', `Moved to ${first(target)}: ${task.title}.`, { taskId });
+  place(
+    b,
+    fresh,
+    volunteerId,
+    b.actor(byId),
+    `${how === "approved" ? "Approved" : "Assigned"} by ${by.name}`,
+    [],
+    selectedHelpers,
+  );
+  settleProposal(b, taskId, "approved", volunteerId, byId);
+  const stillOnIt = new Set(b.onIt(b.tasks[taskId]));
+  for (const id of prev.filter((id) => id !== volunteerId && !stillOnIt.has(id))) {
+    b.send(id, "moved", `Moved to ${first(target)}: ${task.title}.`, { taskId });
     freeUp(b, id);
   }
 }
@@ -332,38 +523,52 @@ export function assign(b: Batch, byId: string, taskId: string, volunteerId: stri
 /** Approve the AI's proposal: its top pick, or `volunteerId` instead, with `helperIds` going along. */
 export function approve(b: Batch, byId: string, proposalId: string, volunteerId?: string, helperIds: string[] = []) {
   const p = b.proposals[proposalId];
-  if (!p) throw new CommandError('not_found', `No proposal ${proposalId}`);
+  if (!p) throw new CommandError("not_found", `No proposal ${proposalId}`);
   const pick = volunteerId ?? p.candidates[0]?.volunteerId;
-  if (p.status !== 'pending' || !pick) throw new CommandError('conflict', `Cannot approve proposal ${proposalId}`);
-  assign(b, byId, p.taskId, pick, 'approved', helperIds);
+  if (p.status !== "pending" || !pick)
+    throw new CommandError("conflict", `Cannot approve proposal ${proposalId}`);
+  assign(b, byId, p.taskId, pick, "approved", helperIds);
 }
 
 export function broadcast(b: Batch, byId: string, body: string, scope: Scope = {}) {
   const by = b.volunteers[byId];
   if (!by) return;
   for (const v of Object.values(b.volunteers)) {
-    if (v.id === byId || v.duty !== 'on_duty') continue;
+    if (v.id === byId || v.duty !== "on_duty") continue;
     if (scope.teamSlug && v.teamSlug !== scope.teamSlug) continue;
     if (scope.zoneSlug && v.zoneSlug !== scope.zoneSlug) continue;
-    b.send(v.id, 'broadcast', body, { fromName: by.name, senderId: by.id });
+    b.send(v.id, "broadcast", body, { fromName: by.name, senderId: by.id });
   }
 }
 
 export function sendDirect(b: Batch, byId: string, volunteerId: string, body: string) {
   const me = b.volunteers[byId];
   if (!me) return;
-  if (!b.volunteers[volunteerId]) throw new CommandError('invalid', `No volunteer ${volunteerId}`);
-  b.send(volunteerId, 'direct', body, { fromName: me.name, senderId: me.id });
+  if (!b.volunteers[volunteerId]) throw new CommandError("invalid", `No volunteer ${volunteerId}`);
+  b.send(volunteerId, "direct", body, { fromName: me.name, senderId: me.id });
 }
 
 // ── festival-goers ──
 
 /** Ask or report. The request starts at "Understanding"; `understand` runs after. */
-export function guestAsk(b: Batch, text: string, zoneSlug: string | null, locationHint: string | null = null): GuestRequest {
+export function guestAsk(
+  b: Batch,
+  text: string,
+  zoneSlug: string | null,
+  locationHint: string | null = null,
+): GuestRequest {
   const heard = text.trim();
   const request: GuestRequest = {
-    id: b.id('request'), createdAt: b.now, heard, zoneSlug, locationHint, stage: 'understanding', aiAnswer: null, taskId: null,
-    thread: [{ from: 'guest', text: heard, at: b.now }], reopenedAt: null,
+    id: b.id("request"),
+    createdAt: b.now,
+    heard,
+    zoneSlug,
+    locationHint,
+    stage: "understanding",
+    aiAnswer: null,
+    taskId: null,
+    thread: [{ from: "guest", text: heard, at: b.now }],
+    reopenedAt: null,
   };
   b.request(request);
   return request;
@@ -417,44 +622,70 @@ export function guestSolved(b: Batch, requestId: string) {
 }
 
 /** "What's changed?" A note for the volunteer, or a priority bump that alerts the lead. */
-export function guestAddDetail(b: Batch, requestId: string, text: string, ai?: DetailRead & { triage?: Triage }): { escalated: boolean } {
+export function guestAddDetail(
+  b: Batch,
+  requestId: string,
+  text: string,
+  ai?: DetailRead & { triage?: Triage },
+): { escalated: boolean } {
   const r = b.requests[requestId];
-  if (!r) throw new CommandError('not_found', `No request ${requestId}`);
+  if (!r) throw new CommandError("not_found", `No request ${requestId}`);
   const task = r.taskId ? b.tasks[r.taskId] : undefined;
-  const thread = [...r.thread, { from: 'guest' as const, text, at: b.now }];
+  const thread = [...r.thread, { from: "guest" as const, text, at: b.now }];
 
-  if (!task || (!isActive(task) && task.status !== 'open' && task.status !== 'queued')) {
+  if (!task || (!isActive(task) && task.status !== "open" && task.status !== "queued")) {
     // Nothing open to add to: treat it as asking for a person, with the detail as the report.
     const withDetail = { ...r, heard: `${r.heard}. ${text}`, thread, taskId: null };
     const t = ai?.triage ?? heuristicTriage(withDetail.heard, r.zoneSlug, r.locationHint);
     createGuestTask(b, withDetail, t);
-    return { escalated: t.priority !== 'P3' };
+    return { escalated: t.priority !== "P3" };
   }
 
   const worse = (ai ?? heuristicDetail(text)).worse;
   const updated: Task = worse ? { ...task, priority: BUMP[task.priority] } : task;
   b.task({ ...updated, summary: `${task.summary} Update: ${text}` });
-  b.ev(task.id, 'note', worse ? `Festival-goer says it’s worse. Now ${updated.priority}` : 'Detail from the festival-goer', TRIAGE_AGENT, { note: text });
-  for (const id of b.onIt(task)) b.send(id, 'guest_reply', `Update: “${text}”`, { taskId: task.id, fromName: 'Festival-goer' });
+  b.ev(
+    task.id,
+    "note",
+    worse
+      ? `Festival-goer says it’s worse. Now ${updated.priority}`
+      : "Detail from the festival-goer",
+    TRIAGE_AGENT,
+    { note: text },
+  );
+  for (const id of b.onIt(task))
+    b.send(id, "guest_reply", `Update: “${text}”`, { taskId: task.id, fromName: "Festival-goer" });
   if (worse) {
     const lead = b.leadFor(task.teamSlug) ?? b.coordinator();
-    if (lead) b.send(lead.id, 'escalation', `Worse: ${task.title}. Now ${updated.priority}.`, { taskId: task.id });
+    if (lead)
+      b.send(lead.id, "escalation", `Worse: ${task.title}. Now ${updated.priority}.`, {
+        taskId: task.id,
+      });
   }
-  b.request({ ...r, thread: [...thread, { from: 'ai', text: worse ? 'Lead alerted.' : 'Note added.', at: b.now }] });
+  b.request({
+    ...r,
+    thread: [...thread, { from: "ai", text: worse ? "Lead alerted." : "Note added.", at: b.now }],
+  });
   return { escalated: worse };
 }
 
 export function guestCancel(b: Batch, requestId: string) {
   const r = b.requests[requestId];
   if (!r) return;
-  b.request({ ...r, stage: 'cancelled' });
+  b.request({ ...r, stage: "cancelled" });
   const task = r.taskId ? b.tasks[r.taskId] : undefined;
-  if (task && task.status !== 'resolved' && task.status !== 'cancelled') {
-    b.task({ ...task, status: 'cancelled', resolution: 'cancelled', resolvedAt: b.now, etaAt: null });
-    b.ev(task.id, 'resolved', 'Cancelled by the festival-goer', FESTIVALGOER);
-    settleProposal(b, task.id, 'cancelled', null, null);
+  if (task && task.status !== "resolved" && task.status !== "cancelled") {
+    b.task({
+      ...task,
+      status: "cancelled",
+      resolution: "cancelled",
+      resolvedAt: b.now,
+      etaAt: null,
+    });
+    b.ev(task.id, "resolved", "Cancelled by the festival-goer", FESTIVALGOER);
+    settleProposal(b, task.id, "cancelled", null, null);
     for (const id of b.onIt(task)) {
-      b.send(id, 'closed', `Cancelled by the festival-goer: ${task.title}.`, { taskId: task.id });
+      b.send(id, "closed", `Cancelled by the festival-goer: ${task.title}.`, { taskId: task.id });
       freeUp(b, id);
     }
   }
@@ -474,26 +705,57 @@ export function guestReopen(b: Batch, requestId: string) {
   if (task.status !== 'resolved') return;
   b.request({ ...r, reopenedAt: b.now, thread: [...r.thread, { from: 'guest', text: 'Still need help', at: b.now }] });
   const fresh: Task = {
-    ...task, status: 'open', assigneeId: null, helperIds: [], escalation: null, resolution: null, resolvedAt: null,
-    etaAt: null, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, lastActivityAt: b.now,
+    ...task,
+    status: "open",
+    assigneeId: null,
+    helpers: [],
+    escalation: null,
+    resolution: null,
+    resolvedAt: null,
+    etaAt: null,
+    nudgeCount: 0,
+    lastNudgeAt: null,
+    leadAlertedAt: null,
+    lastActivityAt: b.now,
   };
-  b.ev(task.id, 'note', 'Reopened: festival-goer still needs help', FESTIVALGOER);
+  b.ev(task.id, "note", "Reopened: festival-goer still needs help", FESTIVALGOER);
   // Same volunteer if they're still around: they know the situation.
   const prev = task.assigneeId ? b.volunteers[task.assigneeId] : undefined;
-  if (prev?.duty === 'on_duty') place(b, fresh, prev.id, AGENT, `Reopened, back to ${prev.name}`);
+  if (prev?.duty === "on_duty") place(b, fresh, prev.id, AGENT, `Reopened, back to ${prev.name}`);
   else dispatch(b, fresh);
 }
 
 function createGuestTask(b: Batch, r: GuestRequest, t: Triage) {
   const task: Task = {
-    id: b.id('task'), title: t.title, summary: t.summary, priority: t.priority, teamSlug: t.team, category: t.category,
-    zoneSlug: r.zoneSlug ?? t.zoneSlug, locationHint: r.locationHint ?? t.locationHint, status: 'open', assigneeId: null, handledBy: 'ai',
-    reporter: { kind: 'festivalgoer', quote: r.heard, language: t.language },
-    createdAt: b.now, assignedAt: null, etaAt: null, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null,
-    resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: r.id,
+    id: b.id("task"),
+    title: t.title,
+    summary: t.summary,
+    priority: t.priority,
+    teamSlug: t.team,
+    category: t.category,
+    zoneSlug: r.zoneSlug ?? t.zoneSlug,
+    locationHint: r.locationHint ?? t.locationHint,
+    status: "open",
+    assigneeId: null,
+    handledBy: "ai",
+    reporter: { kind: "festivalgoer", quote: r.heard, language: t.language },
+    createdAt: b.now,
+    assignedAt: null,
+    etaAt: null,
+    lastActivityAt: b.now,
+    nudgeCount: 0,
+    lastNudgeAt: null,
+    leadAlertedAt: null,
+    resolvedAt: null,
+    escalation: null,
+    requiredCount: 1,
+    helpers: [],
+    resolution: null,
+    requestId: r.id,
+    mobilizationId: null,
   };
-  b.ev(task.id, 'created', 'Reported by a festival-goer', TRIAGE_AGENT);
-  b.request({ ...r, stage: 'finding', taskId: task.id });
+  b.ev(task.id, "created", "Reported by a festival-goer", TRIAGE_AGENT);
+  b.request({ ...r, stage: "finding", taskId: task.id });
   if (!t.escalate || !escalateNew(b, task, t.escalate).holding) dispatch(b, task);
 }
 
@@ -527,16 +789,28 @@ export function dispatch(b: Batch, task: Task) {
   if (needsApproval(task.priority)) {
     b.task(task);
     const p: Proposal = {
-      id: b.id('proposal'), taskId: task.id, candidates, createdAt: b.now, autoAssignAt: b.now + POLICY.autoAssignMs,
-      status: 'pending', volunteerId: null, decidedById: null, decidedAt: null,
+      id: b.id("proposal"),
+      taskId: task.id,
+      candidates,
+      createdAt: b.now,
+      autoAssignAt: b.now + POLICY.autoAssignMs,
+      status: "pending",
+      volunteerId: null,
+      decidedById: null,
+      decidedAt: null,
     };
     b.proposal(p);
     const top = candidates[0] ? b.volunteers[candidates[0].volunteerId] : undefined;
-    b.ev(task.id, 'proposed', top ? `Suggested ${top.name}, waiting for approval` : 'Nobody suggested yet', AGENT);
+    b.ev(
+      task.id,
+      "proposed",
+      top ? `Suggested ${top.name}, waiting for approval` : "Nobody suggested yet",
+      AGENT,
+    );
     const lead = b.leadFor(task.teamSlug);
     const mo = b.coordinator();
-    for (const who of [lead, task.priority === 'P1' || !lead ? mo : undefined]) {
-      if (who) b.send(who.id, 'escalation', `Approve: ${task.title}.`, { taskId: task.id });
+    for (const who of [lead, task.priority === "P1" || !lead ? mo : undefined]) {
+      if (who) b.send(who.id, "escalation", `Approve: ${task.title}.`, { taskId: task.id });
     }
     return;
   }
@@ -544,20 +818,105 @@ export function dispatch(b: Batch, task: Task) {
   if (top) return place(b, task, top.volunteerId, AGENT, undefined);
   b.task(task);
   const lead = b.leadFor(task.teamSlug) ?? b.coordinator();
-  if (lead) b.send(lead.id, 'escalation', `Unassigned: ${task.title}.`, { taskId: task.id });
+  if (lead) b.send(lead.id, "escalation", `Unassigned: ${task.title}.`, { taskId: task.id });
 }
 
-/** Assign (free) or queue (busy), with the event and the right delivery: spoken when idle, a ping when busy. */
-export function place(b: Batch, task: Task, volunteerId: string, actor: Actor, why: string | undefined) {
+/**
+ * Assign (free) or queue (busy), with the event and the right delivery: spoken when idle, a ping when busy.
+ * If placed (not queued) and the task needs more than one person, tops up to `requiredCount` via
+ * `rankCandidates`, each starting `'notified'` (their own accept/decline — not pre-committed, unlike
+ * escalation backup). `extraExclude` lets a caller placing several tasks in one go (Mobilization) stop
+ * different steps from recruiting the same person twice.
+ */
+export function place(
+  b: Batch,
+  task: Task,
+  volunteerId: string,
+  actor: Actor,
+  why: string | undefined,
+  extraExclude: string[] = [],
+  selectedHelpers: HelperAssignment[] = [],
+) {
   const v = b.volunteers[volunteerId];
-  const busy = isBusy(b.all().filter((t) => t.id !== task.id), volunteerId);
-  b.task(assignOrQueue(task, volunteerId, busy, b.now));
-  b.ev(task.id, busy ? 'queued' : 'assigned', `${busy ? 'Queued for' : 'Assigned to'} ${v?.name ?? 'a volunteer'}${why ? ` (${why})` : ''}`, actor);
-  b.send(
-    volunteerId, 'task',
-    busy ? `New task queued: ${task.title}. Check the app.` : `New task: ${task.title}. ${task.summary}`,
-    { taskId: task.id, delivery: busy ? 'ping' : 'spoken' },
+  if (
+    task.mobilizationId &&
+    !rankCandidates(task, Object.values(b.volunteers), b.all(), {
+      positions: b.positions,
+      exclude: extraExclude,
+      now: b.now,
+      limit: Object.keys(b.volunteers).length,
+    }).some((candidate) => candidate.volunteerId === volunteerId)
+  )
+    throw new CommandError(
+      "conflict",
+      "Mobilization crew must be free, on duty, qualified and in the required team",
+    );
+  const busy = isBusy(
+    b.all().filter((t) => t.id !== task.id),
+    volunteerId,
   );
+  const before = b.tasks[task.id]?.helpers ?? task.helpers;
+  const placed = assignOrQueue({ ...task, helpers: [...task.helpers, ...selectedHelpers] }, volunteerId, busy, b.now);
+  // Rank against the new owner/selected crew, not an obsolete assignment that makes retained helpers look busy.
+  b.task(placed);
+  const recruited = busy ? placed : recruitHelpers(b, placed, extraExclude);
+  const final = { ...recruited, helpers: recruited.helpers.map((helper) =>
+    before.find((old) => old.volunteerId === helper.volunteerId) ?? helper) };
+
+  b.task(final);
+  b.ev(
+    task.id,
+    busy ? "queued" : "assigned",
+    `${busy ? "Queued for" : "Assigned to"} ${v?.name ?? "a volunteer"}${why ? ` (${why})` : ""}`,
+    actor,
+  );
+  b.send(
+    volunteerId,
+    "task",
+    busy
+      ? `New task queued: ${task.title}. Check the app.`
+      : `New task: ${task.title}. ${task.summary}`,
+    { taskId: task.id, delivery: busy ? "ping" : "spoken" },
+  );
+  for (const h of final.helpers) {
+    if (before.some((e) => e.volunteerId === h.volunteerId)) continue;
+    b.ev(
+      task.id,
+      "helper_added",
+      `${b.volunteers[h.volunteerId]?.name ?? "Someone"} recruited to help`,
+      actor,
+    );
+    b.send(h.volunteerId, "backup", `Help ${v?.name ?? "the team"}: ${task.title}.`, {
+      taskId: task.id,
+      delivery: "spoken",
+    });
+  }
+}
+
+/** Top up to `requiredCount` total (owner included). `rankCandidates` already skips the owner and existing helpers; a no-op once satisfied. */
+function recruitHelpers(b: Batch, task: Task, extraExclude: string[]): Task {
+  const need = task.requiredCount - 1 - task.helpers.length;
+  if (need <= 0) return task;
+  const picks = rankCandidates(task, Object.values(b.volunteers), b.all(), {
+    positions: b.positions,
+    exclude: extraExclude,
+    limit: Object.keys(b.volunteers).length,
+    now: b.now,
+  }).filter((candidate) => {
+    const volunteer = b.volunteers[candidate.volunteerId];
+    return volunteer.teamSlug === task.teamSlug &&
+      (volunteer.shiftEndsAt == null || volunteer.shiftEndsAt > b.now) &&
+      (task.requiredSkills ?? []).every((skill) => volunteer.skills.includes(skill)) &&
+      !isBusy(b.all().filter((t) => t.id !== task.id), volunteer.id);
+  }).slice(0, need);
+  if (!picks.length) return task;
+  const recruited: HelperAssignment[] = picks.map((c) => ({
+    volunteerId: c.volunteerId,
+    status: "notified",
+    assignedAt: b.now,
+    respondedAt: null,
+  }));
+  return { ...task, helpers: [...task.helpers, ...recruited] };
 }
 
 /** Freed up → pull the next queued task, delivered spoken since they're now idle. */
@@ -565,56 +924,417 @@ function freeUp(b: Batch, volunteerId: string) {
   if (isBusy(b.all(), volunteerId)) return;
   const next = nextQueued(b.all(), volunteerId);
   if (!next) return;
-  b.task(assignOrQueue(next, volunteerId, false, b.now));
-  b.ev(next.id, 'assigned', `Assigned to ${b.volunteers[volunteerId]?.name} (freed up)`, AGENT);
-  b.send(volunteerId, 'task', `Next up: ${next.title}. ${next.summary}`, { taskId: next.id, delivery: 'spoken' });
+  // One placement funnel means a queued multi-person task also recruits its helpers when it activates.
+  place(b, next, volunteerId, AGENT, "Freed up");
 }
 
-function settleProposal(b: Batch, taskId: string, status: Proposal['status'], volunteerId: string | null, byId: string | null) {
-  const p = Object.values(b.proposals).find((x) => x.taskId === taskId && x.status === 'pending');
+function settleProposal(
+  b: Batch,
+  taskId: string,
+  status: Proposal["status"],
+  volunteerId: string | null,
+  byId: string | null,
+) {
+  const p = Object.values(b.proposals).find((x) => x.taskId === taskId && x.status === "pending");
   if (p) b.proposal({ ...p, status, volunteerId, decidedById: byId, decidedAt: b.now });
 }
 
 /** One scheduler pass: nudges, lead alerts and bumps from lifecycle.tick, then proposals nobody approved in time. */
-export function schedulerStep(b: Batch) {
+export function schedulerStep(b: Batch, taskIds?: readonly string[]) {
+  // Tests may tick only their own fixtures while retaining the full world for busy/ranking decisions.
+  const scope = taskIds ? new Set(taskIds) : null;
   const mo = b.coordinator();
   for (const task of b.all()) {
+    if (scope && !scope.has(task.id)) continue;
     const r = tick(task, b.now, mo?.id ?? null);
     if (!r) continue;
     b.task(r.task);
-    const v = b.volunteers[task.assigneeId ?? ''];
+    const v = b.volunteers[task.assigneeId ?? ""];
     for (const a of r.alerts) {
-      if (a.kind === 'nudge') {
-        b.ev(a.taskId, 'nudged', a.body, SCHEDULER);
-        b.send(a.volunteerId, 'nudge', a.body, { taskId: a.taskId });
-      } else if (a.kind === 'lead_alert') {
-        b.ev(a.taskId, 'lead_alerted', a.body, SCHEDULER);
-        b.send(a.volunteerId, 'system', `Your team lead has been alerted about “${task.title}”. Send an update when you can.`, { taskId: a.taskId });
+      if (a.kind === "nudge") {
+        b.ev(a.taskId, "nudged", a.body, SCHEDULER);
+        b.send(a.volunteerId, "nudge", a.body, { taskId: a.taskId });
+      } else if (a.kind === "lead_alert") {
+        b.ev(a.taskId, "lead_alerted", a.body, SCHEDULER);
+        b.send(
+          a.volunteerId,
+          "system",
+          `Your team lead has been alerted about “${task.title}”. Send an update when you can.`,
+          { taskId: a.taskId },
+        );
         const lead = b.leadFor(task.teamSlug) ?? mo;
-        if (lead) b.send(lead.id, 'escalation', `${first(v)} went quiet: ${task.title}.`, { taskId: a.taskId });
-      } else if (a.kind === 'remind') {
-        if (mo) b.send(mo.id, 'escalation', a.body, { taskId: a.taskId });
+        if (lead)
+          b.send(lead.id, "escalation", `${first(v)} went quiet: ${task.title}.`, {
+            taskId: a.taskId,
+          });
+      } else if (a.kind === "remind") {
+        if (mo) b.send(mo.id, "escalation", a.body, { taskId: a.taskId });
       } else {
-        b.ev(a.taskId, 'bumped', a.body, SCHEDULER);
+        b.ev(a.taskId, "bumped", a.body, SCHEDULER);
         const lead = b.leadFor(task.teamSlug);
-        if (lead) b.send(lead.id, 'escalation', `Passed to Mo: ${task.title}.`, { taskId: a.taskId });
-        const ask = isHeld(task) ? `Needs your call: ${task.title}. ${task.escalation?.reason ?? ''}`.trim() : `${first(v)} asked for help: ${task.title}.`;
-        if (mo) b.send(mo.id, 'escalation', ask, { taskId: a.taskId });
+        if (lead)
+          b.send(lead.id, "escalation", `Passed to Mo: ${task.title}.`, { taskId: a.taskId });
+        if (mo)
+          b.send(mo.id, "escalation", isHeld(task) ? `Needs your call: ${task.title}. ${task.escalation?.reason ?? ""}`.trim() : `${first(v)} asked for help: ${task.title}.`, {
+            taskId: a.taskId,
+          });
       }
     }
   }
   // Nobody approved or changed the AI's pick in time: assign the top pick that's still around.
   for (const p of Object.values(b.proposals)) {
+    if (scope && !scope.has(p.taskId)) continue;
     if (!proposalDue(p, b.now)) continue;
     const task = b.tasks[p.taskId];
-    const pick = task?.status === 'open'
-      ? (rankCandidates(task, Object.values(b.volunteers), b.all(), { positions: b.positions, now: b.now })[0] ?? p.candidates[0])?.volunteerId
-      : undefined;
+    const pick =
+      task?.status === "open"
+        ? (rankCandidates(task, Object.values(b.volunteers), b.all(), { positions: b.positions, now: b.now })[0] ?? p.candidates[0])
+            ?.volunteerId
+        : undefined;
     if (!task || !pick) {
-      b.proposal({ ...p, status: 'cancelled', decidedAt: b.now });
+      b.proposal({ ...p, status: "cancelled", decidedAt: b.now });
       continue;
     }
     place(b, task, pick, AGENT, `auto-assigned, no approval in ${POLICY.autoAssignMs / 1000} s`);
-    b.proposal({ ...p, status: 'auto_assigned', volunteerId: pick, decidedAt: b.now });
+    b.proposal({ ...p, status: "auto_assigned", volunteerId: pick, decidedAt: b.now });
   }
+}
+
+// ── mobilization ──
+
+/** A system-detected situation awaiting Mo's approval. No tasks exist yet; `draft.steps` is a preview only. */
+export function proposeMobilization(
+  b: Batch,
+  draft: {
+    title: string;
+    rationale: string;
+    urgency: Priority;
+    zoneSlug: string | null;
+    relatedPlaybooks: string[];
+    steps: MobilizationStep[];
+    evidence?: MobilizationEvidence;
+    analysisRunId?: string;
+  },
+): Mobilization {
+  assertMobilizationSteps(draft.steps);
+  const existing = Object.values(b.mobilizations).find(
+    (m) =>
+      (m.status === "proposed" || m.status === "active") &&
+      (draft.analysisRunId
+        ? m.analysisRunId === draft.analysisRunId &&
+          m.title === draft.title &&
+          m.steps.map((s) => s.stepKey).join("|") === draft.steps.map((s) => s.stepKey).join("|")
+        : !m.analysisRunId && sameSituation(m, draft)),
+  );
+  // Recheck analysis/action identity at the write boundary; different situations in one zone
+  // must remain separate. Request-level idempotency is enforced by mobilization_runs.
+  if (existing) return existing;
+  const m: Mobilization = {
+    id: b.id("mobilization"),
+    title: draft.title,
+    status: "proposed",
+    rationale: draft.rationale,
+    relatedPlaybooks: draft.relatedPlaybooks,
+    urgency: draft.urgency,
+    zoneSlug: draft.zoneSlug,
+    steps: draft.steps,
+    evidence: draft.evidence ?? null,
+    analysisRunId: draft.analysisRunId ?? null,
+    playbookSlug: null,
+    createdAt: b.now,
+    decidedById: null,
+    decidedAt: null,
+  };
+  b.mobilization(m);
+  const mo = b.coordinator();
+  if (mo) b.send(mo.id, "escalation", `New mobilization needs approval: ${draft.title}.`);
+  return m;
+}
+
+/** Mo acting by hand: active immediately, no self-approval step. `playbookSlug` is a template, freely edited. */
+export function createMobilization(
+  b: Batch,
+  byId: string,
+  input: {
+    title: string;
+    rationale: string;
+    urgency: Priority;
+    zoneSlug: string | null;
+    playbookSlug?: string;
+    steps: { teamSlug: TeamSlug; peopleNeeded: number; reason: string }[];
+  },
+): { mobilization: Mobilization; taskIds: string[] } {
+  requireMo(b, byId);
+  assertMobilizationSteps(input.steps);
+  const m: Mobilization = {
+    id: b.id("mobilization"),
+    title: input.title,
+    status: "active",
+    rationale: input.rationale,
+    relatedPlaybooks: input.playbookSlug ? [input.playbookSlug] : [],
+    urgency: input.urgency,
+    zoneSlug: input.zoneSlug,
+    steps: input.steps.map((s) => ({ ...s, candidates: [] })),
+    evidence: null,
+    playbookSlug: input.playbookSlug ?? null,
+    createdAt: b.now,
+    decidedById: byId,
+    decidedAt: b.now,
+  };
+  const taskIds = materializeSteps(b, m, byId);
+  b.mobilization(m);
+  return { mobilization: m, taskIds };
+}
+
+/**
+ * Approve a proposed mobilization: re-ranks every step fresh (the stored preview is non-binding — see
+ * `materializeSteps`) and creates the real tasks.
+ */
+export function approveMobilization(
+  b: Batch,
+  byId: string,
+  mobilizationId: string,
+): { taskIds: string[] } {
+  requireMo(b, byId);
+  const m = b.mobilizations[mobilizationId];
+  if (!m) throw new CommandError("not_found", `No mobilization ${mobilizationId}`);
+  if (m.status !== "proposed")
+    throw new CommandError("conflict", `Cannot approve mobilization ${mobilizationId}`);
+  const active: Mobilization = { ...m, status: "active", decidedById: byId, decidedAt: b.now };
+  const taskIds = materializeSteps(b, active, byId);
+  b.mobilization(active);
+  return { taskIds };
+}
+
+/** Mo declines a system-proposed mobilization. No tasks are ever touched. */
+export function rejectMobilization(b: Batch, byId: string, mobilizationId: string) {
+  requireMo(b, byId);
+  const m = b.mobilizations[mobilizationId];
+  if (!m) throw new CommandError("not_found", `No mobilization ${mobilizationId}`);
+  if (m.status !== "proposed")
+    throw new CommandError("conflict", `Cannot reject mobilization ${mobilizationId}`);
+  b.mobilization({ ...m, status: "rejected", decidedById: byId, decidedAt: b.now });
+}
+
+/** Close out an active mobilization. Its tasks keep going through their own normal lifecycle, untouched. */
+export function standDown(
+  b: Batch,
+  byId: string,
+  mobilizationId: string,
+  outcome: "stood_down" | "cancelled",
+) {
+  requireMo(b, byId);
+  const m = b.mobilizations[mobilizationId];
+  if (!m) throw new CommandError("not_found", `No mobilization ${mobilizationId}`);
+  if (m.status !== "active")
+    throw new CommandError("conflict", `Cannot stand down mobilization ${mobilizationId}`);
+  b.mobilization({ ...m, status: outcome, decidedById: byId, decidedAt: b.now });
+}
+
+/** Mobilizations are venue-wide safety decisions; a team lead cannot activate or dismiss one. */
+function requireMo(b: Batch, byId: string) {
+  // Supabase maps coordinator/safety_lead/admin to this domain role; do not privilege the first row.
+  if (b.volunteers[byId]?.role !== "coordinator")
+    throw new CommandError("forbidden", "Only Mo can decide a mobilization");
+}
+
+/** Each concrete action has its own identity; multiple actions may use the same team. */
+function assertMobilizationSteps(
+  steps: readonly (Pick<MobilizationStep, "teamSlug" | "peopleNeeded" | "reason"> &
+    Partial<MobilizationStep>)[],
+) {
+  if (!steps.length)
+    throw new CommandError("invalid", "A mobilization needs at least one team step");
+  const keys = new Set<string>();
+  for (const step of steps) {
+    if (!Number.isInteger(step.peopleNeeded) || step.peopleNeeded < 1 || step.peopleNeeded > 500)
+      throw new CommandError("invalid", "Each mobilization task needs 1 to 500 people");
+    if (!step.reason.trim())
+      throw new CommandError("invalid", "Each mobilization step needs a reason");
+    const key = step.stepKey ?? step.teamSlug;
+    if (keys.has(key))
+      throw new CommandError("invalid", `Mobilization has duplicate action ${key}`);
+    keys.add(key);
+  }
+}
+
+/** A narrow, explainable dedupe identity for an in-flight venue situation. */
+function sameSituation(mobilization: Mobilization, draft: Pick<Mobilization, "zoneSlug">) {
+  return mobilization.zoneSlug === draft.zoneSlug;
+}
+
+/**
+ * Turn a mobilization's actions into real tasks. Ranks fresh for every action — the step's
+ * stored `candidates` (if any) is a preview a human saw, never a binding commitment, mirroring how
+ * `schedulerStep`'s auto-assign already re-ranks rather than trusting a stored `Proposal`. Excludes
+ * anyone already picked by an earlier step in this same call, so one mobilization doesn't queue two of
+ * its own steps behind the same person. A step nobody's free for still gets its task — open, unassigned,
+ * with the lead told explicitly — never silently understaffed.
+ */
+function materializeSteps(b: Batch, m: Mobilization, byId: string): string[] {
+  const actor = b.actor(byId);
+  const taskIds: string[] = [];
+  const pickedSoFar: string[] = [];
+  for (const step of m.steps) {
+    const draft: Task = {
+      id: b.id("task"),
+      title: step.title ?? `${m.title} · ${step.teamSlug}`,
+      summary: [
+        step.instructions ?? step.reason,
+        step.completionCriteria ? `Done when: ${step.completionCriteria}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      category: TEAM_CATEGORY[step.teamSlug],
+      priority: m.urgency,
+      teamSlug: step.teamSlug,
+      zoneSlug: step.zoneSlug ?? m.zoneSlug,
+      locationHint: null,
+      status: "open",
+      assigneeId: null,
+      reporter: { kind: "system", quote: m.rationale, language: "en" },
+      handledBy: "ai",
+      createdAt: b.now,
+      assignedAt: null,
+      etaAt: null,
+      lastActivityAt: b.now,
+      nudgeCount: 0,
+      lastNudgeAt: null,
+      leadAlertedAt: null,
+      resolvedAt: null,
+      escalation: null,
+      requiredCount: step.peopleNeeded,
+      helpers: [],
+      resolution: null,
+      requestId: null,
+      mobilizationId: m.id,
+      mobilizationStepKey: step.stepKey ?? null,
+      requiredSkills: step.requiredSkills ?? [],
+    };
+    b.ev(draft.id, "created", `Mobilization: ${m.title}`, actor);
+    const picks = rankCandidates(draft, Object.values(b.volunteers), b.all(), {
+      positions: b.positions,
+      exclude: pickedSoFar,
+      limit: 1,
+      now: b.now,
+    });
+    if (!picks.length) {
+      b.task(draft);
+      const lead = b.leadFor(step.teamSlug) ?? b.coordinator();
+      if (lead)
+        b.send(lead.id, "escalation", `No one available for ${step.teamSlug}: ${m.title}.`, {
+          taskId: draft.id,
+        });
+      taskIds.push(draft.id);
+      continue;
+    }
+    if (step.candidates[0] && step.candidates[0].volunteerId !== picks[0].volunteerId) {
+      const was = b.volunteers[step.candidates[0].volunteerId]?.name ?? "The suggested pick";
+      b.ev(
+        draft.id,
+        "note",
+        `${was} was no longer free; assigned to someone else instead.`,
+        SCHEDULER,
+      );
+    }
+    place(b, draft, picks[0].volunteerId, actor, `Mobilization: ${m.title}`, pickedSoFar);
+    const final = b.tasks[draft.id];
+    const missing = final.requiredCount - 1 - final.helpers.length;
+    if (missing > 0) {
+      b.ev(
+        final.id,
+        "note",
+        `Staffing gap: ${missing} of ${final.requiredCount} people still needed.`,
+        actor,
+      );
+      const lead = b.leadFor(step.teamSlug) ?? b.coordinator();
+      if (lead)
+        b.send(
+          lead.id,
+          "escalation",
+          `Staffing gap: ${missing} people needed for ${final.title}.`,
+          { taskId: final.id },
+        );
+    }
+    pickedSoFar.push(final.assigneeId!, ...helperIdsOf(final));
+    taskIds.push(draft.id);
+  }
+  return taskIds;
+}
+
+/** Task fields a canned report supplies; the command fills in ids, times and lifecycle fields. */
+export type TaskDraft = Omit<
+  Task,
+  | "id"
+  | "createdAt"
+  | "lastActivityAt"
+  | "status"
+  | "assigneeId"
+  | "assignedAt"
+  | "etaAt"
+  | "nudgeCount"
+  | "lastNudgeAt"
+  | "leadAlertedAt"
+  | "resolvedAt"
+  | "escalation"
+  | "requiredCount"
+  | "helpers"
+  | "resolution"
+  | "requestId"
+  | "mobilizationId"
+>;
+
+// ── demo scenarios (the dev panel now, the demo-day simulator later) ──
+
+/** The volunteer's active task goes silent: nudged, then the lead is alerted. */
+export function goQuiet(b: Batch, volunteerId: string) {
+  const task = b
+    .all()
+    .find((t) => t.assigneeId === volunteerId && isActive(t) && t.status !== "escalated");
+  if (!task) return;
+  const v = b.volunteers[volunteerId];
+  b.task({
+    ...task,
+    status: task.status === "assigned" ? "accepted" : task.status,
+    nudgeCount: 1,
+    lastNudgeAt: b.now - POLICY.nudgeGapMs,
+    leadAlertedAt: b.now,
+  });
+  b.ev(task.id, "nudged", `Still on "${task.title}"? Send a quick update.`, SCHEDULER);
+  b.ev(task.id, "lead_alerted", `No update on "${task.title}". Lead alerted.`, SCHEDULER);
+  b.send(
+    volunteerId,
+    "system",
+    `Your team lead has been alerted about “${task.title}”. Send an update when you can.`,
+    { taskId: task.id },
+  );
+  const lead = b.leadFor(task.teamSlug) ?? b.coordinator();
+  if (lead)
+    b.send(lead.id, "escalation", `${first(v)} went quiet: ${task.title}.`, { taskId: task.id });
+}
+
+/** A canned report lands on a volunteer. */
+export function spawnIncoming(b: Batch, volunteerId: string, draft: TaskDraft) {
+  const task: Task = {
+    ...draft,
+    id: b.id("task"),
+    status: "open",
+    assigneeId: null,
+    createdAt: b.now,
+    assignedAt: null,
+    etaAt: null,
+    lastActivityAt: b.now,
+    nudgeCount: 0,
+    lastNudgeAt: null,
+    leadAlertedAt: null,
+    resolvedAt: null,
+    escalation: null,
+    requiredCount: 1,
+    helpers: [],
+    resolution: null,
+    requestId: null,
+    mobilizationId: null,
+  };
+  b.ev(task.id, "created", `Reported by ${draft.reporter.name ?? "a festival-goer"}`, TRIAGE_AGENT);
+  place(b, task, volunteerId, TRIAGE_AGENT, undefined);
 }

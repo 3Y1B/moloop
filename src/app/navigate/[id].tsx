@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { Radius, Type } from '@/constants/theme';
 import { useLookups, useMe, useMyDot, useRepo, useReporterPlace, useRouteTo, useSnapshot, useTask } from '@/data/hooks';
 import { NODES, VENUE_ZONES } from '@/data/venue';
 import { initials, REPLY_LABEL, REPLY_SF } from '@/lib/format';
+import { goBack } from '@/lib/navigation';
 import { placeOf } from '@/lib/presence';
 import { formatMeters, type Step } from '@/lib/route';
 import type { ReplyKind } from '@/lib/schema';
@@ -126,7 +127,7 @@ export default function NavigateScreen() {
               style={styles.flex}
             />
           ) : (
-            <Button size="large" label="Back to task" sf="chevron.left" variant="tinted" onPress={() => router.back()} style={styles.flex} />
+            <Button size="large" label="Back to task" sf="chevron.left" variant="tinted" onPress={() => goBack({ pathname: '/task/[id]', params: { id: task.id } })} style={styles.flex} />
           )}
         </View>
       </View>

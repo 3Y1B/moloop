@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { httpOptions, postWithRetry, type HttpOptions } from './http';
+import {
+  diagnosticRequestId, emitDiagnostic, httpOptions, postWithRetry,
+  type DiagnosticCallback, type HttpOptions, type ModelDiagnostic,
+} from './http';
 import { spark } from './providers';
 
 type LunaOptions = { baseUrl?: string; apiKey?: string; model?: string; fetch?: typeof fetch; retryDelayMs?: number };
@@ -14,19 +17,22 @@ export class LunaLlm {
     this.http = httpOptions(opts, spark());
   }
 
-  async generate<T extends z.ZodTypeAny>({ system, prompt, schema, signal }: { system: string; prompt: string; schema: T; signal?: AbortSignal }): Promise<z.infer<T>> {
+  async generate<T extends z.ZodTypeAny>({ system, prompt, schema, ...options }: { system: string; prompt: string; schema: T } & GenerateOptions): Promise<z.infer<T>> {
+    const diagnostics: GenerationDiagnostics = { onDiagnostic: options.onDiagnostic, startedAt: Date.now(), request: 1, attempt: 1 };
     const messages: Message[] = [
       { role: 'system', content: system },
       { role: 'user', content: prompt },
     ];
-    const first = await this.complete(messages, schema, signal);
+    const first = await this.complete(messages, schema, options, diagnostics);
     const parsed = parse(first, schema);
-    if (parsed.ok) return parsed.value;
+    if (parsed.ok) { report(diagnostics, { stage: 'complete' }); return parsed.value; }
 
     // One repair round: show the model its own output and what was wrong with it.
+    report(diagnostics, { stage: 'repair' });
+    diagnostics.request = 2;
     messages.push({ role: 'assistant', content: first }, { role: 'user', content: `That reply was invalid:\n${parsed.error}\nReply again with only the corrected JSON.` });
-    const retry = parse(await this.complete(messages, schema, signal), schema);
-    if (retry.ok) return retry.value;
+    const retry = parse(await this.complete(messages, schema, options, diagnostics), schema);
+    if (retry.ok) { report(diagnostics, { stage: 'complete' }); return retry.value; }
     throw new Error(`${this.id} returned invalid output twice: ${retry.error}`);
   }
 
@@ -76,22 +82,69 @@ export class LunaLlm {
     return data.choices[0].message;
   }
 
-  private async complete(messages: Message[], schema: z.ZodTypeAny, signal?: AbortSignal): Promise<string> {
+  private async complete(messages: Message[], schema: z.ZodTypeAny, options: GenerateOptions, diagnostics: GenerationDiagnostics): Promise<string> {
     const jsonSchema = jsonSchemaOf(schema);
     const res = await postWithRetry(
       this.http,
       '/chat/completions',
       JSON.stringify({
         model: this.id,
-        reasoning_effort: 'none',
+        reasoning_effort: options.reasoningEffort ?? 'none',
+        ...(new URL(this.http.baseUrl).hostname === 'api.openai.com'
+          ? { max_completion_tokens: Math.max(32, Math.min(16_000, options.maxTokens ?? 700)) }
+          : { max_tokens: Math.max(32, Math.min(16_000, options.maxTokens ?? 700)) }),
         response_format: { type: 'json_schema', json_schema: { name: 'output', strict: true, schema: jsonSchema } },
         messages,
       }),
-      signal,
+      options.signal,
+      { startedAt: diagnostics.startedAt, request: diagnostics.request, onDiagnostic: (event) => {
+        diagnostics.attempt = event.attempt;
+        emitDiagnostic(diagnostics.onDiagnostic, event);
+      } },
     );
-    const data = (await res.json()) as { choices: { message: { content: string } }[] };
-    return data.choices[0].message.content;
+    const cancelled = () => report(diagnostics, { stage: 'cancelled', phase: 'response_body', status: res.status,
+      requestId: diagnosticRequestId(res) });
+    options.signal?.addEventListener('abort', cancelled, { once: true });
+    let data: { choices?: { message?: { content?: string | null; refusal?: string }; finish_reason?: string }[]; usage?: unknown };
+    try {
+      data = await res.json();
+      report(diagnostics, { stage: 'response_body', status: res.status, requestId: diagnosticRequestId(res), usage: diagnosticUsage(data.usage) });
+    } finally { options.signal?.removeEventListener('abort', cancelled); }
+    const choice = data.choices?.[0];
+    const content = choice?.message?.content;
+    const captured = typeof content === 'string' ? content : JSON.stringify(choice?.message ?? { error: 'empty reply' });
+    await options.onResponse?.(captured);
+    if (choice?.message?.refusal) throw new Error(`${this.id} refused the structured response`);
+    if (choice?.finish_reason === 'length') throw new Error(`${this.id} response reached its token limit`);
+    if (typeof content !== 'string' || !content.trim()) throw new Error(`${this.id} returned an empty reply`);
+    return content;
   }
+}
+
+type GenerateOptions = {
+  signal?: AbortSignal;
+  maxTokens?: number;
+  reasoningEffort?: string;
+  onResponse?: (response: string) => void | Promise<void>;
+  onDiagnostic?: DiagnosticCallback;
+};
+
+type GenerationDiagnostics = { onDiagnostic?: DiagnosticCallback; startedAt: number; request: number; attempt: number };
+const report = (diagnostics: GenerationDiagnostics, event: Omit<ModelDiagnostic, 'elapsedMs' | 'request' | 'attempt'>) =>
+  emitDiagnostic(diagnostics.onDiagnostic, { ...event, elapsedMs: Math.max(0, Date.now() - diagnostics.startedAt),
+    request: diagnostics.request, attempt: diagnostics.attempt });
+
+function diagnosticUsage(value: unknown): ModelDiagnostic['usage'] {
+  if (!value || typeof value !== 'object') return;
+  const usage = value as Record<string, unknown>;
+  const details = usage.completion_tokens_details;
+  const promptDetails = usage.prompt_tokens_details;
+  const reasoning = details && typeof details === 'object' ? (details as Record<string, unknown>).reasoning_tokens : undefined;
+  const count = (n: unknown): number | undefined => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 ? n : undefined;
+  const selected = { inputTokens: count(usage.prompt_tokens), outputTokens: count(usage.completion_tokens), reasoningTokens: count(reasoning),
+    cachedInputTokens: count(promptDetails && typeof promptDetails === 'object'
+      ? (promptDetails as Record<string, unknown>).cached_tokens : undefined) };
+  return Object.values(selected).some((n) => n != null) ? selected : undefined;
 }
 
 /** A function the model may call. `args` validates what it passes. */

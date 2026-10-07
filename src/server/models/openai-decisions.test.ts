@@ -94,7 +94,6 @@ describe('OpenAiDecisions.decide', () => {
     cancel.abort();
 
     await expect(decisions.decide(state, questions, cancel.signal)).rejects.toThrow();
-    expect(http.requests).toHaveLength(1);
-    expect(http.requests[0].signal).toBe(cancel.signal);
+    expect(http.requests).toHaveLength(0);
   });
 });

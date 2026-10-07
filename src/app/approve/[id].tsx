@@ -13,6 +13,7 @@ import { Radius, Type } from '@/constants/theme';
 import { useLookups, useProposal, useRepo, useSnapshot, useTask, useTaskStatus } from '@/data/hooks';
 import { initials } from '@/lib/format';
 import { isBusy, POLICY } from '@/lib/lifecycle';
+import { goBack } from '@/lib/navigation';
 import type { Proposal, Task, Volunteer } from '@/lib/schema';
 import { toneColor, useTheme } from '@/hooks/use-theme';
 
@@ -57,7 +58,15 @@ function Pending({ proposal, task, picked, onPick }: {
   const { volunteers, teams } = useLookups();
   const [sending, setSending] = useState(false);
   const all = Object.values(tasks);
-  const candidates = proposal.candidates.filter((c) => volunteers[c.volunteerId]);
+  const candidates = proposal.candidates.filter((c) => {
+    const volunteer = volunteers[c.volunteerId];
+    if (!volunteer || volunteer.role !== 'volunteer' || volunteer.duty !== 'on_duty') return false;
+    if (!task.mobilizationId) return true;
+    return volunteer.teamSlug === task.teamSlug &&
+      (volunteer.shiftEndsAt == null || volunteer.shiftEndsAt > now) &&
+      (task.requiredSkills ?? []).every((skill) => volunteer.skills.includes(skill)) &&
+      !isBusy(all.filter((other) => other.id !== task.id), volunteer.id);
+  });
   const top = candidates[0];
 
   if (!top) {
@@ -65,7 +74,8 @@ function Pending({ proposal, task, picked, onPick }: {
   }
 
   const touched = picked !== null;
-  const selection = picked ?? [top.volunteerId];
+  const eligible = new Set(candidates.map((candidate) => candidate.volunteerId));
+  const selection = (picked ?? [top.volunteerId]).filter((volunteerId) => eligible.has(volunteerId));
   const lead = selection[0] ? volunteers[selection[0]] : undefined;
   const why = candidates.find((c) => c.volunteerId === lead?.id)?.rationale;
   const extras = selection.slice(1).map((vid) => volunteers[vid]).filter(Boolean);
@@ -98,7 +108,7 @@ function Pending({ proposal, task, picked, onPick }: {
       setSending(false);
       return;
     }
-    router.back();
+    goBack({ pathname: '/task/[id]', params: { id: task.id } });
   };
 
   return (
@@ -187,7 +197,7 @@ function Decided({ proposal, task }: { proposal: Proposal; task: Task }) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Done"
-        onPress={() => router.back()}
+        onPress={() => goBack({ pathname: '/task/[id]', params: { id: task.id } })}
         style={({ pressed }) => [styles.done, { backgroundColor: theme.backgroundElement }, pressed && styles.pressed]}>
         <Text style={[styles.doneText, { color: theme.text }]}>Done</Text>
       </Pressable>

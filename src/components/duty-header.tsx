@@ -1,9 +1,11 @@
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
 import { floating, MAP_BUTTON } from '@/components/map/map-button';
 import { Avatar } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Radius, Type } from '@/constants/theme';
 import { useLookups, useMe, useRepo } from '@/data/hooks';
@@ -41,7 +43,7 @@ export function DutyChip({ open, onToggle }: { open: boolean; onToggle: () => vo
   );
 }
 
-/** Expanded shift details: team, shift end, break toggle. */
+/** Expanded shift details: team, shift end, break toggle and Mo's planning shortcuts. */
 export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
   const theme = useTheme();
   const repo = useRepo();
@@ -77,6 +79,30 @@ export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
               {onDuty ? 'Take a break' : 'Back on duty'}
             </Text>
           </Pressable>
+          {me.role === 'coordinator' && (repo.mobilizations || repo.playbooks) && (
+            <View style={styles.planningActions}>
+              {repo.mobilizations && (
+                <Button
+                  label="Test situation"
+                  sf="bolt.fill"
+                  variant="tinted"
+                  size="small"
+                  style={styles.planningButton}
+                  onPress={() => router.push('/mobilize/simulate')}
+                />
+              )}
+              {repo.playbooks && (
+                <Button
+                  label="Manage playbooks"
+                  sf="book.closed"
+                  variant="tinted"
+                  size="small"
+                  style={styles.planningButton}
+                  onPress={() => router.push('/playbooks')}
+                />
+              )}
+            </View>
+          )}
         </View>
     </Animated.View>
   );
@@ -96,7 +122,10 @@ const styles = StyleSheet.create({
   panelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelText: { fontSize: Type.callout, fontWeight: '600', flexShrink: 1 },
   panelMeta: { fontSize: Type.footnote, marginLeft: 'auto' },
-  actions: { flexDirection: 'row', gap: 8 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 34, borderRadius: Radius.control },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 8 },
+  // Keep planning to the right of duty when it fits; the two shortcuts can wrap within that group.
+  planningActions: { flex: 1, minWidth: 176, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  planningButton: { minHeight: 44, paddingHorizontal: 12 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: Radius.control },
   pillText: { fontSize: Type.footnote, fontWeight: '500' },
 });

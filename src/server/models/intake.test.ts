@@ -53,6 +53,7 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -119,10 +120,14 @@ describe('intake: the agent picks create_task or escalate, code has the last wor
   });
 
   it('falls back to keywords at P2 or more when the agent fails', async () => {
-    queue.chat.push({ status: 500 });
+    vi.useFakeTimers();
+    // Persistent outage for all three bounded transport attempts, not a fixture queue exhaustion.
+    queue.chat.push({ status: 500 }, { status: 500 }, { status: 500 });
     queue.decisions.push(decided('ops', 'P3', 0.1));
 
-    const { value, run } = await ai.triage(heard('bin overflowing at food alley'));
+    const result = ai.triage(heard('bin overflowing at food alley'));
+    await vi.runAllTimersAsync();
+    const { value, run } = await result;
 
     expect(value).toMatchObject({ team: 'ops', priority: 'P3', escalate: null });
     expect(run.error).toMatch(/500/);

@@ -42,7 +42,7 @@ export function TaskMap({ task, fill, frame, candidates, picked, onPick, style }
       needsHelp: needsResponse(task) || isQuiet(task), stale: ownerLive?.stale,
     });
   }
-  task.helperIds.forEach((id, i) => {
+  task.helpers.forEach(({ volunteerId: id }, i) => {
     const v = volunteers[id];
     const live = placeOf(positions, id, now);
     const spot = live?.at ?? (v && zoneSpot(v.zoneSlug, i + 2));
@@ -51,7 +51,7 @@ export function TaskMap({ task, fill, frame, candidates, picked, onPick, style }
   candidates?.forEach((id, i) => {
     const v = volunteers[id];
     const live = placeOf(positions, id, now);
-    const spot = live?.at ?? (v && zoneSpot(v.zoneSlug, task.helperIds.length + i + 2));
+    const spot = live?.at ?? (v && zoneSpot(v.zoneSlug, task.helpers.length + i + 2));
     const on = id === picked;
     if (v && spot) markers.push({ kind: 'volunteer', id, at: spot, color: on ? theme.tint : theme.textTertiary, initials: initials(v.name), onTask: on, stale: live?.stale });
   });

@@ -4,17 +4,20 @@ import { StyleSheet, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { useRepo } from '@/data/hooks';
 import { REPLY_LABEL, REPLY_SF } from '@/lib/format';
-import { availableReplies } from '@/lib/lifecycle';
-import type { ReplyKind, Task } from '@/lib/schema';
+import { availableHelperReplies, availableReplies } from '@/lib/lifecycle';
+import type { HelperAssignment, ReplyKind, Task } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
  * One big obvious next step, then compact alternatives. Designed for one thumb while walking.
- * A helper (backup) only gets Done; asking for help stays with the owner. Tasks from a festival-goer get Reply.
+ * Helpers reply against their own assignment: Accept/Decline while notified, Done once accepted.
+ * Asking for help stays with the owner. Tasks from a festival-goer get Reply.
  */
-export function ReplyBar({ task, helping = false }: { task: Task; helping?: boolean }) {
+export function ReplyBar({ task, helperEntry }: { task: Task; helperEntry?: HelperAssignment }) {
   const theme = useTheme();
-  const { primary, secondary } = availableReplies(task.status);
+  const { primary, secondary } = helperEntry
+    ? availableHelperReplies(helperEntry.status)
+    : availableReplies(task.status);
   const send = useSendReply(task);
 
   // The main reply is the screen's one filled (tint) button; colour on the alternatives carries meaning.
@@ -23,7 +26,7 @@ export function ReplyBar({ task, helping = false }: { task: Task; helping?: bool
   const hapticFor = (r: ReplyKind) => (r === 'need_help' || r === 'decline' ? 'warning' : r === 'done' ? 'success' : 'light');
 
   // "Still on it" lives in the status line ("Send an update") and in voice, not as a permanent button.
-  const inline = helping ? [] : secondary.filter((r) => r !== 'still_on_it');
+  const inline = secondary.filter((r) => r !== 'still_on_it');
   // Reply to the festival-goer once you've taken it (a typed or voice note into their thread).
   const canReplyToGuest = !!task.requestId && task.status !== 'assigned';
   return (

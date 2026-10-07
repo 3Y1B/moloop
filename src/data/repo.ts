@@ -1,7 +1,29 @@
-import type { RespondInput } from '@/lib/lifecycle';
-import type { Fix } from '@/lib/presence';
-import type { RespondCommand } from '@/lib/respond-words';
-import type { Duty, GuestRequest, Message, Position, Proposal, ReplyKind, Task, TaskEvent, Team, TeamSlug, Volunteer, Zone } from '@/lib/schema';
+import type { RespondInput } from "@/lib/lifecycle";
+import type { Fix } from "@/lib/presence";
+import type { RespondCommand } from "@/lib/respond-words";
+import type {
+  ManagedPlaybook,
+  SavePlaybookDraftInput,
+  SimulationContext,
+  SimulationInput,
+  SimulationRunResult,
+} from "@/lib/mobilization-contracts";
+import type {
+  Duty,
+  GuestRequest,
+  Message,
+  Mobilization,
+  Position,
+  Priority,
+  Proposal,
+  ReplyKind,
+  Task,
+  TaskEvent,
+  Team,
+  TeamSlug,
+  Volunteer,
+  Zone,
+} from "@/lib/schema";
 
 export type { RespondInput };
 
@@ -11,7 +33,7 @@ export type { RespondInput };
  * Snapshots are immutable; a new object is emitted on every change (useSyncExternalStore-friendly).
  */
 export type Snapshot = {
-  status: 'loading' | 'ready' | 'error';
+  status: "loading" | "ready" | "error";
   now: number;
   /** Who is signed in: a volunteer id, or `guestId` for the festival-goer. */
   meId: string | null;
@@ -25,7 +47,8 @@ export type Snapshot = {
   messages: Message[];
   requests: Record<string, GuestRequest>;
   proposals: Record<string, Proposal>;
-  /** Live GPS by person id: everyone this caller may see (crew see crew; a festival-goer, who's coming). */
+  mobilizations: Record<string, Mobilization>;
+  /** Live GPS by person id, restricted to people this caller may see. */
   positions: Record<string, Position>;
 };
 
@@ -111,5 +134,44 @@ export interface Repo {
 
   /** Volunteer → festival-goer, on a task that came from a request. */
   guestReply(taskId: string, text: string): Promise<void>;
+
+  /** Mobilization is server/Supabase-only: real-model simulation and approval need shared persistence. */
+  mobilizations?: MobilizationControls;
+  /** Mo-authored, versioned SOPs. Published revisions are immutable. */
+  playbooks?: PlaybookControls;
 }
 
+export type CreateMobilizationInput = {
+  title: string;
+  rationale: string;
+  urgency: Priority;
+  zoneSlug: string | null;
+  /** Pre-fills steps from a playbook's template; still freely editable. */
+  playbookSlug?: string;
+  steps: { teamSlug: TeamSlug; peopleNeeded: number; reason: string }[];
+};
+
+export interface MobilizationControls {
+  /** Mo-initiated, active immediately (no self-approval step), optionally templated from a playbook. */
+  create(input: CreateMobilizationInput): Promise<void>;
+  /** Approve a system-proposed mobilization: re-ranks candidates fresh and creates the real tasks. */
+  approve(mobilizationId: string, review?: MobilizationReview): Promise<void>;
+  reject(mobilizationId: string): Promise<void>;
+  standDown(mobilizationId: string, outcome: "stood_down" | "cancelled"): Promise<void>;
+  context(): Promise<SimulationContext>;
+  /** Analyze editable facts with the real configured model; never inject canned tasks. */
+  simulate(input: SimulationInput): Promise<SimulationRunResult>;
+  getRun(id: string): Promise<SimulationRunResult>;
+}
+
+/** An explicit Mo review of the immutable analysis, including any known execution gaps. */
+export type MobilizationReview = { reviewedRunId?: string; acknowledgeGaps?: boolean };
+
+export interface PlaybookControls {
+  list(): Promise<ManagedPlaybook[]>;
+  saveDraft(input: SavePlaybookDraftInput): Promise<ManagedPlaybook>;
+  revise(id: string): Promise<ManagedPlaybook>;
+  publish(id: string, expectedUpdatedAt: string): Promise<ManagedPlaybook>;
+  disable(id: string, expectedUpdatedAt: string): Promise<ManagedPlaybook>;
+  deleteDraft(id: string, expectedUpdatedAt: string): Promise<void>;
+}

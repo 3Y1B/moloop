@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -8,6 +8,7 @@ import { VoicePill } from '@/components/voice/voice-pill';
 import { Radius, Type } from '@/constants/theme';
 import { useRepo, useSnapshot } from '@/data/hooks';
 import { REPLY_SF } from '@/lib/format';
+import { goBack } from '@/lib/navigation';
 import type { ReplyKind } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -45,7 +46,7 @@ export default function ReplySheet() {
   const send = async () => {
     if (kind === 'guest_reply') await repo.guestReply(task.id, note.trim());
     else await repo.reply(task.id, kind, note.trim() || undefined);
-    router.back();
+    goBack({ pathname: '/task/[id]', params: { id: task.id } });
   };
 
   return (

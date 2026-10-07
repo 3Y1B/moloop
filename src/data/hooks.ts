@@ -4,15 +4,16 @@ import { rankCandidates } from '@/lib/candidates';
 import { isActive, isHeld, isOnTask, isQuiet, needsResponse, quietSince } from '@/lib/lifecycle';
 import { meetingPoint, onSite, placeOf, PRESENCE, type Place } from '@/lib/presence';
 import { routeBetween } from '@/lib/route';
-import type { GuestRequest, Proposal, Task, Team, TeamSlug, Volunteer, VolunteerRole } from '@/lib/schema';
+import type { GuestRequest, Mobilization, Proposal, Task, Team, TeamSlug, Volunteer, VolunteerRole } from '@/lib/schema';
 import { NODES, toPlan, VENUE_ZONES, type Point } from './venue';
 import { getLatest, getPinned, subscribe as onFix } from './location';
-import { guestStage, memberStatus, taskStatusFor, type GuestStatus, type Status } from '@/lib/status';
+import { guestStage, memberStatus, mobilizationStatusFor, taskStatusFor, type GuestStatus, type Status } from '@/lib/status';
 import { useSnapshot } from './provider';
 
-export { useRepo, useSnapshot } from './provider';
+export { useRepo, useSnapshot } from "./provider";
 
-const byPriorityThenAge = (a: Task, b: Task) => a.priority.localeCompare(b.priority) || a.createdAt - b.createdAt;
+const byPriorityThenAge = (a: Task, b: Task) =>
+  a.priority.localeCompare(b.priority) || a.createdAt - b.createdAt;
 
 export function useNow() {
   return useSnapshot().now;
@@ -24,10 +25,10 @@ export function useMe() {
 }
 
 /** Which app to show: the festival-goer's, or the volunteer app (leads and Mo get the Team tab too). */
-export function useRole(): 'guest' | VolunteerRole | null {
+export function useRole(): "guest" | VolunteerRole | null {
   const s = useSnapshot();
   if (!s.meId) return null;
-  if (s.meId === s.guestId) return 'guest';
+  if (s.meId === s.guestId) return "guest";
   return s.volunteers[s.meId]?.role ?? null;
 }
 
@@ -40,13 +41,20 @@ export function useMyWork() {
   return useMemo(() => {
     const all = Object.values(s.tasks);
     const mine = all.filter((t) => t.assigneeId === s.meId);
-    const active = s.meId ? all.filter((t) => isOnTask(t, s.meId!)).sort(byPriorityThenAge)[0] : undefined;
+    const active = s.meId
+      ? all.filter((t) => isOnTask(t, s.meId!)).sort(byPriorityThenAge)[0]
+      : undefined;
     return {
       active,
       helping: !!active && active.assigneeId !== s.meId,
-      queue: mine.filter((t) => t.status === 'queued').sort(byPriorityThenAge),
+      queue: mine.filter((t) => t.status === "queued").sort(byPriorityThenAge),
       done: all
-        .filter((t) => t.status === 'resolved' && (t.assigneeId === s.meId || (!!s.meId && t.helperIds.includes(s.meId))))
+        .filter(
+          (t) =>
+            t.status === "resolved" &&
+            (t.assigneeId === s.meId ||
+              (!!s.meId && t.helpers.some((h) => h.volunteerId === s.meId))),
+        )
         .sort((a, b) => (b.resolvedAt ?? 0) - (a.resolvedAt ?? 0)),
     };
   }, [s.tasks, s.meId]);
@@ -63,9 +71,25 @@ export function useTask(id: string | undefined) {
   return id ? s.tasks[id] : undefined;
 }
 
+export function useMobilization(id: string | undefined) {
+  const s = useSnapshot();
+  return id ? s.mobilizations[id] : undefined;
+}
+
+export function useMobilizationStatus(mobilization: Mobilization | undefined) {
+  const s = useSnapshot();
+  return useMemo(
+    () => (mobilization ? mobilizationStatusFor(mobilization, Object.values(s.tasks)) : undefined),
+    [mobilization, s.tasks],
+  );
+}
+
 export function useTaskEvents(taskId: string | undefined) {
   const s = useSnapshot();
-  return useMemo(() => s.events.filter((e) => e.taskId === taskId).sort((a, b) => a.at - b.at), [s.events, taskId]);
+  return useMemo(
+    () => s.events.filter((e) => e.taskId === taskId).sort((a, b) => a.at - b.at),
+    [s.events, taskId],
+  );
 }
 
 export function useInbox() {
@@ -145,33 +169,58 @@ export function useRouteTo(task: Task | undefined) {
 
 // ── Leads and Mo ──
 
-export type NeedsKind = 'help' | 'escalated' | 'quiet' | 'approval' | 'handover' | 'unassigned';
-export type NeedsItem = {
-  kind: NeedsKind;
-  task: Task;
-  /** For approvals. */
-  proposal?: Proposal;
-  /** When it started needing someone (help asked, went quiet, proposed, handover sent, reported). */
-  since: number;
-};
+export type NeedsKind = "help" | "escalated" | "mobilization" | "quiet" | "approval" | "handover" | "unassigned";
+export type NeedsItem =
+  | {
+      kind: Exclude<NeedsKind, "mobilization">;
+      task: Task;
+      /** For approvals. */
+      proposal?: Proposal;
+      /** When it started needing someone (help asked, went quiet, proposed, handover sent, reported). */
+      since: number;
+    }
+  | { kind: "mobilization"; mobilization: Mobilization; since: number };
 
-const NEEDS_ORDER: NeedsKind[] = ['help', 'escalated', 'quiet', 'approval', 'handover', 'unassigned'];
+const NEEDS_ORDER: NeedsKind[] = [
+  "help",
+  "escalated",
+  "mobilization",
+  "quiet",
+  "approval",
+  "handover",
+  "unassigned",
+];
+const priorityOf = (item: NeedsItem) =>
+  item.kind === "mobilization" ? item.mobilization.urgency : item.task.priority;
 
 /**
- * The lead's or Mo's "Needs you" list. Lead: their team's help requests and AI escalations (still shown after a
- * bump), quiet tasks, pending approvals, handovers waiting on "Arrived", unassigned tasks.
- * Mo: what was bumped or escalated to Mo (or has no lead), P1 approvals, unassigned P1/P2. Volunteers get nothing.
+ * The lead's or Mo's "Needs you" list. Lead: their team's help requests (still shown after a bump),
+ * quiet tasks, pending approvals, handovers waiting on "Arrived", unassigned tasks.
+ * Mo: what was bumped (or has no lead), P1 approvals, unassigned P1/P2, and proposed or active mobilizations
+ * (venue-wide, so leads don't see these). Volunteers get nothing.
  */
 export function useNeedsMe(): NeedsItem[] {
   const s = useSnapshot();
   return useMemo(() => {
     const me = s.meId ? s.volunteers[s.meId] : undefined;
-    if (!me || me.role === 'volunteer') return [];
-    const lead = me.role === 'team_lead';
-    const hasLead = (team: TeamSlug | null) => Object.values(s.volunteers).some((v) => v.role === 'team_lead' && v.teamSlug === team);
+    if (!me || me.role === "volunteer") return [];
+    const lead = me.role === "team_lead";
+    const hasLead = (team: TeamSlug | null) =>
+      Object.values(s.volunteers).some((v) => v.role === "team_lead" && v.teamSlug === team);
     const mine = (t: Task) => (lead ? t.teamSlug === me.teamSlug : !hasLead(t.teamSlug));
-    const pending = new Map(Object.values(s.proposals).filter((p) => p.status === 'pending').map((p) => [p.taskId, p]));
+    const pending = new Map(
+      Object.values(s.proposals)
+        .filter((p) => p.status === "pending")
+        .map((p) => [p.taskId, p]),
+    );
     const items: NeedsItem[] = [];
+
+    if (!lead) {
+      for (const m of Object.values(s.mobilizations)) {
+        if (m.status === "proposed" || m.status === "active")
+          items.push({ kind: "mobilization", mobilization: m, since: m.createdAt });
+      }
+    }
 
     for (const t of Object.values(s.tasks)) {
       const e = t.escalation;
@@ -182,26 +231,39 @@ export function useNeedsMe(): NeedsItem[] {
       } else if (t.status === 'escalated' && e?.response?.kind === 'handover' && (lead ? mine(t) : e.response.byId === me.id)) {
         items.push({ kind: 'handover', task: t, since: e.response.at });
       } else if (isQuiet(t) && mine(t)) {
-        items.push({ kind: 'quiet', task: t, since: quietSince(t) });
-      } else if (t.status === 'open') {
+        items.push({ kind: "quiet", task: t, since: quietSince(t) });
+      } else if (t.status === "open") {
         const p = pending.get(t.id);
-        if (p && (lead ? mine(t) : t.priority === 'P1' || mine(t))) items.push({ kind: 'approval', task: t, proposal: p, since: p.createdAt });
-        else if (!p && (lead ? mine(t) : t.priority !== 'P3')) items.push({ kind: 'unassigned', task: t, since: t.createdAt });
+        if (p && (lead ? mine(t) : t.priority === "P1" || mine(t)))
+          items.push({ kind: "approval", task: t, proposal: p, since: p.createdAt });
+        else if (!p && (lead ? mine(t) : t.priority !== "P3"))
+          items.push({ kind: "unassigned", task: t, since: t.createdAt });
       }
     }
-    return items.sort((a, b) =>
-      NEEDS_ORDER.indexOf(a.kind) - NEEDS_ORDER.indexOf(b.kind) || a.task.priority.localeCompare(b.task.priority) || a.since - b.since);
-  }, [s.tasks, s.proposals, s.volunteers, s.meId]);
+    return items.sort(
+      (a, b) =>
+        NEEDS_ORDER.indexOf(a.kind) - NEEDS_ORDER.indexOf(b.kind) ||
+        priorityOf(a).localeCompare(priorityOf(b)) ||
+        a.since - b.since,
+    );
+  }, [s.tasks, s.proposals, s.volunteers, s.mobilizations, s.meId]);
 }
 
 export type TeamMember = { volunteer: Volunteer; status: Status; task?: Task; helping?: Task };
 
-const TONE_RANK: Record<Status['tone'], number> = { danger: 0, warning: 1, tint: 2, neutral: 3, success: 3 };
+const TONE_RANK: Record<Status["tone"], number> = {
+  danger: 0,
+  warning: 1,
+  tint: 2,
+  neutral: 3,
+  success: 3,
+};
 
 /** A team at a glance: members (most urgent first, not me), their tasks, and the team's open and active tasks. Defaults to my team. */
 export function useTeam(teamSlug?: TeamSlug | null) {
   const s = useSnapshot();
-  const slug = teamSlug === undefined ? (s.meId ? s.volunteers[s.meId]?.teamSlug ?? null : null) : teamSlug;
+  const slug =
+    teamSlug === undefined ? (s.meId ? (s.volunteers[s.meId]?.teamSlug ?? null) : null) : teamSlug;
   return useMemo(() => {
     const all = Object.values(s.tasks);
     const teamTasks = all.filter((t) => t.teamSlug === slug);
@@ -211,14 +273,20 @@ export function useTeam(teamSlug?: TeamSlug | null) {
         volunteer: v,
         status: memberStatus(v, all, s.now, s),
         task: all.filter((t) => t.assigneeId === v.id && isActive(t)).sort(byPriorityThenAge)[0],
-        helping: all.find((t) => isActive(t) && t.helperIds.includes(v.id)),
+        helping: all.find((t) => isActive(t) && t.helpers.some((h) => h.volunteerId === v.id)),
       }))
-      .sort((a, b) => TONE_RANK[a.status.tone] - TONE_RANK[b.status.tone] || a.volunteer.name.localeCompare(b.volunteer.name));
+      .sort(
+        (a, b) =>
+          TONE_RANK[a.status.tone] - TONE_RANK[b.status.tone] ||
+          a.volunteer.name.localeCompare(b.volunteer.name),
+      );
     return {
       team: slug ? (s.teams[slug] as Team | undefined) : undefined,
       members,
       /** Unassigned and queued, most urgent first. */
-      openTasks: teamTasks.filter((t) => t.status === 'open' || t.status === 'queued').sort(byPriorityThenAge),
+      openTasks: teamTasks
+        .filter((t) => t.status === "open" || t.status === "queued")
+        .sort(byPriorityThenAge),
       activeTasks: teamTasks.filter(isActive).sort(byPriorityThenAge),
     };
   }, [s, slug]);
@@ -235,7 +303,7 @@ export function useCrew() {
         volunteer: v,
         status: memberStatus(v, all, s.now, s),
         task: all.filter((t) => t.assigneeId === v.id && isActive(t)).sort(byPriorityThenAge)[0],
-        helping: all.find((t) => isActive(t) && t.helperIds.includes(v.id)),
+        helping: all.find((t) => isActive(t) && t.helpers.some((h) => h.volunteerId === v.id)),
       }));
     return { members, openTasks: all.filter((t) => t.status === 'open' || t.status === 'queued').sort(byPriorityThenAge) };
   }, [s]);
@@ -248,8 +316,8 @@ export function useAllActive() {
     const all = Object.values(s.tasks);
     return {
       active: all.filter(isActive).sort(byPriorityThenAge),
-      open: all.filter((t) => t.status === 'open').sort(byPriorityThenAge),
-      onDuty: Object.values(s.volunteers).filter((v) => v.duty === 'on_duty'),
+      open: all.filter((t) => t.status === "open").sort(byPriorityThenAge),
+      onDuty: Object.values(s.volunteers).filter((v) => v.duty === "on_duty"),
     };
   }, [s.tasks, s.volunteers]);
 }
@@ -266,9 +334,15 @@ export function usePerson(id: string | undefined) {
       team: volunteer.teamSlug ? s.teams[volunteer.teamSlug] : undefined,
       status: memberStatus(volunteer, all, s.now, s),
       active: all.filter((t) => t.assigneeId === id && isActive(t)).sort(byPriorityThenAge)[0],
-      helping: all.find((t) => isActive(t) && t.helperIds.includes(volunteer.id)),
-      queue: all.filter((t) => t.assigneeId === id && t.status === 'queued').sort(byPriorityThenAge),
-      done: all.filter((t) => t.assigneeId === id && t.status === 'resolved').sort((a, b) => (b.resolvedAt ?? 0) - (a.resolvedAt ?? 0)),
+      helping: all.find(
+        (t) => isActive(t) && t.helpers.some((h) => h.volunteerId === volunteer.id),
+      ),
+      queue: all
+        .filter((t) => t.assigneeId === id && t.status === "queued")
+        .sort(byPriorityThenAge),
+      done: all
+        .filter((t) => t.assigneeId === id && t.status === "resolved")
+        .sort((a, b) => (b.resolvedAt ?? 0) - (a.resolvedAt ?? 0)),
     };
   }, [s, id]);
 }
@@ -276,7 +350,7 @@ export function usePerson(id: string | undefined) {
 /** Who should take a task, best first, with why. For the Assign and Backup pickers. */
 export function useCandidates(taskId: string | undefined, exclude: string[] = []) {
   const s = useSnapshot();
-  const key = exclude.join(',');
+  const key = exclude.join(",");
   return useMemo(() => {
     const task = taskId ? s.tasks[taskId] : undefined;
     return task
@@ -295,19 +369,29 @@ export function useProposal(id: string | undefined): Proposal | undefined {
 export function useProposalForTask(taskId: string | undefined): Proposal | undefined {
   const s = useSnapshot();
   return useMemo(
-    () => Object.values(s.proposals).find((p) => p.taskId === taskId && p.status === 'pending'),
+    () => Object.values(s.proposals).find((p) => p.taskId === taskId && p.status === "pending"),
     [s.proposals, taskId],
   );
 }
 
 // ── Festival-goer ──
 
-export type RequestView = { request: GuestRequest; task?: Task; status: GuestStatus; volunteer?: Volunteer };
+export type RequestView = {
+  request: GuestRequest;
+  task?: Task;
+  status: GuestStatus;
+  volunteer?: Volunteer;
+};
 
 function requestView(s: ReturnType<typeof useSnapshot>, request: GuestRequest): RequestView {
   const task = request.taskId ? s.tasks[request.taskId] : undefined;
   const status = guestStage(request, task, s, s.now);
-  return { request, task, status, volunteer: status.volunteerId ? s.volunteers[status.volunteerId] : undefined };
+  return {
+    request,
+    task,
+    status,
+    volunteer: status.volunteerId ? s.volunteers[status.volunteerId] : undefined,
+  };
 }
 
 /** One request with its live stage ("Priya is coming · 3 min") and who's coming. */
@@ -323,7 +407,10 @@ export function useRequest(id: string | undefined): RequestView | undefined {
 export function useMyRequests(): RequestView[] {
   const s = useSnapshot();
   return useMemo(
-    () => Object.values(s.requests).sort((a, b) => b.createdAt - a.createdAt).map((r) => requestView(s, r)),
+    () =>
+      Object.values(s.requests)
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map((r) => requestView(s, r)),
     [s],
   );
 }

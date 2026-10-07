@@ -1,3 +1,5 @@
+import { ModelAuditError } from './errors';
+
 export type Attempt<R> = { id: string; call: (signal: AbortSignal) => Promise<R> };
 
 /**
@@ -15,7 +17,7 @@ export async function withFallback<R>(
     try {
       return await attempt(primary, fallback ? primaryMs : lastMs, signal);
     } catch (e) {
-      if (!fallback || signal?.aborted) throw e;
+      if (!fallback || signal?.aborted || e instanceof ModelAuditError) throw e;
       console.warn(`model ${primary.id} failed, using ${fallback.id}:`, (e as Error).message);
     }
   }

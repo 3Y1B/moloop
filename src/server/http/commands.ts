@@ -6,17 +6,20 @@ import type { VoiceResponse } from '@/data/repo';
 import { CommandError, type Batch } from '@/lib/batch';
 import { rankCandidates } from '@/lib/candidates';
 import * as C from '@/lib/commands';
+import { SimulationInputSchema } from "@/lib/mobilization-contracts";
+import { simulationContext, simulateMobilization, simulationRun } from "../predict/simulation";
 import { availableResponses, HANDOVER_NAME, isBusy, isQuiet, needsResponse, type RespondInput as RespondInputType } from '@/lib/lifecycle';
 import { walkFrom } from '@/lib/presence';
 import type { RespondCommand } from '@/lib/respond-words';
 import { routeBetween } from '@/lib/route';
-import { ReplyKind, TeamSlug, type Task, type Volunteer } from '@/lib/schema';
+import { Priority, ReplyKind, TeamSlug, type Task, type Volunteer } from '@/lib/schema';
 import { interpreter } from '../models/interpreter';
 import { judgeReport } from '../retriage';
 import { understandLater } from '../understand';
 import { ownClip } from '../voice';
 import { read, sql, transact, type Loaded } from '../world';
 import type { AuthEnv, Caller } from './auth';
+import { assertMobilizationReview, type ReviewRun } from './mobilization-review';
 
 /**
  * One route per Repo command: POST /api/<method>, body = named args, 200 with `{}` or the result.
@@ -52,12 +55,13 @@ const LEADS = new Set(['team_lead', 'coordinator', 'safety_lead', 'admin']);
 const isLead = (c: Caller) => c.kind === 'crew' && LEADS.has(c.role);
 
 /** crew: anyone with a profile. lead: team leads and Mo. any: festival-goers too. */
-type Who = 'any' | 'crew' | 'lead';
+const isMo = (c: Caller) => c.kind === 'crew' && ['coordinator', 'safety_lead', 'admin'].includes(c.role);
+type Who = 'any' | 'crew' | 'lead' | 'mo';
 
 function route<S extends z.ZodType>(name: string, who: Who, schema: S, handle: (args: z.infer<S>, caller: Caller) => Promise<unknown>) {
   commands.post(`/${name}`, async (c) => {
     const caller = c.get('caller');
-    if ((who !== 'any' && caller.kind !== 'crew') || (who === 'lead' && !isLead(caller))) return c.json({ error: 'forbidden' }, 403);
+    if ((who !== 'any' && caller.kind !== 'crew') || (who === 'lead' && !isLead(caller)) || (who === 'mo' && !isMo(caller))) return c.json({ error: 'forbidden' }, 403);
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: `invalid body: ${z.prettifyError(parsed.error)}` }, 400);
     try {
@@ -79,7 +83,7 @@ function taskOf(b: Batch, id: string): Task {
 }
 /** Volunteers act only on tasks they're on, as owner or backup. */
 function mustBeOn(t: Task, caller: Caller) {
-  if (t.assigneeId !== caller.id && !t.helperIds.includes(caller.id)) throw new CommandError('forbidden', 'Not your task');
+  if (t.assigneeId !== caller.id && !t.helpers.some((h) => h.volunteerId === caller.id)) throw new CommandError('forbidden', 'Not your task');
 }
 /** Only your own clips go on what you report. */
 function ownClips(clips: string[] | undefined, caller: Caller) {
@@ -243,6 +247,83 @@ route('broadcast', 'lead', z.object({ body: Text, scope: Scope.optional() }), as
 
 route('sendDirect', 'lead', z.object({ volunteerId: Id, body: Text }), async (a, caller) => {
   await transact({}, (b) => C.sendDirect(b, caller.id, a.volunteerId, a.body));
+});
+
+// ── mobilizations ──
+// `proposeMobilization` has no route: only validated server-side simulation creates AI proposals.
+
+const MobilizationStepInput = z.object({
+  teamSlug: TeamSlug,
+  peopleNeeded: z.number().int().positive().max(10),
+  reason: Text,
+});
+
+route(
+  "createMobilization",
+  "mo",
+  z.object({
+    title: Text,
+    rationale: Text,
+    urgency: Priority,
+    zoneSlug: z.string().nullable(),
+    playbookSlug: z.string().optional(),
+    steps: z.array(MobilizationStepInput).min(1),
+  }),
+  async (a, caller) => {
+    const { mobilization } = await transact({}, (b) => C.createMobilization(b, caller.id, a));
+    return { mobilizationId: mobilization.id };
+  },
+);
+
+route("approveMobilization", "mo", z.object({
+  mobilizationId: Id, reviewedRunId: Id.optional(), acknowledgeGaps: z.boolean().optional(),
+}), async (a, caller) => {
+  await transact({ mobilizationIds: [a.mobilizationId] }, (b) => {
+    const proposal = b.mobilizations[a.mobilizationId];
+    const result = C.approveMobilization(b, caller.id, a.mobilizationId);
+    return { proposal, ...result };
+  }, {}, async (tx, { proposal, taskIds }, b) => {
+    const rows = proposal.analysisRunId ? await tx<ReviewRun[]>`
+      select id, status, result, input_snapshot, validation_errors, mobilization_ids
+      from mobilization_runs where id = ${proposal.analysisRunId} for share` : [];
+    assertMobilizationReview(proposal, rows[0] ?? null, a, taskIds.map((id) => b.tasks[id]));
+    if (proposal.analysisRunId) await tx`
+      update mobilization_runs set raw_responses = raw_responses || ${tx.json([{
+        event: 'approval_review', mobilizationId: proposal.id, reviewedRunId: a.reviewedRunId,
+        acknowledgedGaps: a.acknowledgeGaps === true, reviewedBy: caller.id,
+        occurredAt: new Date(b.now).toISOString(),
+      }])}::jsonb where id = ${proposal.analysisRunId}`;
+  });
+});
+
+route("rejectMobilization", "mo", z.object({ mobilizationId: Id }), async (a, caller) => {
+  await transact({ mobilizationIds: [a.mobilizationId] }, (b) =>
+    C.rejectMobilization(b, caller.id, a.mobilizationId),
+  );
+});
+
+route(
+  "standDown",
+  "mo",
+  z.object({ mobilizationId: Id, outcome: z.enum(["stood_down", "cancelled"]) }),
+  async (a, caller) => {
+    await transact({ mobilizationIds: [a.mobilizationId] }, (b) =>
+      C.standDown(b, caller.id, a.mobilizationId, a.outcome),
+    );
+  },
+);
+
+route("mobilizationContext", "mo", z.object({}), async () => simulationContext());
+
+route("simulateMobilization", "mo", SimulationInputSchema, async (input, caller) =>
+  simulateMobilization(input, caller.id),
+);
+
+route("getMobilizationRun", "mo", z.object({ runId: Id }), async ({ runId }) => {
+  // Like mobilization_runs RLS, all Mo-role reviewers may inspect the audit behind a shared proposal.
+  const run = await simulationRun(runId);
+  if (!run) throw new CommandError("not_found", "No simulation run");
+  return run;
 });
 
 // ── festival-goers ──

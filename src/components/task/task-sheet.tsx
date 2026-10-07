@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/icon';
 import { Type } from '@/constants/theme';
 import { useLookups, useMe, useRouteTo, useSnapshot, useTaskEvents, useTaskStatus } from '@/data/hooks';
 import { clockTime, languageName } from '@/lib/format';
+import { confirmedPeopleCount } from '@/lib/lifecycle';
 import type { Task } from '@/lib/schema';
 import { taskStatusFor } from '@/lib/status';
 import { useTheme } from '@/hooks/use-theme';
@@ -39,7 +40,7 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
   const { meId } = useSnapshot();
   const { zones } = useLookups();
   const zone = task.zoneSlug ? zones[task.zoneSlug] : undefined;
-  const helping = !!meId && task.helperIds.includes(meId);
+  const helping = !!meId && task.helpers.some((helper) => helper.volunteerId === meId);
   const hint = task.locationHint ? task.locationHint.charAt(0).toLowerCase() + task.locationHint.slice(1) : null;
   // The hint only when it adds something: "Water 2, by the second tap", not "Water 2, water 2".
   const extra = hint && hint.toLowerCase() !== zone?.name.toLowerCase() ? hint : null;
@@ -56,12 +57,12 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
         text: `“${r.quote}”`,
         quote: true,
       },
-      { id: 'summary', at: task.createdAt, who: 'Moloop', text: task.summary },
+      ...(task.mobilizationId ? [] : [{ id: 'summary', at: task.createdAt, who: 'Moloop', text: task.summary }]),
       ...events
         .filter((e) => e.kind !== 'created')
         .map((e): LogEntry => ({ id: e.id, at: e.at, text: e.text, note: e.note })),
     ];
-  }, [task.createdAt, task.reporter, task.summary, events]);
+  }, [task.createdAt, task.reporter, task.summary, task.mobilizationId, events]);
 
   return (
     <Animated.View key={task.id} entering={FadeIn.duration(220)}>
@@ -108,6 +109,19 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
             )}
           </>
         }>
+        {task.mobilizationId && (
+          <View style={styles.brief}>
+            <Text style={[styles.text, { color: theme.text }]}>{task.summary}</Text>
+            <Text style={[styles.small, { color: theme.textSecondary }]}>
+              {confirmedPeopleCount(task)} of {task.requiredCount} people committed
+            </Text>
+            {!!task.requiredSkills?.length && (
+              <Text style={[styles.small, { color: theme.textSecondary }]}>
+                Required skills: {task.requiredSkills.join(', ')}
+              </Text>
+            )}
+          </View>
+        )}
         <LogLines id={task.id} entries={entries} expanded={expanded} onExpand={onExpand} />
         {status && <NowLine status={status} />}
       </LogSheet>
@@ -157,4 +171,6 @@ const styles = StyleSheet.create({
   walk: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   minutes: { fontVariant: ['tabular-nums'] },
   owner: { marginTop: 10 },
+  brief: { gap: 6, marginBottom: 12 },
+  small: { fontSize: Type.footnote, lineHeight: 18 },
 });

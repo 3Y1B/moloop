@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { Fragment } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
@@ -12,6 +12,7 @@ import { Type } from '@/constants/theme';
 import { useCandidates, useLookups, useMe, useRepo, useSnapshot, useTask } from '@/data/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { isBusy, isHeld } from '@/lib/lifecycle';
+import { goBack } from '@/lib/navigation';
 
 type Mode = 'assign' | 'backup' | 'reassign';
 
@@ -46,7 +47,7 @@ export default function AssignSheet() {
     const ok = await attempt(() =>
       mode === 'assign' ? repo.assign(task.id, volunteerId) : repo.respond(task.id, { kind: mode, volunteerId }));
     // Backup and reassign come from the Respond sheet, which closes itself once it's answered.
-    if (ok) router.back();
+    if (ok) goBack({ pathname: '/task/[id]', params: { id: task.id } });
   };
 
   return (
@@ -84,7 +85,7 @@ export default function AssignSheet() {
       )}
       {canPass && (
         <Button label="Pass to Mo" sf="arrow.up.circle" variant="plain" onPress={async () => {
-          if (await attempt(() => repo.passToCoordinator(task.id))) router.back();
+          if (await attempt(() => repo.passToCoordinator(task.id))) goBack({ pathname: '/task/[id]', params: { id: task.id } });
         }} />
       )}
     </Sheet>

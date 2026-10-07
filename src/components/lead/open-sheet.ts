@@ -20,6 +20,9 @@ export function openTaskSheet(task: Task, proposals: Record<string, Proposal>) {
 
 /** Where a "Needs you" item goes: the approval, the picker (nobody has it, or it was held back), else Respond. */
 export function openNeed(item: NeedsItem) {
+  if (item.kind === 'mobilization') {
+    return router.push({ pathname: '/mobilize/[id]', params: { id: item.mobilization.id } });
+  }
   const { kind, task, proposal } = item;
   if (kind === 'approval' && proposal) return router.push({ pathname: '/approve/[id]', params: { id: proposal.id } });
   if (kind === 'unassigned' || kind === 'escalated') {
@@ -31,6 +34,7 @@ export function openNeed(item: NeedsItem) {
 /** The one action word for a "Needs you" item, as its button says it. */
 export function needVerb(item: NeedsItem) {
   switch (item.kind) {
+    case 'mobilization': return 'Review';
     case 'approval': return 'Approve';
     case 'unassigned':
     case 'escalated': return 'Assign';

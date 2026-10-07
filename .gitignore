@@ -9,6 +9,9 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Synced from node_modules by scripts/sync-maplibre-worker.mjs
+public/maplibre/
+
 # Native
 .kotlin/
 *.orig.*
@@ -44,6 +47,9 @@ example
 
 # Field-test cast: real names, emails and phones
 supabase/crew.json
+
+# Local AI experiment audits may contain private crew/scenario data.
+.local/mobilization-experiments/
 
 # Local Expo modules: Gradle output from building the app on this machine
 modules/*/android/build/

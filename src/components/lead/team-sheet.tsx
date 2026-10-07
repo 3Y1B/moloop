@@ -45,7 +45,7 @@ export function TeamSheet() {
 
       {needs.length > 1 && (
         <TeamSection title="Needs you" count={needs.length}>
-          {needs.slice(1).map((n) => <NeedsRow key={`${n.kind}-${n.task.id}`} item={n} />)}
+          {needs.slice(1).map((n) => <NeedsRow key={`${n.kind}-${n.kind === 'mobilization' ? n.mobilization.id : n.task.id}`} item={n} />)}
         </TeamSection>
       )}
 
@@ -78,7 +78,9 @@ function PeekNeed({ need, more }: { need: NeedsItem; more: number }) {
   return (
     <View style={styles.peek}>
       <View style={styles.peekText}>
-        <Text style={[styles.peekTitle, { color: theme.text }]} numberOfLines={2}>{need.task.title}</Text>
+        <Text style={[styles.peekTitle, { color: theme.text }]} numberOfLines={2}>
+          {need.kind === 'mobilization' ? need.mobilization.title : need.task.title}
+        </Text>
         <View style={styles.inline}>
           <View style={styles.shrink}>
             <NeedStatus item={need} />

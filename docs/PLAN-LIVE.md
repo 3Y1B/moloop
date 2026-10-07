@@ -129,8 +129,8 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 
 - **One seam.** `src/server/models/interpreter.ts` is the only thing the server asks. `SparkInterpreter` implements it; when a model call fails it falls back to the keyword heuristics, so a person still gets the report.
   - **Typed decisions** (OpenAI `/v1/decisions` on `gpt-6-luna`, or Spark `/v1/systemone` with `MODEL_PROVIDER=spark`): team, priority, "is this only a routine question", "did the detail make it worse", and "is this utterance a reply to my task". About 0.2 s each on the Spark.
-  - **Chat** (JSON-schema output, validated with zod, one repair retry): the English title and summary, category, zone, language, and the answer to a routine question in the asker's language, from the venue facts only. GPT-6 Luna on OpenAI (`gpt-6-luna`, reasoning off), or `qwen3.5:4b` on the Spark with `MODEL_PROVIDER=spark`. About 1 to 1.5 s.
-  - **Fallback.** With `MODEL_PROVIDER=spark`, a Spark call that fails or runs late (5 s chat, 4 s decisions, 8 s ASR, 12 s TTS) is cancelled and OpenAI answers instead (`src/server/models/fallback.ts`). If both fail, the request goes to a person.
+  - **Chat** (JSON-schema output, validated with zod, one repair retry): the English title and summary, category, zone, language, and the answer to a routine question in the asker's language, from the venue facts only. Structured chat defaults to OpenAI GPT-6 Luna (`gpt-6-luna`, reasoning off), independent of `MODEL_PROVIDER=spark`. An explicit `LLM_*` override selects its configured model and reasoning effort; it does not change tools, typed decisions or speech. The historical 1 to 1.5 s intake measurement is not a Mobilization latency guarantee.
+  - **Fallback.** With `MODEL_PROVIDER=spark`, typed decisions and speech try Spark first; a failed or late call (4 s decisions, 8 s ASR, 12 s TTS) falls back to OpenAI (`src/server/models/fallback.ts`). Structured-chat overrides do not silently switch models. If required providers fail, the request goes to a person.
   - Chat and typed decisions run in parallel, and a model call never happens inside the world lock: the server asks first, then hands the answer to the pure command (`src/lib/ai.ts` is the shape).
 - **Safety rules in code, not prompts.**
   - The AI answers only when the chat model and the classifier both say routine, the priority reads P3, and no red-flag word is in the text.
@@ -319,3 +319,83 @@ The hall demo then runs the real pipeline, real triage and the real scheduler, w
 - The shoot date. That sets how much of phases 4–6 is in scope.
 - A Supabase project and a Spark API key.
 - Whether the server runs on the Spark box (recommended) or on a laptop on the day.
+
+## Mobilization: current implementation (7 October)
+
+Mo explicitly runs **Simulate mobilization**. The legacy background predictor, its weather/lineup
+heuristics, timer, new-task hook and canned incident-injection route have been retired. The ordinary
+task reminder scheduler remains independent.
+
+Flow: editable scenario + a consistent database snapshot → configured Responses model + published
+SOP index → one audited, read-only `get_playbooks` call → JSON schema and relationship validation → pending Mobilizations → Mo approval →
+concrete Tasks. Each action has its own key, location, skills and completion criterion; the same team
+may perform multiple distinct actions. No Task or crew notification is created before approval.
+Approval rechecks free, on-duty, qualified same-team crew. Shortfalls remain visible, not fabricated.
+
+Data ownership:
+
+- `event_timetable`: saved three-day demo stage schedule; relative demo overrides never rewrite it.
+- `playbook_versions`: Mo's drafts, published revisions and disabled history. One active revision per
+  slug; published bodies are immutable. Edits create a new draft and publishing switches versions.
+- `mobilization_runs`: the exact input, system/user prompts, prompt version, requested model, actual
+  replies, the exact read-only tool result, validation errors and resulting Mobilization IDs. There is
+  no automatic JSON repair or generation retry after failed validation.
+- `mobilizations.analysis_run_id` and `tasks.mobilization_step_key`: audit and action identity links.
+
+The supplied 10 emergency SOPs are archived at `supabase/playbooks/festival-emergency.yaml` and
+imported with `npm run playbooks:import`. The importer is atomic and rerunning it does not overwrite
+Mo's edits or re-enable disabled versions. Unspecified headcounts remain null; source rules and Mo
+decision questions are preserved. Do not add made-up approvals, shelters, sensor readings or SOP rules.
+
+Contracts, input availability and the typed observation catalog live in
+`src/lib/mobilization-contracts.ts`, `src/lib/mobilization-inputs.ts` and
+`src/lib/mobilization-observations.ts`; the versioned system prompt is
+`src/server/predict/prompts/mobilization-tools.ts`, with the wire contract in
+`src/server/predict/action-output.ts`. Only meaningful supplied facts satisfy required inputs;
+unknown is not zero, crowd samples are not a full census, and walking distances are not evacuation approvals.
+The server verifies legal references and required-action coverage, **not the truth of free-text causes
+or natural-language safety instructions**. Mo's review and scenario quality evaluation are still required.
+
+**Expanded scenario inputs:** all 64 distinct required-input keys in the 10 supplied SOPs have an
+explicit source: built-in controls, database facts or an additional typed observation. The additional
+editor groups weather, crowd, infrastructure, medical reports and approvals. It supports numbers with
+canonical units/ranges, booleans, finite statuses, text reports, real venue locations, scoped zone counts,
+facility/isolation locations and directed routes. Each supplied observation includes age and scope;
+route/facility approval is explicit and always labelled hypothetical in the demo. Open is not approved.
+Partial coverage is retained; a full-venue count must actually include every venue zone. Missing values
+remain unknown, while explicitly supplied zero and false remain evidence. No external weather/sensor
+feed is connected by this change: this is the shared validated ingestion contract and manual demo UI.
+Additional observations are stored inside each run's exact scenario snapshot, not as persistent venue
+truth. A future live adapter must preserve provenance, timestamps, units and coverage rather than write
+manual-demo facts as real measurements. Future custom playbook keys without a registered source remain
+unavailable and must be reported as missing, not guessed from similarly named fields.
+
+Local testing: `npm run server`, then `npm start -- --web --port 8081`.
+The app now always uses Supabase (the upstream live-only change); `EXPO_PUBLIC_REPO` is no longer a mode switch.
+Sign in as `mo@moloop.test`, open Playbooks or Simulate mobilization.
+Run `npm run playbooks:check`, `npm run mobilization:check`,
+`npm run mobilization-observations:check`,
+`npm run mobilization-commands:check`, `npm run mobilization-api:check` and
+`npm run mobilization-status:check`, plus lint/typecheck.
+API integration checks use an explicitly fake local provider only in the test process; they establish
+plumbing/validation, not real model intelligence. Missing model configuration is shown as a clear
+configuration-required result, never a heuristic proposal. Set provider credentials in `.env.local`,
+never in the app or chat. No live-model quality claim is justified until the real scenarios have run.
+
+After integrating upstream main, Mobilization uses the same model facade/provider infrastructure as
+intake and voice, with its own larger output/time budget and per-attempt reply audit. Existing explicit
+`LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` / `LLM_REASONING_EFFORT` settings remain supported.
+Canonical OpenAI/Spark configuration is documented in `.env.example`. Directed walking distances and
+live crew positions are location/ranking inputs, never approvals for evacuation routes. Operational
+Mobilization child tasks are excluded from incident re-triage matching. Default `npm test` is offline;
+real-provider tests require an explicit `npm run test:live` and configured credentials.
+
+Mobilization has a separate, bounded deadline: `MOBILIZATION_MODEL_TIMEOUT_MS` defaults to
+180000 milliseconds and accepts integers from 60000 to 300000. The whole-call deadline adds
+30 seconds, and interrupted-run expiry adds 60 seconds; these are derived together rather than
+letting a shorter outer timer cancel a longer model request. This does not change intake or voice
+deadlines. A timeout creates no proposal and never bypasses semantic validation or Mo approval.
+Safe per-request diagnostics distinguish request start, response headers/body, retry wait, JSON
+repair and cancellation, with elapsed time, HTTP status, request ID and numeric usage when available.
+They never include model credentials, endpoint URLs or raw provider error bodies. A timeout alone
+does not prove whether the delay was network, provider queueing, reasoning or output generation.

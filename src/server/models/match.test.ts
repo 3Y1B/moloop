@@ -11,7 +11,8 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({
   priority: 'P2', teamSlug: 'first-aid', zoneSlug: 'food-alley', locationHint: null, status: 'accepted', assigneeId: 'priya',
   reporter: { kind: 'volunteer', quote: 'guy collapsed by the food stalls', language: 'en' }, handledBy: 'human',
   createdAt: NOW, assignedAt: null, etaAt: null, lastActivityAt: NOW, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null,
-  resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: null, ...over,
+  resolvedAt: null, escalation: null, requiredCount: 1, helpers: [], mobilizationId: null,
+  resolution: null, requestId: null, ...over,
 });
 
 const collapsed = task('collapsed');

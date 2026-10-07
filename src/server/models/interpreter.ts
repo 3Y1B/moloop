@@ -5,6 +5,7 @@ import {
   heuristicDetail, heuristicTriage, soundsCritical, soundsUrgent, TEAM_CATEGORY,
 } from '@/lib/heuristics';
 import { activeTaskOf, interpretHeuristic } from '@/lib/commands';
+import { availableHelperReplies } from '@/lib/lifecycle';
 import { namedIn, readRespondWords, soundsEmergency, type Named, type RespondCommand } from '@/lib/respond-words';
 import { ReplyKind, type EscalationResponseKind, type Priority, type Task, type TeamSlug } from '@/lib/schema';
 import type { Interpretation } from '@/data/repo';
@@ -334,7 +335,8 @@ export class SparkInterpreter implements Interpreter {
 
   /**
    * A reply to the task you're on, or a new report. When the classifier is down, slow or under 0.6 sure, keywords
-   * decide, same as without a model. A helper can only finish. Long utterances are reports even if they say "done":
+   * decide, same as without a model. Helpers reply to their own slot: notified accepts/declines, accepted finishes.
+   * Long utterances are reports even if they say "done":
    * 12 words here, 8 for keywords, which match "done" inside any sentence.
    */
   async interpret({ tasks, meId, text }: { tasks: Task[]; meId: string; text: string }): Promise<Interpretation> {
@@ -344,13 +346,15 @@ export class SparkInterpreter implements Interpreter {
     // No task, nothing to reply to: skip the model.
     if (!active) return interpretHeuristic(tasks, meId, text);
     const helping = active.assigneeId !== meId;
+    const helper = active.helpers.find((entry) => entry.volunteerId === meId);
     const ms = Number(process.env.AI_INTERPRET_MS ?? 1_500);
     try {
       // The signal bounds the whole call, queue wait and retries included, and frees its Spark slot when it fires.
       const { kind } = await decide({
         utterance: heard,
         current_task: {
-          title: active.title, summary: active.summary, volunteer_is: helping ? 'a helper' : 'the owner',
+          title: active.title, summary: active.summary,
+          volunteer_is: helping ? `a helper (${helper?.status ?? 'unknown'} assignment)` : 'the owner',
           asked_by: active.requestId ? 'a festival-goer, who can read messages' : 'staff',
         },
       }, { kind: choice('What is the volunteer doing with this message?', active.requestId ? { ...REPLIES, ...TELL_GUEST } : REPLIES) }, { urgent: true, signal: AbortSignal.timeout(ms) });
@@ -362,7 +366,9 @@ export class SparkInterpreter implements Interpreter {
       }
       const reply = ReplyKind.safeParse(kind.choice);
       const short = heard.split(/\s+/).length <= 12;
-      if (!reply.success || !short || (helping && reply.data !== 'done')) return { heard, intent: { kind: 'report' } };
+      const helperReplies = helper ? availableHelperReplies(helper.status) : null;
+      const helperAllowed = helperReplies ? [helperReplies.primary, ...helperReplies.secondary] : [];
+      if (!reply.success || !short || (helping && !helperAllowed.includes(reply.data))) return { heard, intent: { kind: 'report' } };
       return { heard, intent: { kind: 'reply', taskId: active.id, reply: reply.data } };
     } catch (e) {
       console.warn(`interpret fell back to keywords after ${Date.now() - t0} ms: ${(e as Error).message}`);
@@ -421,5 +427,5 @@ function floorEmergency(c: RespondCommand | null, said: string, available: Escal
   return available.includes('handover') && soundsEmergency(said) ? { kind: 'handover', target: 'emergency' } : c;
 }
 
-/** The models behind every decision: OPENAI_API_KEY, or SPARK_API_KEY with MODEL_PROVIDER=spark (main.ts checks). */
+/** Model-backed intake; configured structured-chat credentials never implicitly enable its separate providers. */
 export const interpreter: Interpreter = new SparkInterpreter();

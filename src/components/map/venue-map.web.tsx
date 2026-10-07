@@ -1,10 +1,10 @@
-import 'maplibre-gl/dist/maplibre-gl.css';
+import "maplibre-gl/dist/maplibre-gl.css";
 
-import { Asset } from 'expo-asset';
-import type { Map as GLMap, Marker as GLMarker, StyleSpecification } from 'maplibre-gl';
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { createPortal } from 'react-dom';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Asset } from "expo-asset";
+import type { Map as GLMap, Marker as GLMarker, StyleSpecification } from "maplibre-gl";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { createPortal } from "react-dom";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import { VoiceGradient } from '@/constants/theme';
 import { toLngLat, type Point } from '@/data/venue';
@@ -17,15 +17,16 @@ import { useFollow } from './use-follow';
 import { useMapStyle } from './map-style';
 import { useGlide } from './use-glide';
 
-export { zoneSpot, type MapMarker, type MapPerson } from './map-model';
+export { zoneSpot, type MapMarker, type MapPerson } from "./map-model";
 
-type GL = typeof import('maplibre-gl');
+type GL = typeof import("maplibre-gl");
 
 const LIVE = liveLayers(VoiceGradient);
+const MAPLIBRE_WORKER_URL = "/maplibre/maplibre-gl-worker.mjs";
 
 /**
  * The web build of VenueMap: the same style and overlays on maplibre-gl. Loaded on demand, so it never runs on the server.
- * Stay on maplibre-gl 5: v6 loads its worker from a separate file, which Metro doesn't bundle.
+ * MapLibre v6 uses an ESM worker; scripts/sync-maplibre-worker.mjs publishes its exact version via Expo's public directory.
  */
 export function VenueMap(props: VenueMapProps) {
   const { route, target, targetColor, frame, interactive = true, style } = props;
@@ -42,11 +43,16 @@ export function VenueMap(props: VenueMapProps) {
   const liveKey = JSON.stringify(liveData(route, target, targetColor ?? theme.danger));
   const fullStyle = useMemo<StyleSpecification | null>(
     // maplibre-gl bundles its own copy of the style-spec types; the JSON is the same.
-    () => baseStyle && ({
-      ...baseStyle,
-      sources: { ...baseStyle.sources, live: { type: 'geojson', data: JSON.parse(liveKey), lineMetrics: true } },
-      layers: [...baseStyle.layers, ...LIVE],
-    } as unknown as StyleSpecification),
+    () =>
+      baseStyle &&
+      ({
+        ...baseStyle,
+        sources: {
+          ...baseStyle.sources,
+          live: { type: "geojson", data: JSON.parse(liveKey), lineMetrics: true },
+        },
+        layers: [...baseStyle.layers, ...LIVE],
+      } as unknown as StyleSpecification),
     [baseStyle, liveKey],
   );
 
@@ -60,8 +66,9 @@ export function VenueMap(props: VenueMapProps) {
     if (!ready || !holder.current) return;
     let map: GLMap | undefined;
     let gone = false;
-    Promise.all([import('maplibre-gl'), loadIcons()]).then(([lib, icons]) => {
+    Promise.all([import("maplibre-gl"), loadIcons()]).then(([lib, icons]) => {
       if (gone || !holder.current) return;
+      lib.setWorkerUrl(MAPLIBRE_WORKER_URL);
       const { style: s, camera: c } = first.current;
       map = new lib.Map({
         container: holder.current,
@@ -86,11 +93,12 @@ export function VenueMap(props: VenueMapProps) {
       map.on('dragstart', took);
       map.on('zoomstart', took);
       // The style names its badges; hand them over whenever it asks, including after a setStyle.
-      map.on('styleimagemissing', ({ id }: { id: string }) => {
+      map.on("styleimagemissing", ({ id }: { id: string }) => {
         const img = icons[id];
-        if (img && !map!.hasImage(id)) map!.addImage(id, img, { pixelRatio: img.naturalWidth / MAP_ICON_SIZE });
+        if (img && !map!.hasImage(id))
+          map!.addImage(id, img, { pixelRatio: img.naturalWidth / MAP_ICON_SIZE });
       });
-      map.once('load', () => fold(map!));
+      map.once("load", () => fold(map!));
       setGl({ lib, map });
     });
     return () => {
@@ -103,7 +111,7 @@ export function VenueMap(props: VenueMapProps) {
   useEffect(() => {
     if (!gl || !fullStyle) return;
     gl.map.setStyle(fullStyle);
-    gl.map.once('idle', () => fold(gl.map));
+    gl.map.once("idle", () => fold(gl.map));
   }, [gl, fullStyle]);
 
   const cameraKey = camera && JSON.stringify(camera);
@@ -120,18 +128,20 @@ export function VenueMap(props: VenueMapProps) {
   return (
     <View
       style={[styles.wrap, { backgroundColor: theme.mapGround }, style]}
-      pointerEvents={interactive ? 'auto' : 'none'}
+      pointerEvents={interactive ? "auto" : "none"}
       onLayout={(e) => {
         // A screen underneath lays out at 0 × 0; keep the last real size.
         const { width, height } = e.nativeEvent.layout;
         if (width > 0 && height > 0) setSize({ width, height });
-      }}>
-      <div ref={holder} style={{ position: 'absolute', inset: 0 }} />
-      {gl && overlays.map((o) => (
-        <WebMarker key={o.key} gl={gl} at={o.at} anchor={o.anchor} onPress={o.onPress}>
-          {o.view}
-        </WebMarker>
-      ))}
+      }}
+    >
+      <div ref={holder} style={{ position: "absolute", inset: 0 }} />
+      {gl &&
+        overlays.map((o) => (
+          <WebMarker key={o.key} gl={gl} at={o.at} anchor={o.anchor} onPress={o.onPress}>
+            {o.view}
+          </WebMarker>
+        ))}
       {gl && interactive && canRecenter && size && (
         <MapButton
           label="Back to me"
@@ -141,7 +151,9 @@ export function VenueMap(props: VenueMapProps) {
           style={[styles.recenter, { bottom: (frame?.bottom ?? 0) * size.height + 12 }]}
         />
       )}
-      {gl && interactive && <AttributionNudge map={gl.map} top={(frame?.top ?? 0) * (size?.height ?? 0)} />}
+      {gl && interactive && (
+        <AttributionNudge map={gl.map} top={(frame?.top ?? 0) * (size?.height ?? 0)} />
+      )}
     </View>
   );
 }
@@ -169,15 +181,30 @@ function loadIcons() {
 
 /** Compact attribution opens itself whenever the style changes; keep it folded to the (i) button. */
 function fold(map: GLMap) {
-  map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
+  map
+    .getContainer()
+    .querySelector(".maplibregl-ctrl-attrib")
+    ?.classList.remove("maplibregl-compact-show");
 }
 
 /** An RN view pinned to the map: rendered into a DOM element maplibre-gl moves around. */
-function WebMarker({ gl, at, anchor, onPress, children }: { gl: { lib: GL; map: GLMap }; at: Point; anchor: 'center' | 'bottom'; onPress?: () => void; children: ReactElement }) {
+function WebMarker({
+  gl,
+  at,
+  anchor,
+  onPress,
+  children,
+}: {
+  gl: { lib: GL; map: GLMap };
+  at: Point;
+  anchor: "center" | "bottom";
+  onPress?: () => void;
+  children: ReactElement;
+}) {
   const pressable = !!onPress;
   const el = useMemo(() => {
-    const div = document.createElement('div');
-    div.style.pointerEvents = pressable ? 'auto' : 'none';
+    const div = document.createElement("div");
+    div.style.pointerEvents = pressable ? "auto" : "none";
     return div;
   }, [pressable]);
   const marker = useRef<GLMarker | null>(null);
@@ -199,13 +226,13 @@ function WebMarker({ gl, at, anchor, onPress, children }: { gl: { lib: GL; map: 
 /** Keeps the map's attribution clear of the controls floating along the top. */
 function AttributionNudge({ map, top }: { map: GLMap; top: number }) {
   useEffect(() => {
-    const el = map.getContainer().querySelector<HTMLElement>('.maplibregl-ctrl-bottom-right');
-    if (el) Object.assign(el.style, { top: `${top + 4}px`, bottom: 'auto' });
+    const el = map.getContainer().querySelector<HTMLElement>(".maplibregl-ctrl-bottom-right");
+    if (el) Object.assign(el.style, { top: `${top + 4}px`, bottom: "auto" });
   }, [map, top]);
   return null;
 }
 
 const styles = StyleSheet.create({
-  wrap: { overflow: 'hidden' },
-  recenter: { position: 'absolute', right: 16 },
+  wrap: { overflow: "hidden" },
+  recenter: { position: "absolute", right: 16 },
 });

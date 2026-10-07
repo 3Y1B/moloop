@@ -14,7 +14,8 @@ const walk = (from: string | null, to: string | null) => (from === to ? 0 : rout
 
 export function nearbyOpenTasks(tasks: Task[], zoneSlug: string | null, now: number): Task[] {
   return tasks
-    .filter((t) => t.status !== 'resolved' && t.status !== 'cancelled' && now - t.createdAt <= RECENT_MS)
+    // Mobilization actions are coordinated operations, not incident reports to merge new reports into.
+    .filter((t) => !t.mobilizationId && t.status !== 'resolved' && t.status !== 'cancelled' && now >= t.createdAt && now - t.createdAt <= RECENT_MS)
     .map((t) => ({ t, m: walk(zoneSlug, t.zoneSlug) }))
     .filter(({ m }) => m <= NEAR_M)
     .sort((a, b) => a.m - b.m)
