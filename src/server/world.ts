@@ -176,16 +176,22 @@ async function save(tx: TransactionSql, { world, refs }: Loaded, b: Batch, owner
   }
 
   if (b.events.length) {
-    await tx`insert into task_events ${tx(b.events.map((e) => {
+    await tx`insert into task_events ${tx(b.events.map((e, i) => {
       const r = eventRow(e);
-      return { ...r, data: json(r.data) };
+      return { ...r, data: json(r.data), created_at: inOrder(e.at, i) };
     }))}`;
   }
   if (b.messages.length) {
-    await tx`insert into messages ${tx(b.messages.map((m) => messageRow(m, b.senders[m.id] ?? null)))}`;
+    await tx`insert into messages ${tx(b.messages.map((m, i) => ({ ...messageRow(m, b.senders[m.id] ?? null), created_at: inOrder(m.at, i) })))}`;
     await tx`insert into message_deliveries ${tx(b.messages.map(deliveryRow))}`;
   }
 }
+
+/**
+ * A batch's events (and messages) share one ms. The i-th gets i µs on top, so ordering by created_at keeps the
+ * order the command wrote them in ("moved it to Kai" before "Assigned to Kai"). Reads truncate back to the ms.
+ */
+const inOrder = (at: number, i: number) => new Date(at).toISOString().replace('Z', `${String(i % 1000).padStart(3, '0')}Z`);
 
 /** Run one shared command atomically against the shared world. Throws roll everything back. */
 export async function transact<T>(spec: Load, run: (b: Batch, loaded: Loaded) => T, owners: Owners = {}): Promise<T> {

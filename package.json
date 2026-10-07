@@ -59,6 +59,7 @@
     "db:seed": "bun scripts/seed.ts",
     "db:check": "bun scripts/check-rls.ts",
     "repo:check": "bun scripts/check-repo.ts",
+    "commands:check": "bun scripts/check-commands.ts",
     "db:types": "supabase gen types typescript --local > src/lib/database.types.ts"
   },
   "private": true
