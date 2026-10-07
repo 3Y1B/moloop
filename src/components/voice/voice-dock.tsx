@@ -1,13 +1,16 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { FadeInDown, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
 import { CircleButton } from '@/components/ui/circle-button';
 import { Icon } from '@/components/ui/icon';
-import { Radius, Type } from '@/constants/theme';
+import { useKeyboardLift } from '@/components/ui/keyboard';
+import { Text } from '@/components/ui/text';
+import { Radius, Shadow, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { NOT_CAUGHT, NOT_SENT, useFlashTimer } from './flash';
 import { useHoldToTalk } from './use-hold-to-talk';
 import { PILL_HEIGHT, VoicePill } from './voice-pill';
 
@@ -52,14 +55,11 @@ export function VoiceDock({ placeholder, onSend, onDismiss }: {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [typing, setTyping] = useState(false);
   const [typed, setTyped] = useState('');
-  const flashedAt = useRef(0);
+  const flashTimer = useFlashTimer();
 
   const listening = phase.kind === 'listening';
 
-  const keyboard = useAnimatedKeyboard();
-  const lift = useAnimatedStyle(() => ({
-    transform: [{ translateY: -Math.max(0, keyboard.height.get() - insets.bottom) }],
-  }));
+  const lift = useKeyboardLift();
 
   const heard = (text: string, clips: string[] = []) => {
     const t = text.trim();
@@ -68,9 +68,8 @@ export function VoiceDock({ placeholder, onSend, onDismiss }: {
 
   /** A line that shows for a moment, then gets out of the way. */
   const flash = (kind: 'sent' | 'missed', message: string) => {
-    const at = (flashedAt.current = Date.now());
     setPhase({ kind, message });
-    setTimeout(() => setPhase((p) => (p.kind === kind && flashedAt.current === at ? { kind: 'idle' } : p)), 2500);
+    flashTimer.start(() => setPhase((p) => (p.kind === kind ? { kind: 'idle' } : p)));
   };
 
   const send = async (text: string, clips: string[], typed = false) => {
@@ -84,7 +83,7 @@ export function VoiceDock({ placeholder, onSend, onDismiss }: {
       // Back in the box to send again, rather than a "Heard" check of what was typed.
       setTyped(text);
       setTyping(true);
-      flash('missed', 'Didn’t send');
+      flash('missed', NOT_SENT);
     }
   };
 
@@ -109,7 +108,7 @@ export function VoiceDock({ placeholder, onSend, onDismiss }: {
       const said = await hold.stop();
       if (said) heard([before, said.text].filter(Boolean).join(' '), said.clip ? [...clips, said.clip] : clips);
       else if (before) back();
-      else flash('missed', 'Didn’t catch that');
+      else flash('missed', NOT_CAUGHT);
     } catch (e) {
       console.warn('[voice] transcribe failed', e);
       if (before) back();
@@ -140,39 +139,38 @@ export function VoiceDock({ placeholder, onSend, onDismiss }: {
               ) : (
                 <Icon sf="exclamationmark.circle.fill" md="error" size={18} color={theme.warning} />
               )}
-              <Text style={[styles.sentText, { color: theme.text }]}>{phase.message}</Text>
+              <Text variant="callout" style={styles.sentText}>{phase.message}</Text>
             </View>
           ) : phase.kind === 'listening' || phase.kind === 'hearing' ? (
             <>
-              <Text style={[styles.label, { color: listening ? theme.tint : theme.textTertiary }]}>{listening ? 'Listening' : 'Heard'}</Text>
+              <Text variant="label" tone={listening ? 'tint' : 'tertiary'}>{listening ? 'Listening' : 'Heard'}</Text>
               <Caption>
-                <Text style={styles.text}>
-                  {!!phase.before && <Text style={{ color: theme.text }}>{phase.before} </Text>}
-                  <Text style={{ color: theme.textTertiary }}>{listening ? (phase.before ? '' : 'Go ahead…') : '…'}</Text>
+                <Text>
+                  {!!phase.before && <Text>{phase.before} </Text>}
+                  <Text tone="tertiary">{listening ? (phase.before ? '' : 'Go ahead…') : '…'}</Text>
                 </Text>
               </Caption>
             </>
           ) : phase.kind === 'sending' && phase.typed ? (
             <>
-              <Text style={[styles.label, { color: theme.textTertiary }]}>Sending</Text>
+              <Text variant="label" tone="tertiary">Sending</Text>
               <Caption>
-                <Text style={[styles.text, { color: theme.text }]}>{phase.text}</Text>
+                <Text>{phase.text}</Text>
               </Caption>
             </>
           ) : (
             <>
-              <Text style={[styles.label, { color: theme.textTertiary }]}>Heard</Text>
+              <Text variant="label" tone="tertiary">Heard</Text>
               <Caption>
-                <Text style={[styles.text, { color: theme.text }]} selectable>{phase.text}</Text>
+                <Text selectable>{phase.text}</Text>
               </Caption>
               <View style={styles.actions}>
                 <Button
-                  variant="plain"
+                  variant="secondary"
                   size="small"
                   label="Try again"
-                  color={theme.text}
                   onPress={() => setPhase({ kind: 'idle' })}
-                  style={[styles.flex, { backgroundColor: theme.backgroundElement }]}
+                  style={styles.flex}
                 />
                 <Button
                   size="small"
@@ -258,14 +256,12 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
     borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth * 2,
-    boxShadow: '0 4px 18px rgba(17, 24, 39, 0.06)',
+    ...Shadow.tray,
   },
-  label: { fontSize: Type.caption, fontWeight: '600' },
   caption: { maxHeight: 120, flexGrow: 0 },
-  text: { fontSize: Type.body, lineHeight: 21 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   sent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sentText: { flex: 1, fontSize: Type.callout, fontWeight: '500' },
+  sentText: { flex: 1, fontWeight: '500' },
   input: { flex: 1, height: PILL_HEIGHT, borderRadius: Radius.pill, paddingHorizontal: 18, justifyContent: 'center' },
   inputText: { fontSize: Type.body, height: PILL_HEIGHT },
 });

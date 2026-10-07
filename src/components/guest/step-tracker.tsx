@@ -1,7 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { StyleSheet, View } from 'react-native';
 
-import { Type } from '@/constants/theme';
+import { ProgressTrack } from '@/components/ui/progress-track';
+import { Text } from '@/components/ui/text';
 import type { GuestRequestStage } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -63,12 +63,12 @@ export function StepTracker({ stage, reached = 1, matched = false, live = 1 }: {
         const name = i === STEPS.length - 1 ? (matched && stage === 'finding' ? 'Matched' : LAST[stage] ?? s) : s;
         return (
           <View key={s} style={styles.step}>
-            <View style={[styles.track, { backgroundColor: track }]}>
-              <Fill fraction={state === 'done' ? 1 : state === 'active' ? live : 0} color={fill} />
-            </View>
+            <ProgressTrack animated fraction={state === 'done' ? 1 : state === 'active' ? live : 0} color={fill} trackColor={track} />
             <Text
+              variant="footnote"
+              tone={state === 'pending' ? 'tertiary' : state === 'active' ? 'primary' : 'secondary'}
               numberOfLines={1}
-              style={[styles.label, { color: state === 'pending' ? theme.textTertiary : state === 'active' ? theme.text : theme.textSecondary }]}>
+              style={styles.label}>
               {name}
             </Text>
           </View>
@@ -78,19 +78,11 @@ export function StepTracker({ stage, reached = 1, matched = false, live = 1 }: {
   );
 }
 
-function Fill({ fraction, color }: { fraction: number; color: string }) {
-  const f = Math.min(1, Math.max(0, fraction));
-  const style = useAnimatedStyle(() => ({ transform: [{ scaleX: withTiming(f, { duration: 600 }) }] }));
-  return <Animated.View style={[styles.fill, { backgroundColor: color }, style]} />;
-}
-
 /** Height of the line and its labels, for sizing the sheet's peek. */
 export const STEP_TRACKER_HEIGHT = 28;
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8 },
   step: { flex: 1, gap: 8 },
-  track: { height: 4, borderRadius: 2, overflow: 'hidden' },
-  fill: { height: 4, transformOrigin: 'left' },
-  label: { fontSize: Type.footnote, lineHeight: 16 },
+  label: { lineHeight: 16 },
 });

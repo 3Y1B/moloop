@@ -1,15 +1,16 @@
-import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  FadeIn, useAnimatedKeyboard, useAnimatedStyle, useSharedValue, withTiming, type SharedValue,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/ui/icon';
+import { useKeyboardLift } from '@/components/ui/keyboard';
+import { haptic, PRESSED_OPACITY } from '@/components/ui/pressable';
+import { Text, textStyle } from '@/components/ui/text';
+import { NOT_CAUGHT, NOT_SENT, useFlashTimer } from '@/components/voice/flash';
 import { useHoldToTalk } from '@/components/voice/use-hold-to-talk';
-import { Radius, Spacing, Type } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type Phase =
@@ -20,7 +21,7 @@ type Phase =
   | { kind: 'review'; text: string; clips: string[] }
   | { kind: 'sending'; text: string; clips: string[]; typed: boolean };
 
-export const BAR = 68;
+const BAR = 68;
 
 /**
  * Hi-vis: one bar pinned to the bottom that is always the next step and never moves. Hold it to talk; let go and
@@ -43,7 +44,7 @@ export function HiVisBar({ placeholder, onSend, rest, onHeight }: {
   const [typed, setTyped] = useState('');
   /** A word in place of the bar's label for a moment: "Didn't catch that", "Didn't send". */
   const [notice, setNotice] = useState<string | null>(null);
-  const noticeAt = useRef(0);
+  const noticeTimer = useFlashTimer();
   // The gesture's callbacks can fire before a re-render lands; they read the phase from here, not a stale closure.
   const phaseRef = useRef<Phase>(phase);
   const setPhase = (p: Phase) => {
@@ -51,18 +52,14 @@ export function HiVisBar({ placeholder, onSend, rest, onHeight }: {
     setPhaseState(p);
   };
 
-  const keyboard = useAnimatedKeyboard();
-  const lift = useAnimatedStyle(() => ({
-    transform: [{ translateY: -Math.max(0, keyboard.height.get() - insets.bottom) }],
-  }));
+  const lift = useKeyboardLift();
 
   const say = (message: string) => {
-    const at = (noticeAt.current = Date.now());
     setNotice(message);
-    setTimeout(() => setNotice((n) => (noticeAt.current === at ? null : n)), 2500);
+    noticeTimer.start(() => setNotice(null));
   };
   const quiet = () => {
-    noticeAt.current = 0;
+    noticeTimer.cancel();
     setNotice(null);
   };
 
@@ -80,7 +77,7 @@ export function HiVisBar({ placeholder, onSend, rest, onHeight }: {
         setTyping(true);
         setPhase({ kind: 'idle' });
       } else setPhase({ kind: 'review', text: t, clips });
-      say('Didn’t send');
+      say(NOT_SENT);
     }
   };
 
@@ -94,7 +91,7 @@ export function HiVisBar({ placeholder, onSend, rest, onHeight }: {
 
   const holdStart = () => {
     if (phaseRef.current.kind !== 'idle') return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptic('medium');
     quiet();
     hold.start();
     setPhase({ kind: 'listening' });
@@ -102,14 +99,14 @@ export function HiVisBar({ placeholder, onSend, rest, onHeight }: {
 
   const holdEnd = async () => {
     if (phaseRef.current.kind !== 'listening') return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptic('light');
     setPhase({ kind: 'hearing' });
     try {
       const said = await hold.stop();
       if (said) setPhase({ kind: 'review', text: said.text.trim(), clips: said.clip ? [said.clip] : [] });
       else {
         setPhase({ kind: 'idle' });
-        say('Didn’t catch that');
+        say(NOT_CAUGHT);
       }
     } catch (e) {
       console.warn('[voice] transcribe failed', e);
@@ -162,7 +159,7 @@ export function HiVisBar({ placeholder, onSend, rest, onHeight }: {
             ) : phase.kind === 'hearing' ? (
               <ActivityIndicator color={theme.onTint} />
             ) : (
-              <Text style={[styles.barText, { color: theme.onTint }]} numberOfLines={1}>{notice ?? 'Hold to talk'}</Text>
+              <Text variant="hero" color={theme.onTint} style={styles.heavy} numberOfLines={1}>{notice ?? 'Hold to talk'}</Text>
             )}
           </HoldBar>
         )}
@@ -188,7 +185,7 @@ function Side({ phase, typing, onAgain, onToggle }: {
       accessibilityLabel={again ? 'Again' : typing ? 'Talk instead' : 'Type instead'}
       disabled={phase.kind === 'sending'}
       onPress={() => {
-        Haptics.selectionAsync();
+        haptic('selection');
         if (again) onAgain();
         else onToggle();
       }}
@@ -197,7 +194,7 @@ function Side({ phase, typing, onAgain, onToggle }: {
         { backgroundColor: pressed ? theme.backgroundElement : theme.card, borderColor: theme.border },
       ]}>
       {again ? (
-        <Text style={[styles.sideText, { color: theme.text }]}>Again</Text>
+        <Text variant="callout" style={styles.heavy}>Again</Text>
       ) : (
         <Icon sf={typing ? 'mic' : 'keyboard'} md={typing ? 'mic' : 'keyboard'} size={22} color={theme.text} />
       )}
@@ -246,17 +243,17 @@ function SendBar({ label, busy, disabled, onPress }: { label: string; busy: bool
       accessibilityLabel="Send"
       disabled={disabled}
       onPress={() => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptic('success');
         onPress();
       }}
       style={({ pressed }) => [
         styles.bar,
-        { backgroundColor: theme.tint, opacity: busy ? 1 : disabled ? 0.4 : pressed ? 0.85 : 1 },
+        { backgroundColor: theme.tint, opacity: busy ? 1 : disabled ? 0.4 : pressed ? PRESSED_OPACITY : 1 },
       ]}>
       {busy ? (
         <ActivityIndicator color={theme.onTint} />
       ) : (
-        <Text style={[styles.barText, { color: theme.onTint }]} numberOfLines={1}>{label}</Text>
+        <Text variant="hero" color={theme.onTint} style={styles.heavy} numberOfLines={1}>{label}</Text>
       )}
     </Pressable>
   );
@@ -286,7 +283,7 @@ function Caption({ phase, typing, typed, setTyped, placeholder, onSubmit }: {
           submitBehavior="blurAndSubmit"
           returnKeyType="send"
           onSubmitEditing={onSubmit}
-          style={[styles.big, styles.input, { color: theme.text }]}
+          style={[textStyle('hero'), styles.big, styles.input, { color: theme.text }]}
         />
       </Animated.View>
     );
@@ -303,7 +300,7 @@ function Caption({ phase, typing, typed, setTyped, placeholder, onSubmit }: {
           style={styles.scroll}
           nestedScrollEnabled
           onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
-          <Text style={[styles.big, { color: text ? theme.text : theme.textTertiary }]} selectable={!!text}>
+          <Text variant="hero" tone={text ? 'primary' : 'tertiary'} style={styles.big} selectable={!!text}>
             {text ?? 'Listening'}
           </Text>
         </ScrollView>
@@ -344,7 +341,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
   },
-  barText: { fontSize: Type.hero, fontWeight: '700' },
   side: {
     width: BAR,
     height: BAR,
@@ -354,7 +350,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sideText: { fontSize: Type.callout, fontWeight: '700' },
   caption: {
     borderRadius: Radius.card,
     borderCurve: 'continuous',
@@ -365,7 +360,9 @@ const styles = StyleSheet.create({
   },
   scroll: { maxHeight: 160, flexGrow: 0 },
   spinner: { alignSelf: 'flex-start', marginTop: 6 },
-  big: { fontSize: Type.hero, lineHeight: 29, fontWeight: '700' },
+  // Hi-vis: heavier than the ramp's hero, for reading at arm's length.
+  heavy: { fontWeight: '700' },
+  big: { lineHeight: 29, fontWeight: '700' },
   input: { minHeight: 84, maxHeight: 160, padding: 0, textAlignVertical: 'top' },
   level: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 36 },
   levelBar: { width: 4, borderRadius: 2 },

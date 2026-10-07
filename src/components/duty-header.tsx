@@ -1,16 +1,18 @@
-import * as Haptics from 'expo-haptics';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
-import { floating, MAP_BUTTON } from '@/components/map/map-button';
 import { Avatar } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
-import { Radius, Type } from '@/constants/theme';
+import { PressableOpacity } from '@/components/ui/pressable';
+import { Text } from '@/components/ui/text';
+import { TOP_BAR_CONTROL } from '@/components/ui/top-bar';
+import { Radius, Shadow, Type } from '@/constants/theme';
 import { useLookups, useMe, useRepo } from '@/data/hooks';
 import { clockTime } from '@/lib/format';
 import { useTheme } from '@/hooks/use-theme';
 
-export const DUTY_CHIP_HEIGHT = MAP_BUTTON;
+export const DUTY_CHIP_HEIGHT = TOP_BAR_CONTROL;
 
 /** Collapsed identity: avatar with a duty dot and first name. Tap to open the duty panel. `flat` on a plain page. */
 export function DutyChip({ open, onToggle, flat = false }: { open: boolean; onToggle: () => void; flat?: boolean }) {
@@ -22,26 +24,24 @@ export function DutyChip({ open, onToggle, flat = false }: { open: boolean; onTo
   const onDuty = me.duty === 'on_duty';
 
   return (
-    <Pressable
+    <PressableOpacity
       accessibilityRole="button"
       accessibilityState={{ expanded: open }}
       accessibilityLabel={`${me.name}, ${onDuty ? 'on duty' : 'on break'}. Shift details`}
-      onPress={() => {
-        Haptics.selectionAsync();
-        onToggle();
-      }}
-      style={({ pressed }) => [
+      haptic="selection"
+      onPress={onToggle}
+      style={[
         styles.chip,
-        flat ? { borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border } : floating,
-        { backgroundColor: theme.card, opacity: pressed ? 0.7 : 1 },
+        flat ? { borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border } : Shadow.floating,
+        { backgroundColor: theme.card },
       ]}>
       <Avatar name={me.name} color={team?.color} dot={onDuty ? theme.success : theme.warning} />
       <View>
-        <Text style={[styles.chipName, { color: theme.text }]} numberOfLines={1}>{me.name.split(' ')[0]}</Text>
-        <Text style={[styles.chipSub, { color: onDuty ? theme.success : theme.warning }]}>{onDuty ? 'On duty' : 'On break'}</Text>
+        <Text variant="label" tone="primary" numberOfLines={1}>{me.name.split(' ')[0]}</Text>
+        <Text tone={onDuty ? 'success' : 'warning'} style={styles.chipSub}>{onDuty ? 'On duty' : 'On break'}</Text>
       </View>
       <Icon sf={open ? 'chevron.up' : 'chevron.down'} md={open ? 'expand_less' : 'expand_more'} size={10} color={theme.textTertiary} weight="semibold" />
-    </Pressable>
+    </PressableOpacity>
   );
 }
 
@@ -62,25 +62,20 @@ export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
       style={[styles.panel, { backgroundColor: theme.card }, style]}>
         <View style={styles.panelRow}>
           {team && <Icon sf={team.sf} md={team.md} size={14} color={team.color} />}
-          <Text style={[styles.panelText, { color: theme.text }]}>{team?.name ?? 'Coordinator'}</Text>
+          <Text variant="callout" style={styles.panelText}>{team?.name ?? 'Coordinator'}</Text>
           {me.shiftEndsAt && (
-            <Text style={[styles.panelMeta, { color: theme.textSecondary }]}>until {clockTime(me.shiftEndsAt)}</Text>
+            <Text variant="footnote" tone="secondary" style={styles.panelMeta}>until {clockTime(me.shiftEndsAt)}</Text>
           )}
         </View>
         <View style={styles.actions}>
-          <Pressable
-            accessibilityRole="switch"
-            accessibilityState={{ checked: onDuty }}
-            onPress={() => {
-              Haptics.selectionAsync();
-              repo.setDuty(onDuty ? 'on_break' : 'on_duty');
-            }}
-            style={({ pressed }) => [styles.pill, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.6 : 1 }]}>
-            <Icon sf={onDuty ? 'cup.and.saucer.fill' : 'figure.walk'} md={onDuty ? 'coffee' : 'directions_walk'} size={13} color={onDuty ? theme.warning : theme.success} />
-            <Text style={[styles.pillText, { color: theme.text }]}>
-              {onDuty ? 'Take a break' : 'Back on duty'}
-            </Text>
-          </Pressable>
+          <Button
+            variant="secondary"
+            size="small"
+            label={onDuty ? 'Take a break' : 'Back on duty'}
+            sf={onDuty ? 'cup.and.saucer.fill' : 'figure.walk'}
+            md={onDuty ? 'coffee' : 'directions_walk'}
+            onPress={() => repo.setDuty(onDuty ? 'on_break' : 'on_duty')}
+          />
         </View>
     </Animated.View>
   );
@@ -91,16 +86,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 8, height: DUTY_CHIP_HEIGHT, paddingLeft: 4, paddingRight: 12,
     borderRadius: Radius.pill, alignSelf: 'flex-start',
   },
-  chipName: { fontSize: Type.footnote, fontWeight: '600' },
   chipSub: { fontSize: Type.caption - 1, fontWeight: '500' },
   // Floats over the page under the chip rather than adding another card to the stack.
   panel: {
-    padding: 12, gap: 10, borderRadius: Radius.card, borderCurve: 'continuous', ...floating,
+    padding: 12, gap: 10, borderRadius: Radius.card, borderCurve: 'continuous', ...Shadow.floating,
   },
   panelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  panelText: { fontSize: Type.callout, fontWeight: '600', flexShrink: 1 },
-  panelMeta: { fontSize: Type.footnote, marginLeft: 'auto' },
+  panelText: { fontWeight: '600', flexShrink: 1 },
+  panelMeta: { marginLeft: 'auto' },
   actions: { flexDirection: 'row', gap: 8 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 34, borderRadius: Radius.control },
-  pillText: { fontSize: Type.footnote, fontWeight: '500' },
 });

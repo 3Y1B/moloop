@@ -66,7 +66,29 @@ export async function signInAsGuest() {
   if (error) throw error;
 }
 
+// ── sign-out ──
+
+const beforeSignOutHooks = new Set<() => Promise<void>>();
+const SIGN_OUT_HOOK_MS = 3_000;
+
+/**
+ * Work that needs the session one last time (unregistering this phone's push token). Best effort: a hook that fails
+ * or takes longer than 3 s never holds up sign-out. Kept here as a registry so this file imports nothing native.
+ */
+export function beforeSignOut(hook: () => Promise<void>) {
+  beforeSignOutHooks.add(hook);
+  return () => void beforeSignOutHooks.delete(hook);
+}
+
 export async function signOut() {
+  await Promise.all(
+    [...beforeSignOutHooks].map((hook) =>
+      Promise.race([
+        hook().catch((e) => console.warn('[sign-out]', e)),
+        new Promise<void>((resolve) => setTimeout(resolve, SIGN_OUT_HOOK_MS)),
+      ]),
+    ),
+  );
   const { error } = await getSupabase().auth.signOut();
   if (error) throw error;
 }

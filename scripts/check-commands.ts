@@ -460,6 +460,22 @@ try {
       thread,
     );
 
+    // Mo answers too: the festival-goer gets it, and the volunteer on it hears what they were told.
+    expect('Mo can reply to the festival-goer', (await mo.call('guestReply', { taskId: t.id, text: 'Cam is on the way' })).status === 200);
+    expect(
+      'the volunteer is told what the festival-goer heard',
+      (await messagesFor(t.id, cam)).some((m) => m.kind === 'direct' && /Cam is on the way/.test(m.body)),
+    );
+    expect('a volunteer cannot message the crew (403)', (await cam.call('messageCrew', { taskId: t.id, text: 'x' })).status === 403);
+    const told = await mo.call('messageCrew', { taskId: t.id, text: 'Sparkling is in the bar fridge' });
+    expect('Mo messages the volunteer on it', told.status === 200, told);
+    expect(
+      'it is spoken on their phone',
+      (await messagesFor(t.id, cam)).some((m) => m.kind === 'direct' && m.delivery === 'spoken' && /bar fridge/.test(m.body)),
+    );
+    const notes = (await events(t.id)).filter((e) => e.kind === 'note').map((e) => (e.data as { note?: string }).note);
+    expect('both stay on the task log', notes.includes('Cam is on the way') && notes.includes('Sparkling is in the bar fridge'), notes);
+
     expect('the festival-goer cancels', (await alex.call('guestCancel', { requestId: req.id })).status === 200);
     const after = await task(t.id);
     expect(

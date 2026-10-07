@@ -91,6 +91,10 @@ export interface Repo {
   /** Commit an interpretation the volunteer confirmed. */
   commit(interpretation: Interpretation): Promise<{ confirmation: string }>;
   markRead(messageIds: string[]): Promise<void>;
+  /** This phone's Expo push token, for whoever is signed in. Moves it off anyone else who had it. */
+  registerPush(token: string, platform: 'ios' | 'android'): Promise<void>;
+  /** On sign-out: this phone stops getting pushes for that person. */
+  unregisterPush(token: string): Promise<void>;
   /** Leads and Mo: a short summary of the shift or one task (AI, or plain counts if the model is down). */
   summarize(scope: SummaryScope): Promise<Summary>;
   /** Where my phone is. Written straight to `presence`, not through the server: high volume, no logic. */
@@ -131,8 +135,10 @@ export interface Repo {
   /** "Still need help?" after Sorted. */
   guestReopen(requestId: string): Promise<void>;
 
-  /** Volunteer → festival-goer, on a task that came from a request. */
+  /** Staff → festival-goer, on a task that came from a request: the volunteer on it, a lead or Mo. */
   guestReply(taskId: string, text: string): Promise<void>;
+  /** Lead or Mo → everyone on the task, spoken on their phones and kept on the task's log. */
+  messageCrew(taskId: string, text: string): Promise<void>;
 
   /** Mobilization is server/Supabase-only: real-model simulation and approval need shared persistence. */
   mobilizations?: MobilizationControls;

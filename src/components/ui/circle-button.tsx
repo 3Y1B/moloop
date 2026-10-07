@@ -1,8 +1,8 @@
-import * as Haptics from 'expo-haptics';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useTheme } from '@/hooks/use-theme';
+import { haptic, pressedStyle } from './pressable';
 
 /** Round control: a flat card-coloured disc with a hairline edge. */
 export function CircleButton({ size = 44, label, onPress, onLongPress, children, style }: {
@@ -21,11 +21,11 @@ export function CircleButton({ size = 44, label, onPress, onLongPress, children,
       accessibilityLabel={label}
       hitSlop={6}
       onPress={() => {
-        Haptics.selectionAsync();
+        haptic('selection');
         onPress?.();
       }}
       onLongPress={onLongPress}
-      style={({ pressed }) => [shape, { opacity: pressed ? 0.6 : 1 }, style]}>
+      style={({ pressed }) => [shape, pressedStyle(pressed), style]}>
       <View style={[shape, styles.center, { backgroundColor: theme.card, borderColor: theme.border }]}>{children}</View>
     </Pressable>
   );

@@ -1,10 +1,13 @@
-import * as Haptics from 'expo-haptics';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
+import { CountBadge } from '@/components/ui/badge';
 import { Icon } from '@/components/ui/icon';
+import { haptic, pressedStyle } from '@/components/ui/pressable';
+import { TOP_BAR_CONTROL } from '@/components/ui/top-bar';
+import { Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-export const MAP_BUTTON = 44;
+const MAP_BUTTON = TOP_BAR_CONTROL;
 
 /**
  * Round control floating over the map. Same soft lift as the sheet, so it reads above the plan. `flat` is the same
@@ -26,27 +29,22 @@ export function MapButton({ label, sf, md, badge, flat = false, onPress, style }
       accessibilityLabel={badge ? `${label}, ${badge} new` : label}
       hitSlop={6}
       onPress={() => {
-        Haptics.selectionAsync();
+        haptic('selection');
         onPress();
       }}
       style={({ pressed }) => [
         styles.button,
-        flat ? { borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border } : floating,
-        { backgroundColor: theme.card, opacity: pressed ? 0.7 : 1 },
+        flat ? { borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border } : Shadow.floating,
+        { backgroundColor: theme.card },
+        pressedStyle(pressed),
         style,
       ]}>
       <Icon sf={sf} md={md} size={18} color={theme.text} />
-      {!!badge && (
-        <View style={[styles.badge, { backgroundColor: theme.danger, borderColor: theme.card }]}>
-          <Text style={[styles.badgeText, { color: theme.onTint }]}>{badge}</Text>
-        </View>
-      )}
+      <CountBadge count={badge ?? 0} outline style={styles.badge} />
     </Pressable>
   );
 }
 
-/** The soft lift every floating map control shares. */
-export const floating = { boxShadow: '0 2px 10px rgba(17, 24, 39, 0.12)' } as const;
 
 const styles = StyleSheet.create({
   button: {
@@ -56,17 +54,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badge: {
-    position: 'absolute',
-    top: -3,
-    right: -3,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: { fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  badge: { position: 'absolute', top: -3, right: -3 },
 });

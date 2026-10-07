@@ -1,13 +1,15 @@
-import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, { FadeOutUp, SlideInUp } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
+import { CircleButton } from '@/components/ui/circle-button';
 import { Icon } from '@/components/ui/icon';
-import { Radius, Type } from '@/constants/theme';
+import { haptic } from '@/components/ui/pressable';
+import { Text } from '@/components/ui/text';
+import { useTopBarMetrics } from '@/components/ui/top-bar';
+import { Radius } from '@/constants/theme';
 import { getFinderOpen, listenForRing, subscribeFinderOpen } from '@/data/finder-ring';
 import { useMyPlace, useMyRequests, useMyWork, usePlaceOf, useSnapshot } from '@/data/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -59,7 +61,7 @@ export function FinderPrompt() {
 
   const show = useCallback((kind: Prompt['kind'], id: string, who: string | null) => {
     if (getFinderOpen() === id) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    haptic('warning');
     setPrompt({ kind, taskId: id, name: who });
   }, []);
 
@@ -113,7 +115,7 @@ export function FinderPrompt() {
 
 function Banner({ prompt, onFind, onDismiss }: { prompt: Prompt; onFind: () => void; onDismiss: () => void }) {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const { top } = useTopBarMetrics();
   const { kind, name } = prompt;
   const title =
     kind === 'ring' ? (name ? `${name} turned on Find` : 'They’re looking for you')
@@ -124,7 +126,7 @@ function Banner({ prompt, onFind, onDismiss }: { prompt: Prompt; onFind: () => v
     <Animated.View
       entering={SlideInUp.springify().damping(18)}
       exiting={FadeOutUp.duration(160)}
-      style={[styles.wrap, { top: insets.top + 8 }]}
+      style={[styles.wrap, { top }]}
       pointerEvents="box-none">
       <View
         accessibilityRole="alert"
@@ -133,13 +135,13 @@ function Banner({ prompt, onFind, onDismiss }: { prompt: Prompt; onFind: () => v
           <Icon sf="dot.radiowaves.left.and.right" md="sensors" size={18} color={theme.tint} weight="semibold" />
         </View>
         <View style={styles.text}>
-          <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{title}</Text>
-          <Text style={[styles.body, { color: theme.textSecondary }]} numberOfLines={2}>{body}</Text>
+          <Text variant="rowTitle" numberOfLines={1}>{title}</Text>
+          <Text variant="footnote" tone="secondary" numberOfLines={2}>{body}</Text>
         </View>
         <Button label="Find" size="small" onPress={onFind} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Not now" hitSlop={10} onPress={onDismiss} style={styles.close}>
-          <Icon sf="xmark" md="close" size={12} color={theme.textTertiary} weight="bold" />
-        </Pressable>
+        <CircleButton label="Not now" size={28} onPress={onDismiss}>
+          <Icon sf="xmark" md="close" size={11} color={theme.textTertiary} weight="bold" />
+        </CircleButton>
       </View>
     </Animated.View>
   );
@@ -160,7 +162,4 @@ const styles = StyleSheet.create({
   },
   badge: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, gap: 2 },
-  title: { fontSize: Type.body, fontWeight: '600' },
-  body: { fontSize: Type.footnote },
-  close: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
 });

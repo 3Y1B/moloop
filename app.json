@@ -18,6 +18,9 @@
           "NSAllowsArbitraryLoads": true
         }
       },
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
+      },
       "appleTeamId": "887A69S6QZ"
     },
     "android": {
@@ -67,6 +70,14 @@
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#2F6BF5",
+          "defaultChannel": "tasks"
         }
       ]
     ],

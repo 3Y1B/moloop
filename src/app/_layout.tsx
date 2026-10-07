@@ -1,17 +1,31 @@
+import * as Notifications from 'expo-notifications';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { DemoOverlay } from '@/components/demo-panel';
 import { FinderPrompt } from '@/components/finder/finder-prompt';
 import { LocationSharing } from '@/components/location-sharing';
+import { PushNotifications } from '@/components/push-notifications';
 import { Colors } from '@/constants/theme';
 import { RepoProvider } from '@/data/provider';
 import { useThemeName } from '@/hooks/use-theme';
 
 SplashScreen.preventAutoHideAsync();
+
+// A push that lands while the app is open: no banner, no sound. Realtime already shows it and the brief speaks it.
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: false,
+      shouldShowList: false,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 /** Sheets over the map: most of the screen first, drag up for the rest. */
 const SHEET = {
@@ -34,6 +48,7 @@ export default function RootLayout() {
       <RepoProvider>
         <AnimatedSplashOverlay />
         <LocationSharing />
+        <PushNotifications />
         {/* Every route is registered here; (mo), (staff) and (guest) redirect to each other by role, and to sign-in when nobody is. */}
         <Stack>
           <Stack.Screen name="(mo)" options={{ headerShown: false }} />

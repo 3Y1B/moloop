@@ -1,32 +1,27 @@
-import * as Haptics from 'expo-haptics';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-
-import { PrioritySignal } from '@/components/task/badges';
-import { Untranslated } from '@/components/task/untranslated';
+import { RowSignal, TaskRow } from '@/components/task/task-row';
+import { Button } from '@/components/ui/button';
+import { ListRow } from '@/components/ui/list-row';
 import { StatusLine } from '@/components/ui/status-line';
-import { Radius, Type } from '@/constants/theme';
+import { Text } from '@/components/ui/text';
 import { useLookups, useMobilizationStatus, useNow, useRepo, useTaskStatus, type NeedsItem } from '@/data/hooks';
 import { ago } from '@/lib/format';
 import type { Mobilization, Proposal } from '@/lib/schema';
 import type { Status } from '@/lib/status';
-import { useTheme } from '@/hooks/use-theme';
 import { openNeed } from './open-sheet';
 import { attempt } from './sheet';
-import { TeamRow } from './team-list';
 import { useLiveNow } from './use-live-now';
+
+type TaskNeed = Exclude<NeedsItem, { kind: 'mobilization' }>;
 
 /** One thing that needs the lead: what, and its status line. Tap opens the right sheet; a handover takes Arrived here. */
 export function NeedsRow({ item }: { item: NeedsItem }) {
-  return item.kind === 'mobilization' ? (
-    <MobilizationNeedsRow mobilization={item.mobilization} since={item.since} />
-  ) : (
-    <TaskNeedsRow item={item} />
-  );
+  if (item.kind === 'mobilization') return <MobilizationNeedsRow mobilization={item.mobilization} since={item.since} />;
+  if (item.kind === 'approval' && item.proposal) return <ApprovalNeedsRow item={item} proposal={item.proposal} />;
+  return <TaskNeedsRow item={item} />;
 }
 
 /** A mobilization has several tasks and teams, not one task owner or an auto-assignment countdown. */
 function MobilizationNeedsRow({ mobilization, since }: { mobilization: Mobilization; since: number }) {
-  const theme = useTheme();
   const now = useNow();
   const tasks = mobilization.steps.length;
   const teams = new Set(mobilization.steps.map((step) => step.teamSlug)).size;
@@ -34,66 +29,53 @@ function MobilizationNeedsRow({ mobilization, since }: { mobilization: Mobilizat
     .filter(Boolean)
     .join(' · ');
   return (
-    <TeamRow label={mobilization.title} onPress={() => openNeed({ kind: 'mobilization', mobilization, since })}>
-      <PrioritySignal priority={mobilization.urgency} size={13} />
-      <View style={styles.body}>
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
-          {mobilization.title}
-        </Text>
-        <MobilizationNeedStatus mobilization={mobilization} />
-        <Text style={[styles.sub, { color: theme.textSecondary }]} numberOfLines={1}>
-          {sub}
-        </Text>
-      </View>
-    </TeamRow>
+    <ListRow
+      flush
+      divider
+      accessibilityLabel={mobilization.title}
+      onPress={() => openNeed({ kind: 'mobilization', mobilization, since })}
+      leading={<RowSignal priority={mobilization.urgency} />}>
+      <Text variant="rowTitle" numberOfLines={1}>{mobilization.title}</Text>
+      <MobilizationNeedStatus mobilization={mobilization} />
+      <Text variant="footnote" tone="secondary" numberOfLines={1}>{sub}</Text>
+    </ListRow>
   );
 }
 
-function TaskNeedsRow({ item }: { item: Exclude<NeedsItem, { kind: 'mobilization' }> }) {
-  const theme = useTheme();
+/** Ticks every second, so only approvals pay for the live clock. */
+function ApprovalNeedsRow({ item, proposal }: { item: TaskNeed; proposal: Proposal }) {
+  const status = useApprovalStatus(proposal);
+  return <TaskRow task={item.task} flat status={status} onPress={() => openNeed(item)} />;
+}
+
+function TaskNeedsRow({ item }: { item: TaskNeed }) {
   const repo = useRepo();
   const { task, kind } = item;
   return (
-    <TeamRow label={task.title} onPress={() => openNeed(item)}>
-      <View style={styles.signal}>
-        <PrioritySignal priority={task.priority} size={12} />
-      </View>
-      <View style={styles.body}>
-        <View style={styles.top}>
-          <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
-            {task.title}
-          </Text>
-          <Untranslated task={task} />
-        </View>
-        <NeedStatus item={item} />
-      </View>
-      {kind === 'handover' && (
-        <Pressable
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={() => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            attempt(() => repo.arrived(task.id));
-          }}
-          style={({ pressed }) => [
-            styles.action,
-            { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 },
-          ]}
-        >
-          <Text style={[styles.actionText, { color: theme.text }]}>Arrived</Text>
-        </Pressable>
-      )}
-    </TeamRow>
+    <TaskRow
+      task={task}
+      flat
+      onPress={() => openNeed(item)}
+      trailing={
+        kind === 'handover' && (
+          <Button
+            label="Arrived"
+            variant="secondary"
+            size="small"
+            haptic="success"
+            onPress={() => attempt(() => repo.arrived(task.id))}
+          />
+        )
+      }
+    />
   );
 }
 
 /** The status line for a "Needs you" item: the approval countdown, else the task's status as I see it. */
 export function NeedStatus({ item }: { item: NeedsItem }) {
-  return item.kind === 'mobilization' ? (
-    <MobilizationNeedStatus mobilization={item.mobilization} />
-  ) : (
-    <TaskNeedStatus item={item} />
-  );
+  if (item.kind === 'mobilization') return <MobilizationNeedStatus mobilization={item.mobilization} />;
+  if (item.kind === 'approval' && item.proposal) return <ApprovalLine proposal={item.proposal} />;
+  return <TaskNeedStatus item={item} />;
 }
 
 function MobilizationNeedStatus({ mobilization }: { mobilization: Mobilization }) {
@@ -101,31 +83,23 @@ function MobilizationNeedStatus({ mobilization }: { mobilization: Mobilization }
   return status ? <StatusLine status={status} /> : null;
 }
 
-function TaskNeedStatus({ item }: { item: Exclude<NeedsItem, { kind: 'mobilization' }> }) {
+function TaskNeedStatus({ item }: { item: TaskNeed }) {
   const status = useTaskStatus(item.task);
-  if (item.kind === 'approval' && item.proposal) return <ApprovalLine proposal={item.proposal} />;
   return status ? <StatusLine status={status} /> : null;
 }
 
-/** "Approve Maya · 24 s": who the AI will assign, ticking down. Status copy has no proposal line, so it's built here. */
 function ApprovalLine({ proposal }: { proposal: Proposal }) {
+  return <StatusLine status={useApprovalStatus(proposal)} />;
+}
+
+/** "Approve Maya · 24 s": who the AI will assign, ticking down. Status copy has no proposal line, so it's built here. */
+function useApprovalStatus(proposal: Proposal): Status {
   const now = useLiveNow();
   const { volunteers } = useLookups();
   const pick = volunteers[proposal.candidates[0]?.volunteerId ?? '']?.name.split(' ')[0];
   const left = Math.max(0, Math.ceil((proposal.autoAssignAt - now) / 1000));
-  const status: Status = {
+  return {
     label: left > 0 ? `Approve${pick ? ` ${pick}` : ''} · ${left} s` : 'Assigning',
     tone: 'warning',
   };
-  return <StatusLine status={status} />;
 }
-
-const styles = StyleSheet.create({
-  signal: { alignSelf: 'flex-start', paddingTop: 4 },
-  body: { flex: 1, gap: 2 },
-  top: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  title: { flexShrink: 1, fontSize: Type.body, fontWeight: '500' },
-  sub: { fontSize: Type.footnote },
-  action: { paddingHorizontal: 12, height: 30, borderRadius: Radius.pill, justifyContent: 'center' },
-  actionText: { fontSize: Type.footnote, fontWeight: '600' },
-});

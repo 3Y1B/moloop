@@ -1,10 +1,12 @@
-import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
+import type { ReactNode } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Type } from '@/constants/theme';
 import type { Status, StatusAction, Tone } from '@/lib/status';
 import { useTheme } from '@/hooks/use-theme';
+import { Dot } from './dot';
+import { haptic, pressedStyle } from './pressable';
 
 /** Default for a tappable status: check-ins open the reply sheet, calls open the dialer. */
 export function runStatusAction(action: StatusAction) {
@@ -12,12 +14,18 @@ export function runStatusAction(action: StatusAction) {
   else Linking.openURL(`tel:${action.phone.replace(/\s+/g, '')}`);
 }
 
-/** A status from `lib/status`: tone dot, label, then the detail in a quieter tone. Tappable when it has an action. */
-export function StatusLine({ status, onAction, size = 'footnote', style }: {
+/**
+ * The one way a status from `lib/status` is drawn: tone dot, label, then the detail in a quieter tone. Tappable when
+ * it has an action. `dot={false}` is the label alone in its tone (a teammate's row). `trailing` sits after it ("4m ago",
+ * a countdown); a string is drawn quiet.
+ */
+export function StatusLine({ status, onAction, size = 'footnote', dot = true, trailing, style }: {
   status: Status;
   /** Overrides the default action handling. */
   onAction?: (action: StatusAction) => void;
-  size?: 'footnote' | 'callout';
+  size?: 'footnote' | 'callout' | 'body';
+  dot?: boolean;
+  trailing?: ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
@@ -34,11 +42,18 @@ export function StatusLine({ status, onAction, size = 'footnote', style }: {
 
   const body = (
     <View style={[styles.row, style]}>
-      <View style={[styles.dot, { backgroundColor: c }]} />
-      <Text style={[styles.text, { fontSize }]} numberOfLines={1}>
-        <Text style={{ color: status.tone === 'neutral' ? theme.textSecondary : c, fontWeight: '600' }}>{status.label}</Text>
+      {dot && <Dot color={c} size={7} />}
+      <Text style={[styles.text, { fontSize, fontWeight: dot ? '500' : '400' }]} numberOfLines={1}>
+        <Text style={{ color: status.tone === 'neutral' ? theme.textSecondary : c, fontWeight: dot ? '600' : undefined }}>
+          {status.label}
+        </Text>
         {status.detail && <Text style={{ color: theme.textSecondary }}> · {status.detail}</Text>}
       </Text>
+      {typeof trailing === 'string' || typeof trailing === 'number' ? (
+        <Text style={[styles.trailing, { fontSize, color: theme.textTertiary }]} numberOfLines={1}>{trailing}</Text>
+      ) : (
+        trailing
+      )}
     </View>
   );
   if (!action) return body;
@@ -48,10 +63,10 @@ export function StatusLine({ status, onAction, size = 'footnote', style }: {
       accessibilityLabel={status.detail ? `${status.label}, ${status.detail}` : status.label}
       hitSlop={8}
       onPress={() => {
-        Haptics.selectionAsync();
+        haptic('selection');
         (onAction ?? runStatusAction)(action);
       }}
-      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+      style={({ pressed }) => pressedStyle(pressed)}>
       {body}
     </Pressable>
   );
@@ -59,6 +74,6 @@ export function StatusLine({ status, onAction, size = 'footnote', style }: {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { width: 7, height: 7, borderRadius: 3.5 },
-  text: { flexShrink: 1, fontWeight: '500' },
+  text: { flexShrink: 1 },
+  trailing: { marginLeft: 'auto', fontVariant: ['tabular-nums'] },
 });

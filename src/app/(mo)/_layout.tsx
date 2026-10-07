@@ -1,16 +1,15 @@
 import { Redirect, Tabs } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSpokenBriefs } from '@/components/voice/use-spoken-briefs';
 import { DutyPanel } from '@/components/duty-header';
-import { MAP_BUTTON } from '@/components/map/map-button';
-import { MoMap } from '@/components/mo/mo-map';
+import { CrewMap } from '@/components/map/crew-map';
 import { MoDuty, MoTopBar } from '@/components/mo/mo-top-bar';
 import { TeamPills } from '@/components/mo/team-pills';
 import { Icon } from '@/components/ui/icon';
-import { useNeedsMe, useRole, useSnapshot } from '@/data/hooks';
+import { useTopBarMetrics } from '@/components/ui/top-bar';
+import { useChosenTeam, useCrew, useNeedsMe, useRole, useSnapshot } from '@/data/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { homeFor } from '@/lib/home';
 import { moLayout, type MoTab } from '@/lib/mo-layout';
@@ -38,7 +37,8 @@ export default function MoLayout() {
   const home = homeFor(useRole());
   const { width, height } = useWindowDimensions();
   const { split, tabs } = moLayout(width);
-  const insets = useSafeAreaInsets();
+  const { contentTop } = useTopBarMetrics();
+  const crew = useCrew(useChosenTeam());
   const needs = useNeedsMe();
   const [open, setOpen] = useState(false);
   const duty = { open, toggle: () => setOpen((o) => !o) };
@@ -79,7 +79,7 @@ export default function MoLayout() {
         </View>
         {split && (
           <View style={styles.fill}>
-            <MoMap style={StyleSheet.absoluteFill} frame={{ top: PILLS_OVER_MAP / height, bottom: 0 }} />
+            <CrewMap crew={crew} style={StyleSheet.absoluteFill} frame={{ top: PILLS_OVER_MAP / height, bottom: 0 }} />
             {/* The same pills as the column, so the map says which team it's showing. */}
             <View style={styles.mapPills}>
               <TeamPills overMap />
@@ -91,7 +91,7 @@ export default function MoLayout() {
           <>
             {/* Tap anywhere outside the panel to close it. */}
             <Pressable accessibilityLabel="Close shift details" style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
-            <DutyPanel style={[styles.duty, { top: insets.top + 8 + MAP_BUTTON + 8 }, split && { width: COLUMN - 32 }]} />
+            <DutyPanel style={[styles.duty, { top: contentTop }, split && { width: COLUMN - 32 }]} />
           </>
         )}
       </View>

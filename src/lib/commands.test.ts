@@ -184,6 +184,38 @@ describe('tell_guest intent updates its task instead of filing an incident', () 
   });
 });
 
+describe('messages on a task', () => {
+  it('a lead\u2019s message reaches everyone on it, out loud, and stays on the task', () => {
+    const b = festival([task({ helpers: [{ volunteerId: 'sam', status: 'accepted', assignedAt: NOW, respondedAt: NOW }] })]);
+    C.messageCrew(b, 'lee', 'collapsed', 'Medics are two minutes out.');
+    expect(b.messages.map((m) => [m.recipientId, m.kind, m.body, m.delivery, m.fromName, m.taskId])).toEqual([
+      ['priya', 'direct', 'Medics are two minutes out.', 'spoken', 'Lee Smith', 'collapsed'],
+      ['sam', 'direct', 'Medics are two minutes out.', 'spoken', 'Lee Smith', 'collapsed'],
+    ]);
+    expect(b.events.at(-1)).toMatchObject({ kind: 'note', text: 'Message from Lee Smith', note: 'Medics are two minutes out.' });
+  });
+
+  it('refuses a task nobody is on', () => {
+    const b = festival([task({ status: 'open', assigneeId: null })]);
+    expect(() => C.messageCrew(b, 'lee', 'collapsed', 'Hi')).toThrow('Nobody is on task');
+  });
+
+  it('a lead\u2019s reply to the festival-goer tells the crew and leaves their nudge clock alone', () => {
+    const initial = task({ requestId: asked.id, nudgeCount: 2 });
+    const b = festival([initial], [{ ...asked, taskId: initial.id }]);
+    C.guestReply(b, 'lee', initial.id, 'Someone is on the way.');
+    expect(b.requests[asked.id].thread.at(-1)).toMatchObject({ from: 'staff', text: 'Someone is on the way.' });
+    expect(b.tasks[initial.id].nudgeCount).toBe(2);
+    expect(b.messages).toMatchObject([{ recipientId: 'priya', body: 'To the festival-goer: “Someone is on the way.”' }]);
+  });
+
+  it('a close reason reaches the volunteer who asked', () => {
+    const b = festival([task({ status: 'escalated', escalation: { at: NOW, reason: null, level: 'lead', ownerId: 'lee', bumpedAt: null, response: null } })]);
+    C.respond(b, 'lee', 'collapsed', { kind: 'close', note: 'False alarm, he is fine' });
+    expect(b.messages.find((m) => m.kind === 'closed')?.body).toBe('Closed by Lee: Man collapsed at the food stalls. “False alarm, he is fine”');
+  });
+});
+
 describe('a scoped scheduler pass retains the full world', () => {
   it('nudges its named Task only, exactly once across repeated passes', () => {
     const target = task({ id: 'target', status: 'assigned' });

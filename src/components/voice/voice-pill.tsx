@@ -1,9 +1,10 @@
-import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/icon';
-import { Colors, Radius, Type } from '@/constants/theme';
+import { haptic } from '@/components/ui/pressable';
+import { textStyle } from '@/components/ui/text';
+import { Colors, Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { Orb } from './orb';
 import { Waveform } from './waveform';
@@ -32,11 +33,11 @@ export function VoicePill({ listening, level, placeholder, disabled, onHoldStart
       accessibilityLabel={`${placeholder}. Hold to talk`}
       disabled={disabled}
       onPressIn={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        haptic('medium');
         onHoldStart();
       }}
       onPressOut={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        haptic('light');
         onHoldEnd();
       }}
       style={({ pressed }) => [
@@ -59,7 +60,7 @@ export function VoicePill({ listening, level, placeholder, disabled, onHoldStart
             key="hint"
             entering={FadeIn.duration(160)}
             numberOfLines={1}
-            style={[styles.placeholder, { color: theme.textSecondary }]}>
+            style={[textStyle('rowTitle'), { color: theme.textSecondary }]}>
             {placeholder}
           </Animated.Text>
         )}
@@ -95,6 +96,5 @@ const styles = StyleSheet.create({
   },
   middle: { flex: 1, height: '100%', justifyContent: 'center' },
   fill: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  placeholder: { fontSize: Type.body, fontWeight: '500' },
   glyph: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
 });

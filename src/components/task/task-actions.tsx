@@ -1,16 +1,12 @@
-import * as Haptics from 'expo-haptics';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { Button } from '@/components/ui/button';
 import { useDockHeight } from '@/components/voice/voice-dock';
-import { Type } from '@/constants/theme';
 import { useMe, useMyWork, useRepo } from '@/data/hooks';
-import { REPLY_LABEL } from '@/lib/format';
-import { availableHelperReplies, availableReplies } from '@/lib/lifecycle';
-import type { HelperAssignment, ReplyKind, Task } from '@/lib/schema';
+import type { HelperAssignment, Task } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
-import { useSendReply } from './reply-bar';
+import { useReplyOptions } from './reply-options';
 
 /**
  * The next tap, pinned between the sheet and the voice field so it stays under the thumb at every stop:
@@ -42,45 +38,28 @@ function Surface({ children }: { children: React.ReactNode }) {
 }
 
 function Replies({ task, helperEntry }: { task: Task; helperEntry?: HelperAssignment }) {
-  const send = useSendReply(task);
-  const { primary, secondary } = helperEntry
-    ? availableHelperReplies(helperEntry.status)
-    : availableReplies(task.status);
   // Notified helpers must accept/decline their own slot before they can finish it.
-  // "Still on it" lives in the status line and in voice.
-  const alt = secondary.find((r) => r !== 'still_on_it');
   // Words for a festival-goer go through the assistant ("Update your task"), so there's no Reply button here.
+  const { primary, alternatives: all } = useReplyOptions(task, helperEntry);
+  const alternatives = all.filter((o) => o.key !== 'guest_reply').slice(0, 1);
   if (!primary) return null;
-
   return (
     <View style={styles.row}>
-      <Button
-        size="large"
-        label={REPLY_LABEL[primary]}
-        haptic={primary === 'done' ? 'success' : 'light'}
-        onPress={() => send(primary)}
-        style={styles.flex}
-      />
-      {alt && <TextAction kind={alt} onPress={() => send(alt)} />}
+      <Button size="large" label={primary.label} haptic={primary.haptic} onPress={primary.onPress} style={styles.flex} />
+      {/* The alternative as text: Need help in red, Decline quiet. */}
+      {alternatives.map((o) => (
+        <Button
+          key={o.key}
+          variant="plain"
+          size="large"
+          label={o.label}
+          tone={o.tone}
+          haptic={o.haptic}
+          onPress={o.onPress}
+          style={styles.text}
+        />
+      ))}
     </View>
-  );
-}
-
-/** The alternative to the main reply, as text: Need help in red, Decline quiet. */
-function TextAction({ kind, onPress }: { kind: ReplyKind; onPress: () => void }) {
-  const theme = useTheme();
-  const color = kind === 'need_help' ? theme.danger : theme.textSecondary;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        onPress();
-      }}
-      hitSlop={6}
-      style={({ pressed }) => [styles.text, { opacity: pressed ? 0.6 : 1 }]}>
-      <Text style={[styles.textLabel, { color }]}>{REPLY_LABEL[kind]}</Text>
-    </Pressable>
   );
 }
 
@@ -95,6 +74,5 @@ const styles = StyleSheet.create({
   // The voice dock fades the 20pt above it into the sheet; the bottom padding keeps the buttons out of that fade.
   surface: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20, gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  text: { height: 48, paddingHorizontal: 14, justifyContent: 'center' },
-  textLabel: { fontSize: Type.body + 1, fontWeight: '600' },
+  text: { paddingHorizontal: 12 },
 });

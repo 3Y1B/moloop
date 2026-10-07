@@ -1,21 +1,25 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { DemoButton } from '@/components/demo-panel';
-import { goBack } from '@/components/guest/go-back';
 import { RequestMap } from '@/components/guest/request-map';
 import { STEP_TRACKER_HEIGHT, StepTracker } from '@/components/guest/step-tracker';
 import { Thread } from '@/components/guest/thread';
 import { MapButton } from '@/components/map/map-button';
-import { MapTopBar, useMapLayout } from '@/components/map/map-screen';
-import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { useMapLayout } from '@/components/map/map-screen';
+import { BottomSheet, GRABBER_HEIGHT } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PressableOpacity } from '@/components/ui/pressable';
+import { Text, textStyle } from '@/components/ui/text';
+import { TopBar } from '@/components/ui/top-bar';
 import { VoiceDock } from '@/components/voice/voice-dock';
 import { Radius, Spacing, Type } from '@/constants/theme';
 import { VENUE_ZONES } from '@/data/venue';
 import { useLookups, useNow, useRepo, useRequest, type RequestView } from '@/data/hooks';
+import { goBack } from '@/lib/navigation';
 import type { GuestThreadEntry } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -24,13 +28,15 @@ const PLACEHOLDER = 'What’s changed?';
 /** How long each waiting stage usually takes, so its segment fills on time without pretending to finish. */
 const EXPECT: Partial<Record<string, number>> = { understanding: 8_000, finding: 45_000 };
 
-/** Sheet peek pieces, in px: grabber, status line, minutes box, detail line, who row, action row. */
-const GRAB = 23;
+/** Sheet peek pieces, in px: status line, minutes box, detail line, who row, action row (plus the grabber). */
 const LINE = 32;
 const MINS = 64;
 const DETAIL = 22;
 const WHO = 44;
 const ACTION = 48;
+
+/** Back to Ask, which is where a request page opened straight from a link goes too. */
+const back = () => goBack('/(guest)');
 
 /**
  * Who's coming on the map; the sheet's peek is the whole answer (status, minutes, the steps line, who). The
@@ -61,9 +67,9 @@ export default function RequestScreen() {
   const frame = { top: layout.frame.top, bottom: layout.detents[Math.min(stop, 1)] / height };
 
   const top = (
-    <MapTopBar
-      top={layout.barTop}
-      left={<MapButton label="Back" sf="chevron.left" md="chevron_left" onPress={goBack} />}
+    <TopBar
+      variant="floating"
+      left={<MapButton label="Back" sf="chevron.left" md="chevron_left" onPress={back} />}
       right={<DemoButton />}
     />
   );
@@ -72,7 +78,7 @@ export default function RequestScreen() {
     return (
       <View style={[styles.screen, { backgroundColor: theme.background }]}>
         {top}
-        <Text style={[styles.missing, { color: theme.textSecondary }]}>Request not found</Text>
+        <EmptyState title="Request not found" variant="screen" style={styles.missing} />
       </View>
     );
   }
@@ -100,7 +106,7 @@ export default function RequestScreen() {
           />
         )}
         {stage === 'sorted' && <Sorted requestId={request.id} />}
-        {stage === 'cancelled' && <Button label="New request" size="large" onPress={goBack} style={styles.block} />}
+        {stage === 'cancelled' && <Button label="New request" size="large" onPress={back} style={styles.block} />}
         {!answered && request.thread.length > 0 && (
           <View style={[styles.thread, { borderTopColor: theme.separator }]}>
             <Thread entries={request.thread} />
@@ -143,7 +149,7 @@ function peekHeight(view: RequestView, now: number) {
   const hero = Math.max(minutesLeft(view, now) != null ? MINS : 0, text) + Spacing.four + STEP_TRACKER_HEIGHT;
   const who = volunteer && status.stage !== 'sorted' ? Spacing.four + WHO : 0;
   const action = status.stage === 'sorted' || status.stage === 'cancelled' ? Spacing.four + ACTION : 0;
-  return GRAB + hero + who + action + Spacing.four;
+  return GRABBER_HEIGHT + hero + who + action + Spacing.four;
 }
 
 /** How far into the live step: the walk while coming, else the clock against how long that stage usually takes. */
@@ -183,12 +189,12 @@ function Hero({ view }: { view: RequestView }) {
             style={[styles.status, { color: status.stage === 'sorted' ? theme.success : theme.text }]}>
             {title}
           </Animated.Text>
-          {!!status.detail && <Text style={[styles.body, { color: theme.textSecondary }]}>{status.detail}</Text>}
+          {!!status.detail && <Text tone="secondary">{status.detail}</Text>}
         </View>
         {mins != null && (
           <View style={[styles.mins, { backgroundColor: theme.tintSoft }]}>
-            <Text style={[styles.minsNumber, { color: theme.tint }]}>{mins}</Text>
-            <Text style={[styles.minsUnit, { color: theme.tint }]}>min</Text>
+            <Text tone="tint" style={styles.minsNumber}>{mins}</Text>
+            <Text variant="label" tone="tint">min</Text>
           </View>
         )}
       </View>
@@ -219,11 +225,11 @@ function Who({ view }: { view: RequestView }) {
   return (
     <View style={styles.who}>
       <View style={[styles.disc, { borderColor: theme.tint }]}>
-        <Text style={[styles.discText, { color: theme.tint }]}>{volunteer.name[0]}</Text>
+        <Text variant="section" tone="tint">{volunteer.name[0]}</Text>
       </View>
       <View style={styles.flex}>
-        <Text style={[styles.title, { color: theme.text }]}>{last ? `${first} ${last[0]}.` : first}</Text>
-        {!!about && <Text style={[styles.body, { color: theme.textSecondary }]}>{about}</Text>}
+        <Text variant="section">{last ? `${first} ${last[0]}.` : first}</Text>
+        {!!about && <Text tone="secondary">{about}</Text>}
       </View>
       {/* Both phones can run the finder for the last few metres. */}
       {findable && (
@@ -231,10 +237,8 @@ function Who({ view }: { view: RequestView }) {
           label="Find"
           sf="dot.radiowaves.left.and.right"
           size="small"
-          variant="plain"
-          color={theme.text}
+          variant="secondary"
           onPress={() => router.push({ pathname: '/find/[id]', params: { id: request.taskId!, name: first } })}
-          style={{ backgroundColor: theme.backgroundElement }}
         />
       )}
     </View>
@@ -272,22 +276,21 @@ function Answer({ chat, requestId, asking, onNo }: { chat: Chat; requestId: stri
       )}
       <Animated.View key={chat.answer} entering={FadeIn.duration(220)} style={styles.qa}>
         {chat.query.map((q, i) => (
-          <Text key={`${q.at}-${i}`} style={[styles.body, { color: theme.textSecondary }]} selectable>{q.text}</Text>
+          <Text key={`${q.at}-${i}`} tone="secondary" selectable>{q.text}</Text>
         ))}
-        <Text style={[styles.answer, { color: theme.text }]} selectable>{chat.answer}</Text>
+        <Text style={styles.answer} selectable>{chat.answer}</Text>
       </Animated.View>
       {asking && (
         <View style={styles.solved}>
-          <Text style={[styles.title, { color: theme.text }]}>Problem solved?</Text>
+          <Text variant="section">Problem solved?</Text>
           <View style={styles.row}>
             <Button
               label="No"
               size="large"
-              variant="plain"
-              color={theme.text}
+              variant="secondary"
               disabled={busy}
               onPress={onNo}
-              style={[styles.flex, { backgroundColor: theme.backgroundElement }]}
+              style={styles.flex}
             />
             <Button
               label="Yes"
@@ -298,7 +301,7 @@ function Answer({ chat, requestId, asking, onNo }: { chat: Chat; requestId: stri
                 setBusy(true);
                 try {
                   await repo.guestSolved(requestId);
-                  goBack();
+                  back();
                 } finally {
                   setBusy(false);
                 }
@@ -314,43 +317,33 @@ function Answer({ chat, requestId, asking, onNo }: { chat: Chat; requestId: stri
 
 /** Quiet, at the very end, with a second tap to be sure. */
 function CancelRequest({ requestId }: { requestId: string }) {
-  const theme = useTheme();
   const repo = useRepo();
   const [sure, setSure] = useState(false);
   return sure ? (
     <View style={[styles.block, styles.row]}>
-      <Button
-        label="Keep"
-        size="large"
-        variant="plain"
-        color={theme.text}
-        onPress={() => setSure(false)}
-        style={[styles.flex, { backgroundColor: theme.backgroundElement }]}
-      />
-      <Button label="Cancel request" size="large" color={theme.danger} haptic="warning" onPress={() => repo.guestCancel(requestId)} style={styles.flex} />
+      <Button label="Keep" size="large" variant="secondary" onPress={() => setSure(false)} style={styles.flex} />
+      <Button label="Cancel request" size="large" tone="danger" haptic="warning" onPress={() => repo.guestCancel(requestId)} style={styles.flex} />
     </View>
   ) : (
-    <Pressable accessibilityRole="button" onPress={() => setSure(true)} style={({ pressed }) => [styles.quiet, pressed && styles.pressed]}>
-      <Text style={[styles.body, { color: theme.danger }]}>Cancel request</Text>
-    </Pressable>
+    <PressableOpacity accessibilityRole="button" onPress={() => setSure(true)} style={styles.quiet}>
+      <Text tone="danger">Cancel request</Text>
+    </PressableOpacity>
   );
 }
 
 /** Sorted: Done is the expected tap; reopening is there to catch a request closed too early. No rating. */
 function Sorted({ requestId }: { requestId: string }) {
-  const theme = useTheme();
   const repo = useRepo();
   return (
     <View style={[styles.block, styles.row]}>
       <Button
         label="Still need help?"
         size="large"
-        variant="plain"
-        color={theme.text}
+        variant="secondary"
         onPress={() => repo.guestReopen(requestId)}
-        style={[styles.flex, { backgroundColor: theme.backgroundElement }]}
+        style={styles.flex}
       />
-      <Button label="Done" size="large" haptic="success" onPress={goBack} style={styles.flex} />
+      <Button label="Done" size="large" haptic="success" onPress={back} style={styles.flex} />
     </View>
   );
 }
@@ -359,19 +352,15 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   // The sheet hangs below the screen at its lower stops; on the web that must not make the page scroll.
   screen: { flex: 1, overflow: 'hidden' },
-  missing: { fontSize: Type.body, textAlign: 'center', marginTop: 160 },
+  missing: { marginTop: 160 },
   hero: { gap: Spacing.four },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   status: { fontSize: Type.hero + 4, lineHeight: LINE, fontWeight: '600', letterSpacing: -0.6 },
   mins: { width: MINS, height: MINS, borderRadius: Radius.card, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' },
   minsNumber: { fontSize: Type.hero + 4, lineHeight: 30, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  minsUnit: { fontSize: Type.footnote, fontWeight: '600' },
   who: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   disc: { width: WHO, height: WHO, borderRadius: WHO / 2, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  discText: { fontSize: Type.title - 1, fontWeight: '600' },
-  title: { fontSize: Type.title - 1, lineHeight: 22, fontWeight: '600' },
-  body: { fontSize: Type.body, lineHeight: 21 },
-  answer: { fontSize: Type.title - 1, lineHeight: 25 },
+  answer: { ...textStyle('body'), fontSize: Type.headline, lineHeight: 25 },
   block: { gap: Spacing.three, marginTop: Spacing.two },
   history: { paddingBottom: Spacing.four, borderBottomWidth: StyleSheet.hairlineWidth },
   qa: { gap: Spacing.two },
@@ -379,5 +368,4 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: Spacing.two },
   thread: { marginTop: Spacing.three, paddingTop: Spacing.four, borderTopWidth: StyleSheet.hairlineWidth },
   quiet: { paddingVertical: Spacing.four, alignItems: 'center' },
-  pressed: { opacity: 0.6 },
 });

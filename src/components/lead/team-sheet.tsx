@@ -1,16 +1,18 @@
-import * as Haptics from 'expo-haptics';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { TaskButton } from '@/components/mo/crew-list';
+import { PersonRow } from '@/components/people/person-row';
+import { TaskRow } from '@/components/task/task-row';
 import { Button } from '@/components/ui/button';
-import { Spacing, Type } from '@/constants/theme';
-import { useCrew, useNeedsMe, useRepo, useRole, useSnapshot, useTaskStatus, useTeam, type NeedsItem } from '@/data/hooks';
-import type { Task } from '@/lib/schema';
-import { toneColor, useTheme } from '@/hooks/use-theme';
-import { MemberRow } from './member-row';
+import { AllClear, EmptyState } from '@/components/ui/empty-state';
+import { haptic } from '@/components/ui/pressable';
+import { Text } from '@/components/ui/text';
+import { Spacing } from '@/constants/theme';
+import { useCrew, useNeedsMe, useRepo, useRole, useSnapshot, useTeam, type NeedsItem } from '@/data/hooks';
 import { NeedStatus, NeedsRow } from './needs-row';
 import { needVerb, openNeed, openTaskSheet } from './open-sheet';
 import { attempt } from './sheet';
-import { TeamRow, TeamSection } from './team-list';
+import { TeamSection } from './team-list';
 
 /** Height of the peek line itself: room for a two-line title next to the button. */
 const PEEK_LINE = 72;
@@ -41,7 +43,7 @@ export function TeamSheet() {
 
   return (
     <View>
-      {needs[0] ? <PeekNeed need={needs[0]} more={needs.length - 1} /> : <PeekClear onDuty={onDuty} />}
+      {needs[0] ? <PeekNeed need={needs[0]} more={needs.length - 1} /> : <AllClear onDuty={onDuty} style={styles.peek} />}
 
       {needs.length > 1 && (
         <TeamSection title="Needs you" count={needs.length}>
@@ -51,15 +53,18 @@ export function TeamSheet() {
 
       <TeamSection title="People" count={members.length}>
         {members.length === 0 ? (
-          <EmptyRow text="No one else on the team" />
+          <EmptyState title="No one else on the team" divider />
         ) : (
-          members.map((m) => <MemberRow key={m.volunteer.id} member={m} />)
+          members.map((m) => {
+            const on = m.task ?? m.helping;
+            return <PersonRow key={m.volunteer.id} member={m} trailing={on && <TaskButton task={on} />} />;
+          })
         )}
       </TeamSection>
 
       {openTasks.length > 0 && (
         <TeamSection title="Open tasks" count={openTasks.length}>
-          {openTasks.map((t) => <OpenRow key={t.id} task={t} onPress={() => openTaskSheet(t, proposals)} />)}
+          {openTasks.map((t) => <TaskRow key={t.id} task={t} flat zone onPress={() => openTaskSheet(t, proposals)} />)}
         </TeamSection>
       )}
     </View>
@@ -68,24 +73,23 @@ export function TeamSheet() {
 
 /** What needs the lead most: title, its status, how many more, and the one filled action. */
 function PeekNeed({ need, more }: { need: NeedsItem; more: number }) {
-  const theme = useTheme();
   const repo = useRepo();
   const act = () => {
     if (need.kind !== 'handover') return openNeed(need);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    haptic('success');
     attempt(() => repo.arrived(need.task.id));
   };
   return (
-    <View style={styles.peek}>
+    <View style={[styles.peek, styles.row]}>
       <View style={styles.peekText}>
-        <Text style={[styles.peekTitle, { color: theme.text }]} numberOfLines={2}>
+        <Text variant="title" numberOfLines={2}>
           {need.kind === 'mobilization' ? need.mobilization.title : need.task.title}
         </Text>
         <View style={styles.inline}>
           <View style={styles.shrink}>
             <NeedStatus item={need} />
           </View>
-          {more > 0 && <Text style={[styles.more, { color: theme.textTertiary }]}>+{more}</Text>}
+          {more > 0 && <Text variant="footnote" tone="tertiary" tabular style={styles.more}>+{more}</Text>}
         </View>
       </View>
       <Button label={needVerb(need)} onPress={act} haptic={need.kind === 'handover' ? 'none' : 'light'} />
@@ -93,51 +97,11 @@ function PeekNeed({ need, more }: { need: NeedsItem; more: number }) {
   );
 }
 
-function PeekClear({ onDuty }: { onDuty: number }) {
-  const theme = useTheme();
-  return (
-    <View style={styles.peek}>
-      <View style={styles.peekText}>
-        <Text style={[styles.peekTitle, { color: theme.text }]}>All clear</Text>
-        <Text style={[styles.small, { color: theme.textSecondary }]}>{onDuty} on duty</Text>
-      </View>
-    </View>
-  );
-}
-
-/** Unassigned or queued: what, and its status ("Unassigned", "Up next for Tom") in its tone. */
-function OpenRow({ task, onPress }: { task: Task; onPress: () => void }) {
-  const theme = useTheme();
-  const status = useTaskStatus(task);
-  return (
-    <TeamRow label={task.title} onPress={onPress}>
-      <View style={styles.body}>
-        <Text style={[styles.rowTitle, { color: theme.text }]} numberOfLines={1}>{task.title}</Text>
-        {status && (
-          <Text style={[styles.small, { color: toneColor(theme, status.tone) }]} numberOfLines={1}>{status.label}</Text>
-        )}
-      </View>
-    </TeamRow>
-  );
-}
-
-function EmptyRow({ text }: { text: string }) {
-  const theme = useTheme();
-  return (
-    <TeamRow>
-      <Text style={[styles.small, { color: theme.textTertiary }]}>{text}</Text>
-    </TeamRow>
-  );
-}
-
 const styles = StyleSheet.create({
-  peek: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: PEEK_LINE },
+  peek: { minHeight: PEEK_LINE, justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   peekText: { flex: 1, gap: Spacing.one },
-  peekTitle: { fontSize: Type.title, lineHeight: 23, fontWeight: '600', letterSpacing: -0.2 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   shrink: { flexShrink: 1 },
-  more: { fontSize: Type.footnote, fontWeight: '500', fontVariant: ['tabular-nums'] },
-  body: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: Type.body, fontWeight: '500' },
-  small: { fontSize: Type.footnote },
+  more: { fontWeight: '500' },
 });

@@ -22,7 +22,7 @@ const VIEW = { x: 28, y: 50, w: 104, h: 60 };
 const SPARK = 52;
 
 /** Height over width of the mark. */
-export const LOOP_RATIO = VIEW.h / VIEW.w;
+const LOOP_RATIO = VIEW.h / VIEW.w;
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 

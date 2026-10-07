@@ -1,8 +1,11 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { Dot } from '@/components/ui/dot';
 import { Icon } from '@/components/ui/icon';
-import { Radius, Spacing, Type } from '@/constants/theme';
+import { PressableOpacity } from '@/components/ui/pressable';
+import { Text } from '@/components/ui/text';
+import { Radius, Spacing } from '@/constants/theme';
 import { useNow, useSummary } from '@/data/hooks';
 import { ago } from '@/lib/format';
 import type { SummaryPoint } from '@/lib/summary';
@@ -24,12 +27,12 @@ export function SummaryCard({ taskId, style }: { taskId?: string; style?: StyleP
     <View style={[styles.panel, { borderColor: theme.border }, style]}>
       <View style={styles.head}>
         <Icon sf="sparkles" md="auto_awesome" size={14} color={theme.tint} weight="medium" />
-        <Text style={[styles.headline, { color: summary ? theme.text : theme.textTertiary }]}>
+        <Text variant="callout" tone={summary ? 'primary' : 'tertiary'} style={styles.headline}>
           {summary?.headline ?? (taskId ? 'Summarising this task…' : 'Summarising the shift…')}
         </Text>
       </View>
       {summary?.points.map((p, i) => <Point key={i} point={p} />)}
-      {summary && <Text style={[styles.when, { color: theme.textTertiary }]}>Updated {ago(summary.at, now)}</Text>}
+      {summary && <Text variant="caption" tone="tertiary" style={styles.when}>Updated {ago(summary.at, now)}</Text>}
     </View>
   );
 }
@@ -47,25 +50,25 @@ function Point({ point }: { point: SummaryPoint }) {
       : undefined;
   const body = (
     <>
-      <View style={[styles.bullet, { backgroundColor: theme.textTertiary }]} />
-      <Text style={[styles.point, { color: theme.textSecondary }]}>{point.text}</Text>
+      <Dot color={theme.textTertiary} size={4} style={styles.bullet} />
+      <Text variant="footnote" tone="secondary" style={styles.point}>{point.text}</Text>
       {open && <Icon sf="chevron.right" md="chevron_right" size={10} color={theme.textTertiary} weight="semibold" />}
     </>
   );
   if (!open) return <View style={styles.row}>{body}</View>;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={point.text} hitSlop={4} onPress={open} style={({ pressed }) => [styles.row, { opacity: pressed ? 0.6 : 1 }]}>
+    <PressableOpacity accessibilityRole="button" accessibilityLabel={point.text} hitSlop={4} onPress={open} style={styles.row}>
       {body}
-    </Pressable>
+    </PressableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   panel: { gap: 6, padding: 12, borderRadius: Radius.control, borderWidth: StyleSheet.hairlineWidth },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
-  headline: { flex: 1, fontSize: Type.callout, lineHeight: 19, fontWeight: '600' },
+  headline: { flex: 1, lineHeight: 19, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 24 },
-  bullet: { width: 4, height: 4, borderRadius: 2, marginLeft: 5 },
-  point: { flex: 1, fontSize: Type.footnote, lineHeight: 17 },
-  when: { fontSize: Type.caption, marginTop: Spacing.half },
+  bullet: { marginLeft: 5 },
+  point: { flex: 1, lineHeight: 17 },
+  when: { marginTop: Spacing.half },
 });

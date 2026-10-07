@@ -13,7 +13,8 @@ import { Platform } from 'react-native';
 //  - Secondary controls are `backgroundElement` with `text`. Text-only actions use `tint`.
 //  - Colour carries meaning, never decoration: `danger` = P1 / asked for help / 000, `warning` = waiting on someone,
 //    `success` = done. No yellow, green, teal or indigo accents.
-//  - Flat: white canvas, hairline borders, no gradients except the voice gradient, no drop shadows.
+//  - Flat: white canvas, hairline borders, no gradients except the voice gradient, no drop shadows beyond `Shadow`
+//    (only for things that float over the map or a track).
 export const Colors = {
   light: {
     text: '#111827',
@@ -86,10 +87,23 @@ export const PriorityColor = {
 
 export const Radius = { card: 16, control: 12, pill: 999 } as const;
 
+/**
+ * The only shadows: style objects to spread or put in a style array. `sheet` lifts the bottom sheet off the map,
+ * `floating` the round controls and pills over it, `tray` the voice dock's tray, `raised` the chosen segment.
+ */
+export const Shadow = {
+  sheet: { boxShadow: '0 -6px 24px rgba(17, 24, 39, 0.08)' },
+  floating: { boxShadow: '0 2px 10px rgba(17, 24, 39, 0.12)' },
+  tray: { boxShadow: '0 4px 18px rgba(17, 24, 39, 0.06)' },
+  raised: { boxShadow: '0 1px 3px rgba(17, 24, 39, 0.1)' },
+} as const;
+
 /** One type scale for the whole app. Nudge these to make everything denser or roomier. */
 export const Type = {
   hero: 22,
   title: 18,
+  /** Section headers ("Message", "Assigned to"). */
+  headline: 17,
   body: 15,
   callout: 14,
   footnote: 13,

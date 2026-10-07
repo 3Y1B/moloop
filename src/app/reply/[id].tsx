@@ -1,26 +1,32 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
 
+import { Sheet, SheetTitle } from '@/components/lead/sheet';
 import { Button } from '@/components/ui/button';
+import { Text, textStyle } from '@/components/ui/text';
 import { useHoldToTalk } from '@/components/voice/use-hold-to-talk';
 import { VoicePill } from '@/components/voice/voice-pill';
-import { Radius, Type } from '@/constants/theme';
-import { useRepo, useSnapshot } from '@/data/hooks';
+import { Radius } from '@/constants/theme';
+import { useLookups, useRepo, useSnapshot } from '@/data/hooks';
 import { REPLY_SF } from '@/lib/format';
 import { goBack } from '@/lib/navigation';
 import type { ReplyKind } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
 type NoteReply = Extract<ReplyKind, 'done' | 'need_help' | 'still_on_it'>;
-/** A reply to the volunteer's own task, or `guest_reply`: a note into the festival-goer's thread. */
-type SheetKind = NoteReply | 'guest_reply';
+/**
+ * A reply to the volunteer's own task; `guest_reply`, a note into the festival-goer's thread; or `crew_message`, a
+ * lead's words to whoever is on the task.
+ */
+type SheetKind = NoteReply | 'guest_reply' | 'crew_message';
 
 const COPY: Record<SheetKind, { prompt: string; send: string; sf: string }> = {
   done: { prompt: 'What did you do?', send: 'Mark done', sf: REPLY_SF.done },
   need_help: { prompt: 'What’s going on?', send: 'Ask for help', sf: REPLY_SF.need_help },
   still_on_it: { prompt: 'How’s it going?', send: 'Send update', sf: REPLY_SF.still_on_it },
   guest_reply: { prompt: 'Reply', send: 'Send reply', sf: 'paperplane.fill' },
+  crew_message: { prompt: 'Message', send: 'Send', sf: 'paperplane.fill' },
 };
 
 /**
@@ -32,11 +38,14 @@ export default function ReplySheet() {
   const theme = useTheme();
   const repo = useRepo();
   const task = useSnapshot().tasks[id];
+  const { volunteers } = useLookups();
   const [note, setNote] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const hold = useHoldToTalk();
   const copy = COPY[kind];
   if (!task || !copy) return null;
+  const owner = task.assigneeId ? volunteers[task.assigneeId] : undefined;
+  const prompt = kind === 'crew_message' && owner ? `Message ${owner.name.split(' ')[0]}` : copy.prompt;
 
   const listening = hold.state !== 'idle';
   // Asking for help never waits on words; the others are what the lead reads back later.
@@ -45,31 +54,27 @@ export default function ReplySheet() {
 
   const send = async () => {
     if (kind === 'guest_reply') await repo.guestReply(task.id, note.trim());
+    else if (kind === 'crew_message') await repo.messageCrew(task.id, note.trim());
     else await repo.reply(task.id, kind, note.trim() || undefined);
     goBack({ pathname: '/task/[id]', params: { id: task.id } });
   };
 
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive">
-      <Text style={[styles.task, { color: theme.textSecondary }]} numberOfLines={1}>{task.title}</Text>
-      <Text style={[styles.prompt, { color: theme.text }]}>{copy.prompt}</Text>
+    <Sheet>
+      <SheetTitle eyebrow={task.title} title={prompt} />
 
       {/* Replying to a festival-goer: what they said, so the reply answers it. */}
       {kind === 'guest_reply' && (
         <View style={[styles.quote, { backgroundColor: theme.backgroundElement }]}>
-          <Text style={[styles.quoteText, { color: theme.textSecondary }]}>“{task.reporter.quote}”</Text>
+          <Text tone="secondary" style={styles.quoteText}>“{task.reporter.quote}”</Text>
         </View>
       )}
 
       <View style={[styles.card, { backgroundColor: theme.card, borderColor: listening ? theme.tint : theme.border }]}>
         {listening ? (
-          <Text style={styles.text}>
-            {!!note.trim() && <Text style={{ color: theme.text }}>{note.trim()} </Text>}
-            <Text style={{ color: theme.textTertiary }}>{hold.state === 'hearing' ? '…' : note.trim() ? '' : 'Go ahead…'}</Text>
+          <Text>
+            {!!note.trim() && <Text>{note.trim()} </Text>}
+            <Text tone="tertiary">{hold.state === 'hearing' ? '…' : note.trim() ? '' : 'Go ahead…'}</Text>
           </Text>
         ) : (
           <TextInput
@@ -78,12 +83,12 @@ export default function ReplySheet() {
             onChangeText={setNote}
             placeholder={kind === 'need_help' ? 'Optional' : 'Type, or hold to talk'}
             placeholderTextColor={theme.textTertiary}
-            style={[styles.text, styles.input, { color: theme.text }]}
+            style={[styles.input, { color: theme.text }]}
           />
         )}
       </View>
 
-      {!!problem && <Text style={[styles.problem, { color: theme.textSecondary }]}>{problem}</Text>}
+      {!!problem && <Text variant="footnote" tone="secondary" style={styles.center}>{problem}</Text>}
 
       <View style={styles.pill}>
         <VoicePill
@@ -118,19 +123,15 @@ export default function ReplySheet() {
         disabled={!canSend || listening}
         onPress={send}
       />
-    </ScrollView>
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingTop: 28, gap: 12 },
-  task: { fontSize: Type.footnote, fontWeight: '500' },
-  prompt: { fontSize: Type.title, lineHeight: 24, fontWeight: '600', letterSpacing: -0.2, marginTop: -6 },
   card: { minHeight: 104, padding: 14, borderRadius: Radius.card, borderCurve: 'continuous', borderWidth: StyleSheet.hairlineWidth * 2 },
-  text: { fontSize: Type.body, lineHeight: 21 },
-  input: { flex: 1, padding: 0, textAlignVertical: 'top' },
+  input: { ...textStyle('body'), flex: 1, padding: 0, textAlignVertical: 'top' },
   pill: { flexDirection: 'row' },
-  problem: { fontSize: Type.footnote, textAlign: 'center' },
+  center: { textAlign: 'center' },
   quote: { borderRadius: Radius.control - 2, borderCurve: 'continuous', padding: 10 },
-  quoteText: { fontSize: Type.callout - 1, lineHeight: 18, fontStyle: 'italic' },
+  quoteText: { ...textStyle('footnote'), lineHeight: 18, fontStyle: 'italic' },
 });

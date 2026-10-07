@@ -1,8 +1,7 @@
-import * as Haptics from 'expo-haptics';
 import { Redirect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -16,6 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Wordmark } from '@/components/brand/wordmark';
 import { Button } from '@/components/ui/button';
+import { haptic } from '@/components/ui/pressable';
+import { Text, textStyle } from '@/components/ui/text';
 import { Spacing, Type } from '@/constants/theme';
 import { useSnapshot } from '@/data/hooks';
 import { signInAsGuest, signInWithEmail } from '@/data/supabase/client';
@@ -71,7 +72,7 @@ export default function SignInScreen() {
     try {
       await fn();
     } catch (e) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptic('error');
       setError(problem(e));
     } finally {
       setBusy(null);
@@ -144,7 +145,7 @@ export default function SignInScreen() {
 
         {!loading && (
           <Animated.View entering={FadeIn.duration(240)} exiting={FadeOut.duration(160)} style={styles.footer}>
-            <Text style={[styles.error, { color: theme.danger }]}>{error ?? ' '}</Text>
+            <Text variant="callout" tone="danger" style={styles.error}>{error ?? ' '}</Text>
             <View style={styles.row}>
               <Button
                 label={form ? 'Back' : 'Crew'}
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
   // Shrinks toward its bottom-left corner so it settles where the heading of the form would be. Absolute, so it
   // always lays out at full size: in the short wrap of the form step it would be squeezed, and iOS clips the letters.
   mark: { position: 'absolute', left: 0, bottom: 0, transformOrigin: 'left bottom' },
-  tagline: { fontSize: Type.title, fontWeight: '500', marginTop: Spacing.two },
+  tagline: { ...textStyle('title'), fontWeight: '500', marginTop: Spacing.two },
 
   form: { marginTop: Spacing.five },
   input: {
@@ -190,7 +191,7 @@ const styles = StyleSheet.create({
   },
 
   footer: { gap: Spacing.three - Spacing.one },
-  error: { fontSize: Type.callout, fontWeight: '500', minHeight: 20 },
+  error: { fontWeight: '500', minHeight: 20 },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   // Text flush with the gutter, like the wordmark above it.
   quiet: { paddingLeft: 0, paddingRight: Spacing.two },

@@ -266,6 +266,14 @@ export class SupabaseRepo implements Repo {
     await this.command('markRead', { messageIds }, () => this.refetchMessages(messageIds));
   }
 
+  async registerPush(token: string, platform: 'ios' | 'android') {
+    await this.post('registerPush', { token, platform });
+  }
+
+  async unregisterPush(token: string) {
+    await this.post('unregisterPush', { token });
+  }
+
   /** Straight to `presence` (RLS: my own row only); the server stamps the time. Realtime brings it back to everyone. */
   async sharePosition(fix: Fix) {
     if (!this.userId) return;
@@ -281,6 +289,10 @@ export class SupabaseRepo implements Repo {
 
   async guestReply(taskId: string, text: string) {
     await this.post('guestReply', { taskId, text });
+  }
+
+  async messageCrew(taskId: string, text: string) {
+    await this.post('messageCrew', { taskId, text });
   }
 
   // ── leads and Mo ──

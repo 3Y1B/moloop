@@ -1,21 +1,22 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Fragment, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { ApproveHead } from '@/components/lead/approve-head';
 import { ApproveRing } from '@/components/lead/approve-ring';
 import { CandidateRow } from '@/components/lead/candidate-row';
 import { attempt, Sheet } from '@/components/lead/sheet';
+import { TaskHead } from '@/components/lead/task-head';
 import { useLiveNow } from '@/components/lead/use-live-now';
 import { Button } from '@/components/ui/button';
 import { Card, Separator } from '@/components/ui/card';
-import { Radius, Type } from '@/constants/theme';
+import { StatusLine } from '@/components/ui/status-line';
+import { Text } from '@/components/ui/text';
 import { useLookups, useProposal, useRepo, useSnapshot, useTask, useTaskStatus } from '@/data/hooks';
 import { initials } from '@/lib/format';
 import { canHelp, isBusy, POLICY } from '@/lib/lifecycle';
 import { goBack } from '@/lib/navigation';
 import type { Proposal, Task, Volunteer } from '@/lib/schema';
-import { toneColor, useTheme } from '@/hooks/use-theme';
+import { useTheme } from '@/hooks/use-theme';
 
 const RING = 152;
 
@@ -38,7 +39,7 @@ export default function ApproveSheet() {
   const choosing = proposal.status === 'pending' || (picked !== null && proposal.status === 'auto_assigned');
   return (
     <Sheet>
-      <ApproveHead task={task} />
+      <TaskHead task={task} align="center" />
       {choosing ? (
         <Pending proposal={proposal} task={task} picked={picked} onPick={setPicked} />
       ) : (
@@ -147,23 +148,23 @@ function Pending({
           totalMs={POLICY.autoAssignMs}
           color={theme.tint}
         >
-          {lead && <Text style={[styles.face, { color: theme.text }]}>{initials(lead.name)}</Text>}
+          {lead && <Text style={styles.face}>{initials(lead.name)}</Text>}
         </ApproveRing>
         <View style={styles.who}>
           {lead ? (
-            <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+            <Text variant="hero" style={styles.centered} numberOfLines={1}>
               {lead.name}
             </Text>
           ) : (
-            <Text style={[styles.name, { color: theme.textTertiary }]}>No one picked</Text>
+            <Text variant="hero" tone="tertiary" style={styles.centered}>No one picked</Text>
           )}
           {why && (
-            <Text style={[styles.small, { color: theme.textSecondary }]} numberOfLines={1}>
+            <Text variant="callout" tone="secondary" style={styles.centered} numberOfLines={1}>
               {why}
             </Text>
           )}
           {line && (
-            <Text style={[styles.small, styles.line, { color: theme.text }]} numberOfLines={1}>
+            <Text variant="callout" tabular style={[styles.centered, styles.line]} numberOfLines={1}>
               {line}
             </Text>
           )}
@@ -180,7 +181,7 @@ function Pending({
       />
 
       <View style={styles.list}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>Who goes</Text>
+        <Text variant="label" style={styles.label}>Who goes</Text>
         <Card>
           {candidates.map((c, i) => {
             const v = volunteers[c.volunteerId];
@@ -228,53 +229,39 @@ function Decided({ proposal, task }: { proposal: Proposal; task: Task }) {
           color={auto ? theme.text : theme.tint}
         >
           {v ? (
-            <Text style={[styles.face, { color: theme.text }]}>{initials(v.name)}</Text>
+            <Text style={styles.face}>{initials(v.name)}</Text>
           ) : (
-            <Text style={[styles.small, { color: theme.textSecondary }]}>{how}</Text>
+            <Text variant="callout" tone="secondary" style={styles.centered}>{how}</Text>
           )}
         </ApproveRing>
         <View style={styles.who}>
           {v && (
-            <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+            <Text variant="hero" style={styles.centered} numberOfLines={1}>
               {v.name}
             </Text>
           )}
-          {v && <Text style={[styles.small, { color: theme.textSecondary }]}>{how}</Text>}
-          {status && !cancelled && (
-            <Text style={[styles.small, { color: toneColor(theme, status.tone) }]} numberOfLines={1}>
-              {status.label}
-            </Text>
-          )}
+          {v && <Text variant="callout" tone="secondary" style={styles.centered}>{how}</Text>}
+          {status && !cancelled && <StatusLine status={status} size="callout" />}
         </View>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Done"
+      <Button
+        label="Done"
+        variant="secondary"
+        size="large"
+        haptic="none"
         onPress={() => goBack({ pathname: '/task/[id]', params: { id: task.id } })}
-        style={({ pressed }) => [styles.done, { backgroundColor: theme.backgroundElement }, pressed && styles.pressed]}
-      >
-        <Text style={[styles.doneText, { color: theme.text }]}>Done</Text>
-      </Pressable>
+      />
     </>
   );
 }
 
 const styles = StyleSheet.create({
   center: { alignItems: 'center', gap: 16, paddingVertical: 8 },
+  // The pick's initials, large inside the ring.
   face: { fontSize: 40, fontWeight: '500', letterSpacing: 1 },
   who: { alignItems: 'center', gap: 4, alignSelf: 'stretch' },
-  name: { fontSize: Type.hero, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
-  small: { fontSize: Type.callout, lineHeight: 20, textAlign: 'center' },
-  line: { marginTop: 4, fontVariant: ['tabular-nums'] },
+  centered: { textAlign: 'center' },
+  line: { marginTop: 4 },
   list: { gap: 8, marginTop: 6 },
-  label: { fontSize: Type.footnote, fontWeight: '500', paddingHorizontal: 4 },
-  done: {
-    height: 48,
-    borderRadius: Radius.control,
-    borderCurve: 'continuous',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  doneText: { fontSize: Type.body + 1, fontWeight: '600' },
-  pressed: { opacity: 0.7 },
+  label: { paddingHorizontal: 4 },
 });

@@ -22,6 +22,7 @@ import { interpreter } from '../models/interpreter';
 import { judgeReport } from '../retriage';
 import { understandLater } from '../understand';
 import { summarize } from '../summarize';
+import { registerToken, unregisterToken } from '../push';
 import { ownClip } from '../voice';
 import { read, sql, transact, type Loaded } from '../world';
 import type { AuthEnv, Caller } from './auth';
@@ -157,8 +158,8 @@ route('commit', 'crew', z.object({ interpretation: Interpretation }), async ({ i
     (b) => {
       if (i.intent.kind !== 'report') mustBeOn(taskOf(b, i.intent.taskId), caller);
       const { confirmation, later } = C.commit(b, caller.id, i, judged?.value, matched?.value);
-      // Triage has already run.
-      if (later) b.send(later.recipientId, 'system', later.body, { taskId: later.taskId });
+      // Triage has already run. It answers the caller's own report while they're in the app: no push.
+      if (later) b.send(later.recipientId, 'system', later.body, { taskId: later.taskId, quiet: true });
       return { confirmation };
     },
     {
@@ -176,6 +177,21 @@ route('markRead', 'any', z.object({ messageIds: z.array(Id).max(500) }), async (
     where recipient_id = ${caller.id} and message_id = any(${a.messageIds}::uuid[]) and read_at is null`;
 });
 
+// ── push (../push.ts) ──
+
+/** Expo push tokens, e.g. ExponentPushToken[…]. */
+const PushToken = z.string().trim().min(1).max(300);
+
+// Anyone signed in, festival-goers too. Upserts: a token another account had moves to the caller (a shared phone).
+route('registerPush', 'any', z.object({ token: PushToken, platform: z.enum(['ios', 'android']) }), async (a, caller) => {
+  await registerToken(caller.id, a.token, a.platform);
+});
+
+// On sign-out. Only the caller's own token goes.
+route('unregisterPush', 'any', z.object({ token: PushToken }), async (a, caller) => {
+  await unregisterToken(caller.id, a.token);
+});
+
 route('guestReply', 'crew', z.object({ taskId: Id, text: Text }), async (a, caller) => {
   await transact({ taskIds: [a.taskId] }, (b) => {
     const t = taskOf(b, a.taskId);
@@ -185,6 +201,10 @@ route('guestReply', 'crew', z.object({ taskId: Id, text: Text }), async (a, call
 });
 
 // ── leads and Mo ──
+
+route('messageCrew', 'lead', z.object({ taskId: Id, text: Text }), async (a, caller) => {
+  await transact({ taskIds: [a.taskId] }, (b) => C.messageCrew(b, caller.id, a.taskId, a.text));
+});
 
 route('respond', 'lead', z.object({ taskId: Id, response: RespondInput }), async (a, caller) => {
   await transact({ taskIds: [a.taskId] }, (b) => C.respond(b, caller.id, a.taskId, a.response));
@@ -249,6 +269,9 @@ route('respondByVoice', 'lead', z.object({ taskId: Id, text: Text }), async (a, 
       // It may have changed while the model read it.
       if (!canPassUp(t, caller)) throw new CommandError('conflict', `Cannot pass task ${a.taskId} to Mo`);
       C.passToCoordinator(b, caller.id, a.taskId);
+    } else if (command.kind === 'message') {
+      if (command.to === 'guest') C.guestReply(b, caller.id, a.taskId, command.text);
+      else C.messageCrew(b, caller.id, a.taskId, command.text);
     } else {
       C.respond(b, caller.id, a.taskId, inputOf(command));
     }
@@ -257,7 +280,7 @@ route('respondByVoice', 'lead', z.object({ taskId: Id, text: Text }), async (a, 
   return { done: true, kind: command.kind, confirmation };
 });
 
-function inputOf(c: Exclude<RespondCommand, { kind: 'pass' }>): RespondInputType {
+function inputOf(c: Exclude<RespondCommand, { kind: 'pass' | 'message' }>): RespondInputType {
   switch (c.kind) {
     case 'backup':
     case 'reassign':
@@ -290,6 +313,8 @@ function confirmationOf(c: RespondCommand, volunteers: Record<string, Volunteer>
       return isQuiet(t) ? 'They’re fine' : 'Carry on';
     case 'pass':
       return 'Passed to Mo';
+    case 'message':
+      return c.to === 'guest' ? 'Sent to the festival-goer' : `Sent to ${firstName(owner)}`;
   }
 }
 

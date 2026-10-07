@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { Fragment, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { openTaskSheet } from '@/components/lead/open-sheet';
 import { Sheet, SheetTitle } from '@/components/lead/sheet';
@@ -8,7 +8,7 @@ import { causeLines, fromPlaces, shortfall } from '@/components/mobilization/rev
 import { Button } from '@/components/ui/button';
 import { Card, Separator } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
-import { Type } from '@/constants/theme';
+import { Text } from '@/components/ui/text';
 import { useLookups, useMe, useMobilization, useMobilizationStatus, useNow, useRepo, useSnapshot } from '@/data/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import type { MobilizationStepStatus } from '@/lib/status';
@@ -36,7 +36,7 @@ export default function MobilizeSheet() {
     return (
       <Sheet>
         <SheetTitle title="Mobilization" />
-        <Text style={[styles.line, { color: theme.textSecondary }]}>
+        <Text variant="callout" tone="secondary" style={styles.line}>
           {snapshot.status === 'loading' ? 'Loading…' : snapshot.status === 'error' ? "Couldn't load." : 'No longer available.'}
         </Text>
       </Sheet>
@@ -51,7 +51,7 @@ export default function MobilizeSheet() {
     return (
       <Sheet>
         <SheetTitle title="Mobilization" />
-        <Text style={[styles.line, { color: theme.textSecondary }]}>Mo and the teams on it only.</Text>
+        <Text variant="callout" tone="secondary" style={styles.line}>Mo and the teams on it only.</Text>
       </Sheet>
     );
 
@@ -83,12 +83,12 @@ export default function MobilizeSheet() {
       <View style={styles.causes}>
         {causes.length > 0 ? (
           causes.map((line) => (
-            <Text key={line} style={[styles.line, { color: theme.textSecondary }]}>
+            <Text key={line} variant="callout" tone="secondary" style={styles.line}>
               {line}
             </Text>
           ))
         ) : (
-          <Text style={[styles.line, { color: theme.textSecondary }]} numberOfLines={3}>
+          <Text variant="callout" tone="secondary" style={styles.line} numberOfLines={3}>
             {mobilization.rationale}
           </Text>
         )}
@@ -119,17 +119,17 @@ export default function MobilizeSheet() {
                   {team && <Icon sf={team.sf} md={team.md} size={18} color={team.color} weight="medium" />}
                 </View>
                 <View style={styles.body}>
-                  <Text style={[styles.what, { color: theme.text }]} numberOfLines={expanded ? undefined : 2}>
+                  <Text variant="rowTitle" style={styles.what} numberOfLines={expanded ? undefined : 2}>
                     {step.title ?? team?.name ?? step.reason}
                   </Text>
-                  <Text style={[styles.sub, { color: theme.textSecondary }]} numberOfLines={1}>
+                  <Text variant="caption" tone="secondary" numberOfLines={1}>
                     {[team?.short, staffing].filter(Boolean).join(' · ')}
                   </Text>
                   {expanded && (
                     <View style={styles.detail}>
-                      <Text style={[styles.line, { color: theme.text }]}>{step.instructions ?? step.reason}</Text>
+                      <Text variant="callout" style={styles.line}>{step.instructions ?? step.reason}</Text>
                       {at && at !== place(mobilization.zoneSlug) && (
-                        <Text style={[styles.sub, { color: theme.textSecondary }]}>At {at}</Text>
+                        <Text variant="caption" tone="secondary">At {at}</Text>
                       )}
                       {task && (
                         <Button
@@ -157,10 +157,10 @@ export default function MobilizeSheet() {
       </Card>
 
       {short > 0 && (pending || active) && (
-        <Text style={[styles.line, { color: theme.warning }]}>{short} short. Will keep trying.</Text>
+        <Text variant="callout" tone="warning" style={styles.line}>{short} short. Will keep trying.</Text>
       )}
       {error && (
-        <Text accessibilityRole="alert" style={[styles.line, { color: theme.danger }]}>
+        <Text accessibilityRole="alert" variant="callout" tone="danger" style={styles.line}>
           {error}
         </Text>
       )}
@@ -171,8 +171,7 @@ export default function MobilizeSheet() {
             <>
               <Button
                 label="Keep"
-                variant="tinted"
-                color={theme.text}
+                variant="secondary"
                 size="large"
                 disabled={busy}
                 onPress={() => setConfirming(false)}
@@ -181,7 +180,7 @@ export default function MobilizeSheet() {
               <Button
                 label={pending ? 'Confirm dismiss' : 'Confirm stand down'}
                 variant="tinted"
-                color={theme.danger}
+                tone="danger"
                 size="large"
                 haptic="warning"
                 disabled={busy}
@@ -198,8 +197,7 @@ export default function MobilizeSheet() {
             <>
               <Button
                 label={pending ? 'Dismiss' : 'Stand down'}
-                variant="tinted"
-                color={theme.text}
+                variant="secondary"
                 size="large"
                 disabled={busy}
                 onPress={() => setConfirming(true)}
@@ -239,12 +237,11 @@ function stepStatus(steps: MobilizationStepStatus[], stepKey: string | undefined
 
 const styles = StyleSheet.create({
   causes: { gap: 4 },
-  line: { fontSize: Type.callout, lineHeight: 20 },
+  line: { lineHeight: 20 },
   step: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 14, paddingVertical: 12, minHeight: 56 },
   teamIcon: { width: 20, alignItems: 'center', paddingTop: 1 },
   body: { flex: 1, gap: 2 },
-  what: { fontSize: Type.body - 1, fontWeight: '500', lineHeight: 20 },
-  sub: { fontSize: Type.footnote - 1 },
+  what: { lineHeight: 20 },
   detail: { gap: 6, paddingTop: 6 },
   openTask: { alignSelf: 'flex-start', marginTop: 2 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 4 },

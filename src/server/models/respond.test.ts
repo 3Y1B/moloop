@@ -113,10 +113,31 @@ describe('Interpreter.respond: what a lead said on the Respond screen', () => {
   it('asks no model when nothing fits', async () => {
     replies.push(decided({ backup: 0.9, unclear: 0.1 }));
 
-    const { value } = await new SparkInterpreter().respond(heard('send Tom', { available: [], canPass: false }));
+    const { value } = await new SparkInterpreter().respond(
+      heard('send Tom', { task: { ...task, assigneeId: null }, available: [], canPass: false }),
+    );
 
     expect(value).toBeNull();
     expect(replies).toHaveLength(1);
+  });
+
+  it('turns "tell her…" into words for the volunteer, as the lead', async () => {
+    replies.push(decided({ tell_volunteer: 0.9, unclear: 0.1 }), {
+      json: { choices: [{ message: { content: JSON.stringify({ message: 'Medics are two minutes out.' }) } }] },
+    });
+
+    const { value } = await new SparkInterpreter().respond(heard('tell her medics are two minutes out', { available: [], canPass: false }));
+
+    expect(value).toEqual({ kind: 'message', to: 'crew', text: 'Medics are two minutes out.' });
+  });
+
+  it('offers the festival-goer only on their request', async () => {
+    replies.push(decided({ unclear: 0.9, tell_volunteer: 0.1 }), decided({ unclear: 0.9, tell_volunteer: 0.1 }));
+
+    await new SparkInterpreter().respond(heard('hm'));
+    expect(JSON.stringify(http.requests[0].json)).not.toContain('tell_guest');
+    await new SparkInterpreter().respond(heard('hm', { task: { ...task, requestId: 'asked' } }));
+    expect(JSON.stringify(http.requests[0].json)).toContain('tell_guest');
   });
 });
 

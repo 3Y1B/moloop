@@ -1,11 +1,12 @@
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
-import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MAP_BUTTON } from '@/components/map/map-button';
-import { MoMap } from '@/components/mo/mo-map';
+import { CrewMap } from '@/components/map/crew-map';
+import { TabInsets } from '@/components/mo/mo-page';
 import { MoTopBar } from '@/components/mo/mo-top-bar';
 import { TeamPills } from '@/components/mo/team-pills';
 import { TaskDock } from '@/components/task/task-dock';
+import { useTopBarMetrics } from '@/components/ui/top-bar';
+import { useChosenTeam, useCrew } from '@/data/hooks';
 
 /** Height of the floating pill row, so the site is framed clear of it. */
 const PILLS = 52;
@@ -15,20 +16,19 @@ const PILLS = 52;
  * people and tasks stay on the map. A laptop has this map beside the column instead.
  */
 export default function MapScreen() {
-  const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const below = insets.top + 8 + MAP_BUTTON + 8;
+  const { contentTop } = useTopBarMetrics();
+  const crew = useCrew(useChosenTeam());
   return (
     <View style={styles.screen}>
-      <MoMap style={StyleSheet.absoluteFill} frame={{ top: (below + PILLS) / height, bottom: 0 }} />
+      <CrewMap crew={crew} style={StyleSheet.absoluteFill} frame={{ top: (contentTop + PILLS) / height, bottom: 0 }} />
       <MoTopBar overMap />
-      <View style={[styles.pills, { top: below }]}>
+      <View style={[styles.pills, { top: contentTop }]}>
         <TeamPills overMap />
       </View>
-      {/* The tab bar already sits over the home indicator. */}
-      <SafeAreaInsetsContext.Provider value={{ ...insets, bottom: 0 }}>
+      <TabInsets>
         <TaskDock />
-      </SafeAreaInsetsContext.Provider>
+      </TabInsets>
     </View>
   );
 }

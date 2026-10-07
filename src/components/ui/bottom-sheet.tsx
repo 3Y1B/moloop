@@ -1,4 +1,3 @@
-import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -7,10 +6,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import { Shadow } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { haptic } from './pressable';
 
 const SPRING = { damping: 32, stiffness: 320, mass: 0.9, overshootClamping: true };
 export const SHEET_RADIUS = 22;
+
+const GRABBER = { top: 8, height: 5, bottom: 10 };
+/** Height of the grabber strip at the top of the sheet, above any header. */
+export const GRABBER_HEIGHT = GRABBER.top + GRABBER.height + GRABBER.bottom;
 
 /**
  * The sheet over the full-screen map. `detents` are visible heights in px, lowest first.
@@ -145,7 +150,7 @@ export function BottomSheet({ detents, stop = 1, raise, header, bottomInset = 0,
             accessibilityRole="button"
             accessibilityLabel={at === top ? 'Collapse' : 'Expand'}
             onPress={() => {
-              Haptics.selectionAsync();
+              haptic('selection');
               snapTo(at === top ? Math.max(0, top - 1) : top);
             }}
             style={styles.grabberHit}>
@@ -186,11 +191,11 @@ const styles = StyleSheet.create({
     borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: 0,
-    // Over a map, a hairline alone gets lost; this is the one soft shadow in the app.
-    boxShadow: '0 -6px 24px rgba(17, 24, 39, 0.08)',
+    // Over a map, a hairline alone gets lost.
+    ...Shadow.sheet,
     overflow: 'hidden',
   },
-  grabberHit: { alignItems: 'center', paddingTop: 8, paddingBottom: 10 },
-  grabber: { width: 36, height: 5, borderRadius: 3 },
+  grabberHit: { alignItems: 'center', paddingTop: GRABBER.top, paddingBottom: GRABBER.bottom },
+  grabber: { width: 36, height: GRABBER.height, borderRadius: 3 },
   content: { paddingHorizontal: 20, gap: 16 },
 });

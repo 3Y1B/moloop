@@ -57,6 +57,8 @@ export const FESTIVALGOER: Actor = { kind: 'human', name: 'Festival-goer' };
 
 type MessageExtra = Partial<Pick<Message, 'taskId' | 'delivery' | 'fromName'>> & {
   senderId?: string;
+  /** Only confirms what the recipient just did themselves: kept in the inbox, never pushed. */
+  quiet?: true;
 };
 
 export class Batch {
@@ -74,6 +76,8 @@ export class Batch {
   readonly messages: Message[] = [];
   /** Who sent a message, when it was a person (direct, broadcast). Not on the domain Message. */
   readonly senders: Record<string, string> = {};
+  /** Messages that echo the recipient's own action, by id: no push (src/lib/push.ts). Not on the domain Message. */
+  readonly quiet = new Set<string>();
   /** What changed, so the server writes only that. */
   readonly dirty = {
     tasks: new Set<string>(),
@@ -161,7 +165,7 @@ export class Batch {
     });
   }
 
-  send(recipientId: string, kind: Message['kind'], body: string, { senderId, ...extra }: MessageExtra = {}) {
+  send(recipientId: string, kind: Message['kind'], body: string, { senderId, quiet, ...extra }: MessageExtra = {}) {
     const id = this.id('message');
     this.messages.push({
       id,
@@ -174,6 +178,7 @@ export class Batch {
       ...strip(extra),
     });
     if (senderId) this.senders[id] = senderId;
+    if (quiet) this.quiet.add(id);
   }
 
   // ── lookups ──

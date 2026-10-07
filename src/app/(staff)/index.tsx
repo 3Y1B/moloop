@@ -4,28 +4,26 @@ import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { DemoButton } from '@/components/demo-panel';
 import { DutyChip, DutyPanel } from '@/components/duty-header';
-import { openTaskSheet } from '@/components/lead/open-sheet';
-import { useTeamMarkers } from '@/components/lead/team-map';
 import { teamDetents, TeamSheet } from '@/components/lead/team-sheet';
-import { MAP_BUTTON, MapButton } from '@/components/map/map-button';
-import { MapTopBar, useMapLayout } from '@/components/map/map-screen';
+import { useCrewMap } from '@/components/map/crew-map';
+import { MapButton } from '@/components/map/map-button';
+import { useMapLayout } from '@/components/map/map-screen';
+import { useRouteMap } from '@/components/map/route-map';
 import { VenueMap } from '@/components/map/venue-map';
 import { TaskActions } from '@/components/task/task-actions';
 import { TaskDock } from '@/components/task/task-dock';
 import { FreeSheet, TaskSheet } from '@/components/task/task-sheet';
-import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { BottomSheet, GRABBER_HEIGHT } from '@/components/ui/bottom-sheet';
 import { Segmented } from '@/components/ui/segmented';
-import { useCrew, useInbox, useMe, useMyDot, useMyWork, useNeedsMe, useReporterPlace, useRole, useRouteTo, useSnapshot, useTeam } from '@/data/hooks';
+import { TopBar, useTopBarMetrics } from '@/components/ui/top-bar';
+import { useCrew, useInbox, useMe, useMyWork, useNeedsMe, useRole, useTeam } from '@/data/hooks';
 import type { Task } from '@/lib/schema';
-import { usePriorityColors, useTheme } from '@/hooks/use-theme';
+import { useTheme } from '@/hooks/use-theme';
 
 /**
  * The whole volunteer app on one screen: the site map, a sheet with my task, and the assistant at the bottom.
  * Leads switch the sheet (and the map) between their own task and their team.
  */
-/** The sheet's grabber row above its content (ui/bottom-sheet: 8 + 5 + 10). */
-const GRABBER = 23;
-
 export default function HomeScreen() {
   const theme = useTheme();
   const role = useRole();
@@ -37,6 +35,7 @@ export default function HomeScreen() {
   const [view, setView] = useState<'me' | 'team'>('me');
   const [duty, setDuty] = useState(false);
   const layout = useMapLayout(lead ? 244 : 200);
+  const { contentTop } = useTopBarMetrics();
   const team = lead && view === 'team';
 
   // My task: collapsed, the sheet is exactly its head (what, where, the walk); the replies are pinned under the
@@ -49,7 +48,7 @@ export default function HomeScreen() {
   const [opened, setOpened] = useState(0);
   const hasBar = !!active || (!!me && me.duty !== 'on_duty');
   const myInset = layout.bottomInset + (hasBar ? barHeight : 0);
-  const above = GRABBER + (lead ? headerHeight : 0);
+  const above = GRABBER_HEIGHT + (lead ? headerHeight : 0);
   const [, mid, full] = layout.detents;
   const { height } = useWindowDimensions();
   // A task opens a little past half: the pinned buttons take room, and the latest lines must still show.
@@ -65,8 +64,8 @@ export default function HomeScreen() {
     <View style={[styles.screen, { backgroundColor: theme.mapGround }]}>
       <HomeMap team={team} task={active} frame={frame} />
 
-      <MapTopBar
-        top={layout.barTop}
+      <TopBar
+        variant="floating"
         left={<DutyChip open={duty} onToggle={() => setDuty((d) => !d)} />}
         right={
           <>
@@ -111,7 +110,7 @@ export default function HomeScreen() {
         <>
           {/* Tap anywhere outside the panel to close it. */}
           <Pressable accessibilityLabel="Close shift details" style={StyleSheet.absoluteFill} onPress={() => setDuty(false)} />
-          <DutyPanel style={[styles.duty, { top: layout.barTop + MAP_BUTTON + 8 }]} />
+          <DutyPanel style={[styles.duty, { top: contentTop }]} />
         </>
       )}
     </View>
@@ -123,47 +122,12 @@ export default function HomeScreen() {
  * whole site with me on it). Team: a lead's team, or for Mo the whole crew, live on the site.
  */
 function HomeMap({ team, task, frame }: { team: boolean; task: Task | undefined; frame: { top: number; bottom: number } }) {
-  const me = useMyDot();
-  const reporter = useReporterPlace(task);
-  const route = useRouteTo(task);
-  const accent = usePriorityColors()[task?.priority ?? 'P3'];
-  const role = useRole();
+  const everyone = useRole() === 'coordinator';
   const mine = useTeam();
   const crew = useCrew();
-  const everyone = role === 'coordinator';
-  const { proposals, tasks } = useSnapshot();
-  const crewMarkers = useTeamMarkers(
-    everyone ? crew.members : mine.members,
-    everyone ? crew.openTasks : mine.openTasks,
-  );
-  if (team) {
-    return (
-      <VenueMap
-        route={null}
-        me={me}
-        markers={crewMarkers}
-        onMarkerPress={(m) => {
-          if (m.kind === 'task') return tasks[m.id] && openTaskSheet(tasks[m.id], proposals);
-          router.push({ pathname: '/person/[id]', params: { id: m.id } });
-        }}
-        fit="site"
-        frame={frame}
-        style={StyleSheet.absoluteFill}
-      />
-    );
-  }
-  return (
-    <VenueMap
-      route={route}
-      me={me}
-      target={task?.zoneSlug}
-      targetColor={accent}
-      markers={reporter ? [{ kind: 'person', id: 'reporter', at: reporter, color: accent }] : undefined}
-      fit={task ? 'route' : 'site'}
-      frame={frame}
-      style={StyleSheet.absoluteFill}
-    />
-  );
+  const crewMap = useCrewMap(everyone ? crew : mine);
+  const routeMap = useRouteMap(task);
+  return <VenueMap {...(team ? crewMap : routeMap)} frame={frame} style={StyleSheet.absoluteFill} />;
 }
 
 /** My task as a log, or (free) my shift so far. */

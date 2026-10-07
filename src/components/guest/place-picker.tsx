@@ -1,11 +1,13 @@
-import * as Haptics from 'expo-haptics';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { floating, MAP_BUTTON } from '@/components/map/map-button';
+import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
-import { Radius, Type } from '@/constants/theme';
+import { haptic, PressableOpacity } from '@/components/ui/pressable';
+import { Text } from '@/components/ui/text';
+import { TOP_BAR_CONTROL } from '@/components/ui/top-bar';
+import { Radius, Shadow } from '@/constants/theme';
 import { VENUE_ZONES } from '@/data/venue';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -31,23 +33,18 @@ export function PlaceChip({ picked, near, located, onPress }: {
   const nearLabel = near ? VENUE_ZONES[near]?.label : null;
   const set = !!zone || located;
   return (
-    <Pressable
+    <PressableOpacity
       accessibilityRole="button"
       accessibilityLabel={zone ?? (located ? `Near me${nearLabel ? `, ${nearLabel}` : ''}` : 'Set location')}
-      onPress={() => {
-        Haptics.selectionAsync();
-        onPress();
-      }}
-      style={({ pressed }) => [
-        styles.chip,
-        { backgroundColor: pressed ? theme.backgroundElement : theme.card },
-      ]}>
+      haptic="selection"
+      onPress={onPress}
+      style={[styles.chip, { backgroundColor: theme.card }]}>
       <Icon sf={set ? 'location.fill' : 'location'} md={set ? 'near_me' : 'location_searching'} size={16} color={theme.text} />
-      <Text style={[styles.chipText, { color: theme.text }]} numberOfLines={1}>
+      <Text style={styles.chipText} numberOfLines={1}>
         {zone ?? (located ? 'Near me' : 'Set location')}
-        {!zone && located && nearLabel && <Text style={[styles.chipDetail, { color: theme.textSecondary }]}>{`  ${nearLabel}`}</Text>}
+        {!zone && located && nearLabel && <Text tone="secondary" style={styles.detail}>{`  ${nearLabel}`}</Text>}
       </Text>
-    </Pressable>
+    </PressableOpacity>
   );
 }
 
@@ -69,10 +66,8 @@ export function PlacePicker({ picked, onPick, onClose }: {
         exiting={SlideOutDown.duration(180)}
         style={[styles.panel, { backgroundColor: theme.card, paddingBottom: insets.bottom + 8 }]}>
         <View style={[styles.head, { borderBottomColor: theme.separator }]}>
-          <Text style={[styles.title, { color: theme.text }]}>Set location</Text>
-          <Pressable accessibilityRole="button" onPress={onClose} hitSlop={12}>
-            <Text style={[styles.close, { color: theme.tint }]}>Close</Text>
-          </Pressable>
+          <Text variant="title">Set location</Text>
+          <Button label="Close" size="inline" haptic="none" onPress={onClose} />
         </View>
         <ScrollView>
           <Option label="Near me" near selected={picked === null} onPress={() => onPick(null)} />
@@ -92,7 +87,7 @@ function Option({ label, near, selected, onPress }: { label: string; near?: bool
       accessibilityRole="button"
       accessibilityState={{ selected }}
       onPress={() => {
-        Haptics.selectionAsync();
+        haptic('selection');
         onPress();
       }}
       style={({ pressed }) => [
@@ -101,7 +96,7 @@ function Option({ label, near, selected, onPress }: { label: string; near?: bool
         selected ? { backgroundColor: theme.tintSoft } : pressed && { backgroundColor: theme.backgroundElement },
       ]}>
       {near && <Icon sf="location.fill" md="near_me" size={18} color={theme.tint} />}
-      <Text style={[styles.label, { color: selected || near ? theme.tint : theme.text, fontWeight: near || selected ? '600' : '400' }]}>
+      <Text tone={selected || near ? 'tint' : 'primary'} style={[styles.label, (near || selected) && styles.strong]}>
         {label}
       </Text>
       {selected && <Icon sf="checkmark" md="check" size={18} color={theme.tint} weight="semibold" />}
@@ -115,13 +110,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     maxWidth: 260,
-    height: MAP_BUTTON,
+    height: TOP_BAR_CONTROL,
     paddingHorizontal: 16,
-    borderRadius: MAP_BUTTON / 2,
-    ...floating,
+    borderRadius: TOP_BAR_CONTROL / 2,
+    ...Shadow.floating,
   },
-  chipText: { flexShrink: 1, fontSize: Type.body, fontWeight: '600' },
-  chipDetail: { fontWeight: '400' },
+  chipText: { flexShrink: 1, fontWeight: '600' },
+  detail: { fontWeight: '400' },
   panel: {
     position: 'absolute',
     left: 0,
@@ -140,8 +135,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  title: { fontSize: Type.title, fontWeight: '600' },
-  close: { fontSize: Type.body, fontWeight: '500' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -150,5 +143,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  label: { flex: 1, fontSize: Type.body },
+  label: { flex: 1 },
+  strong: { fontWeight: '600' },
 });

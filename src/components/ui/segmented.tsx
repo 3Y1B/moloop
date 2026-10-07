@@ -1,8 +1,9 @@
-import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Radius, Type } from '@/constants/theme';
+import { Radius, Shadow, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { CountBadge } from './badge';
+import { haptic } from './pressable';
 
 export type Segment<K extends string> = { key: K; label: string; badge?: number };
 
@@ -24,16 +25,12 @@ export function Segmented<K extends string>({ segments, value, onChange }: {
             accessibilityState={{ selected: on }}
             onPress={() => {
               if (on) return;
-              Haptics.selectionAsync();
+              haptic('selection');
               onChange(s.key);
             }}
-            style={[styles.segment, on && [styles.on, { backgroundColor: theme.card }]]}>
+            style={[styles.segment, on && [Shadow.raised, { backgroundColor: theme.card }]]}>
             <Text style={[styles.label, { color: on ? theme.text : theme.textSecondary }]}>{s.label}</Text>
-            {!!s.badge && (
-              <View style={[styles.badge, { backgroundColor: theme.danger }]}>
-                <Text style={[styles.badgeText, { color: theme.onTint }]}>{s.badge}</Text>
-              </View>
-            )}
+            <CountBadge count={s.badge ?? 0} />
           </Pressable>
         );
       })}
@@ -47,8 +44,5 @@ const styles = StyleSheet.create({
     flex: 1, height: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderRadius: Radius.control - 3, borderCurve: 'continuous',
   },
-  on: { boxShadow: '0 1px 3px rgba(17, 24, 39, 0.1)' },
   label: { fontSize: Type.footnote, fontWeight: '600' },
-  badge: { minWidth: 17, height: 17, paddingHorizontal: 4, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  badgeText: { fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] },
 });

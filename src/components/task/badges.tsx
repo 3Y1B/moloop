@@ -1,20 +1,22 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { Chip } from '@/components/ui/chip';
 import { Icon } from '@/components/ui/icon';
-import { Radius, Type } from '@/constants/theme';
+import { Text } from '@/components/ui/text';
 import { PRIORITY_LABEL } from '@/lib/format';
 import type { Priority, Team } from '@/lib/schema';
-import { usePriorityColors, useTheme } from '@/hooks/use-theme';
+import { usePriorityColors } from '@/hooks/use-theme';
 
+/** "P1 · Urgent" in its priority's colour. */
 export function PriorityBadge({ priority }: { priority: Priority }) {
   const color = usePriorityColors()[priority];
   return (
-    <View style={[styles.capsule, { backgroundColor: `${color}1A` }]}>
-      <PrioritySignal priority={priority} size={10} />
-      <Text style={[styles.capsuleText, { color }]}>
-        {priority} · {PRIORITY_LABEL[priority]}
-      </Text>
-    </View>
+    <Chip
+      size="small"
+      color={color}
+      leading={<PrioritySignal priority={priority} size={10} />}
+      label={`${priority} · ${PRIORITY_LABEL[priority]}`}
+    />
   );
 }
 
@@ -44,12 +46,11 @@ export function PrioritySignal({ priority, size = 12 }: { priority: Priority; si
 }
 
 export function TeamChip({ team }: { team: Team | undefined }) {
-  const theme = useTheme();
   if (!team) return null;
   return (
     <View style={styles.team}>
       <Icon sf={team.sf} md={team.md} size={13} color={team.color} />
-      <Text style={[styles.teamText, { color: theme.textSecondary }]} numberOfLines={1}>
+      <Text variant="footnote" tone="secondary" style={styles.teamText} numberOfLines={1}>
         {team.name}
       </Text>
     </View>
@@ -57,9 +58,7 @@ export function TeamChip({ team }: { team: Team | undefined }) {
 }
 
 const styles = StyleSheet.create({
-  capsule: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, height: 22, borderRadius: Radius.pill },
   signal: { flexDirection: 'row', alignItems: 'flex-end' },
-  capsuleText: { fontSize: Type.caption - 1, fontWeight: '600' },
   team: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
-  teamText: { fontSize: Type.footnote, fontWeight: '500' },
+  teamText: { fontWeight: '500' },
 });

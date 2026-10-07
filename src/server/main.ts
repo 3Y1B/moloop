@@ -11,6 +11,7 @@ import { hasOpenAi, onSpark } from './models/providers';
 import { warmSpeech } from './models/speech';
 import { applyPolicyFromEnv } from './policy';
 import { pickNewProposals } from './pick';
+import { sendPushes, startReceiptChecks } from './push';
 import { startScheduler } from './scheduler';
 import { planNewReports } from './triggers';
 import { speakBriefs } from './voice';
@@ -26,6 +27,9 @@ afterCommit(speakBriefs);
 afterCommit(pickNewProposals);
 // And for the planner: one server plans each new report that names a playbook.
 afterCommit(planNewReports);
+// And for pushes: every message a commit writes reaches the phone, not only an open app.
+afterCommit(sendPushes);
+startReceiptChecks();
 warmSpeech().catch((e) => console.error('[voice] warming the speech models failed', e));
 
 const port = Number(process.env.PORT ?? 8787);

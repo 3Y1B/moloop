@@ -1,6 +1,7 @@
-import * as Haptics from 'expo-haptics';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 
+import { haptic } from '@/components/ui/pressable';
+import { NOT_CAUGHT, useFlashTimer } from '@/components/voice/flash';
 import { useHoldToTalk } from '@/components/voice/use-hold-to-talk';
 import { useRepo } from '@/data/hooks';
 import type { VoiceResponse } from '@/data/repo';
@@ -24,12 +25,11 @@ export function useRespondVoice({ taskId, onResult }: { taskId: string | undefin
   const repo = useRepo();
   const hold = useHoldToTalk();
   const [phase, setPhase] = useState<VoicePhase>({ kind: 'idle' });
-  const flashedAt = useRef(0);
+  const flashTimer = useFlashTimer();
 
   const flash = (ok: boolean, message: string) => {
-    const at = (flashedAt.current = Date.now());
     setPhase({ kind: 'flash', ok, message });
-    setTimeout(() => setPhase((p) => (p.kind === 'flash' && flashedAt.current === at ? { kind: 'idle' } : p)), 2500);
+    flashTimer.start(() => setPhase((p) => (p.kind === 'flash' ? { kind: 'idle' } : p)));
   };
 
   const start = () => {
@@ -48,20 +48,20 @@ export function useRespondVoice({ taskId, onResult }: { taskId: string | undefin
       console.warn('[voice] transcribe failed', e);
       return flash(false, 'Voice is down');
     }
-    if (!text) return flash(false, 'Didn’t catch that');
+    if (!text) return flash(false, NOT_CAUGHT);
     if (!taskId) return setPhase({ kind: 'idle' });
     setPhase({ kind: 'acting', text });
     try {
       const r = await repo.respondByVoice(taskId, text);
       if (r.done) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptic('success');
         flash(true, r.confirmation);
       } else if (r.open) setPhase({ kind: 'idle' });
       else setPhase({ kind: 'missed', text });
       onResult(r);
     } catch {
       // Refused (someone else got there first) or the server is down.
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptic('error');
       flash(false, 'Didn’t go through');
     }
   };

@@ -1,9 +1,9 @@
 import { StyleSheet } from 'react-native';
 
+import { volunteerMarker } from '@/components/map/people';
 import { VenueMap, zoneSpot, type MapMarker } from '@/components/map/venue-map';
 import type { Point } from '@/data/venue';
 import { useMyPlace, useNow, usePlaceOf, type RequestView } from '@/data/hooks';
-import { initials } from '@/lib/format';
 import { meetingPoint } from '@/lib/presence';
 import { routeBetween, type Route } from '@/lib/route';
 import { useTheme } from '@/hooks/use-theme';
@@ -62,10 +62,7 @@ export function RequestMap({ view, frame }: { view: RequestView; frame: { top: n
       route = { ...walk, points: [p.at, ...walk.points.slice(p.next)] };
     }
     // One accent: whoever is coming is the tint, matching their disc on the sheet. Hollow until they're on the way.
-    markers.push({
-      kind: 'volunteer', id: volunteer.id, at, color: theme.tint, initials: initials(volunteer.name),
-      onTask: status.stage !== 'finding', stale: theirs?.stale,
-    });
+    markers.push(volunteerMarker(volunteer, { at, stale: !!theirs?.stale }, { color: theme.tint, onTask: status.stage !== 'finding' }));
   }
   markers.push({ kind: 'person', id: 'me', at: here, color: theme.text });
 

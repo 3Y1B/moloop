@@ -57,7 +57,9 @@ export type RespondCommand =
   | { kind: 'backup' | 'reassign'; volunteerId?: string }
   | { kind: 'handover'; target: HandoverTarget }
   | { kind: 'call' } | { kind: 'carry_on' } | { kind: 'pass' }
-  | { kind: 'close'; note?: string };
+  | { kind: 'close'; note?: string }
+  /** Words for the crew on the task, or the festival-goer behind it, as the lead speaking to them. */
+  | { kind: 'message'; to: 'crew' | 'guest'; text: string };
 
 /** Someone who could be sent: not the volunteer on the task, nor anyone already helping. */
 export type Named = { id: string; name: string };

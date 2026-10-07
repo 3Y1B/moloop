@@ -1,7 +1,7 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RespondCard } from '@/components/lead/respond-card';
@@ -9,6 +9,8 @@ import { RespondActions, type Slot } from '@/components/lead/respond-dock';
 import { ArrivedStep, CloseStep, EmergencyStep, HandoverStep, PickStep, type Pickable } from '@/components/lead/respond-steps';
 import { useRespondVoice } from '@/components/lead/respond-voice';
 import { attempt, callNumber } from '@/components/lead/sheet';
+import { openCrewMessage, openGuestReply } from '@/components/task/reply-bar';
+import { useKeyboardLift } from '@/components/ui/keyboard';
 import { TaskMap } from '@/components/lead/task-map';
 import { useCandidates, useLookups, useMe, useRepo, useSnapshot, useTask } from '@/data/hooks';
 import { availableResponses, isBusy, isQuiet, needsResponse } from '@/lib/lifecycle';
@@ -65,8 +67,7 @@ export default function RespondSheet() {
     }, [id, settled]),
   );
 
-  const keyboard = useAnimatedKeyboard();
-  const lift = useAnimatedStyle(() => ({ transform: [{ translateY: -Math.max(0, keyboard.height.get() - insets.bottom) }] }));
+  const lift = useKeyboardLift();
 
   const owner = task?.assigneeId ? volunteers[task.assigneeId] : undefined;
   const first = owner?.name.split(' ')[0] ?? 'them';
@@ -159,6 +160,10 @@ export default function RespondSheet() {
   const more = [
     ...hidden.map((k) => slot(k, FULL[k])),
     ...(canPass ? [{ key: 'pass', label: 'Pass to Mo', sf: 'arrow.up.circle', md: 'arrow_upward', onPress: passToMo }] : []),
+    ...(owner ? [{ key: 'message', label: `Message ${first}`, sf: 'bubble.left', md: 'chat_bubble', onPress: () => openCrewMessage(task) }] : []),
+    ...(task.requestId
+      ? [{ key: 'guest', label: 'Message festival-goer', sf: 'arrowshape.turn.up.left', md: 'reply', onPress: () => openGuestReply(task) }]
+      : []),
   ];
 
   const picking = step === 'pick-backup' || step === 'pick-reassign';

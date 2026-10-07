@@ -12,7 +12,7 @@ import {
   type Understood,
 } from '@/lib/ai';
 import { activeTaskOf } from '@/lib/commands';
-import { availableHelperReplies } from '@/lib/lifecycle';
+import { availableHelperReplies, isActive } from '@/lib/lifecycle';
 import { ReplyKind, type EscalationResponseKind, type Priority, type Task, type TeamSlug } from '@/lib/schema';
 import type { Interpretation } from '@/data/repo';
 import { callTool, chatModelId, choice, decide, decideModelId, generate, noul, toolModelId, type CallOptions } from '.';
@@ -87,14 +87,19 @@ export type RespondHeard = {
 
 const URGENCY: Priority[] = ['P1', 'P2', 'P3'];
 
-/** "Tell her I'm two minutes away" → "I'm two minutes away": the volunteer speaking to the festival-goer. As said, if the model fails. */
-async function toGuest(text: string): Promise<string> {
+/**
+ * "Tell her I'm two minutes away" → "I'm two minutes away": a volunteer or lead speaking straight to the festival-goer
+ * or volunteer it's for. As said, if the model fails.
+ */
+async function spokenTo(text: string, from: 'volunteer' | 'lead' = 'volunteer', to: 'guest' | 'crew' = 'guest'): Promise<string> {
+  const speaker = from === 'lead' ? 'team lead' : 'volunteer';
+  const listener = to === 'guest' ? 'the festival-goer they are helping' : 'the volunteer working the task';
   try {
     const { message } = await generate(
       {
         system:
-          'A festival volunteer said this for the festival-goer they are on their way to help. Rewrite it as the ' +
-          'volunteer speaking to them directly: drop "tell her/them", keep every fact, same language, one or two short sentences.',
+          `A festival ${speaker} said this for ${listener}. Rewrite it as the ${speaker} speaking to them directly: ` +
+          'drop "tell her/them", keep every fact, same language, one or two short sentences.',
         prompt: text,
         schema: z.object({ message: z.string().min(1).max(300) }),
       },
@@ -102,7 +107,7 @@ async function toGuest(text: string): Promise<string> {
     );
     return message.trim();
   } catch (e) {
-    console.warn(`toGuest sent it as said: ${(e as Error).message}`);
+    console.warn(`spokenTo sent it as said: ${(e as Error).message}`);
     return text;
   }
 }
@@ -184,6 +189,10 @@ const ACTIONS = {
   close: 'Close the task: not needed, a false alarm, stand down',
   carry_on: 'The volunteer is fine and carries on as they are',
   pass: 'Pass it up to Mo, the event coordinator',
+  tell_volunteer:
+    'A message for the volunteer on the task: what to do, who is coming, how long ("tell her medics are two minutes out", "stay with him")',
+  tell_guest:
+    'A message for the festival-goer who asked for help ("tell them someone is on the way", "ask them to wait by the gate")',
   unclear: 'None of these, or it is not clear what the lead wants',
 } as const;
 type Action = keyof typeof ACTIONS;
@@ -205,18 +214,24 @@ const toCommand = (a: Action, said: string): RespondCommand | null => {
     case 'carry_on':
     case 'pass':
       return { kind: a };
+    case 'tell_volunteer':
+      return { kind: 'message', to: 'crew', text: said.trim() };
+    case 'tell_guest':
+      return { kind: 'message', to: 'guest', text: said.trim() };
     case 'unclear':
       return null;
   }
 };
 
 /** The actions that fit right now. */
-function offered({ available, canPass }: Pick<RespondHeard, 'available' | 'canPass'>): Partial<Record<Action, string>> {
+function offered({ task, available, canPass }: Pick<RespondHeard, 'task' | 'available' | 'canPass'>): Partial<Record<Action, string>> {
   const can = (k: EscalationResponseKind) => available.includes(k);
   const keep: Action[] = [
     ...(['backup', 'reassign', 'call', 'close', 'carry_on'] as const).filter(can),
     ...(can('handover') ? (['handover_medics', 'handover_security', 'handover_emergency'] as const) : []),
     ...(canPass ? (['pass'] as const) : []),
+    ...(task.assigneeId && isActive(task) ? (['tell_volunteer'] as const) : []),
+    ...(task.requestId ? (['tell_guest'] as const) : []),
   ];
   return Object.fromEntries([...keep, 'unclear'].map((k) => [k, ACTIONS[k as Action]]));
 }
@@ -569,7 +584,7 @@ export class SparkInterpreter implements Interpreter {
       if (kind.confidence < 0.6) return report;
       // Any length: it goes to them as said.
       if ((kind.choice as string) === 'tell_guest' && active.requestId) {
-        return { heard, intent: { kind: 'tell_guest', taskId: active.id, text: await toGuest(heard) } };
+        return { heard, intent: { kind: 'tell_guest', taskId: active.id, text: await spokenTo(heard) } };
       }
       const reply = ReplyKind.safeParse(kind.choice);
       const short = heard.split(/\s+/).length <= 12;
@@ -600,9 +615,9 @@ export class SparkInterpreter implements Interpreter {
       });
       return { value, run: r };
     };
-    if (!i.available.length && !i.canPass) return { value: null, run: run() };
-
     const actions = offered(i);
+    if (Object.keys(actions).length === 1) return { value: null, run: run() };
+
     const people = Object.fromEntries(
       i.people.map((p, n) => [
         `person_${n + 1}`,
@@ -634,6 +649,7 @@ export class SparkInterpreter implements Interpreter {
       console.log(`respond ${d.action.choice} (${d.action.confidence.toFixed(2)}) ${Date.now() - t0} ms`);
       if (d.action.confidence < 0.6) return log(null, { confidence: d.action.confidence });
       const command = toCommand(d.action.choice as Action, said);
+      if (command?.kind === 'message') command.text = await spokenTo(said, 'lead', command.to);
       if (command?.kind === 'backup' || command?.kind === 'reassign') {
         const who = 'who' in d ? (d.who as Choice) : null;
         const picked =

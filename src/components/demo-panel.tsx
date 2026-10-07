@@ -1,14 +1,15 @@
-import * as Haptics from 'expo-haptics';
 import { useEffect, useSyncExternalStore } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeIn, FadeInUp, FadeOut, FadeOutUp, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { floating, MAP_BUTTON, MapButton } from '@/components/map/map-button';
+import { MapButton } from '@/components/map/map-button';
 import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
 import { Segmented } from '@/components/ui/segmented';
-import { Radius, Type } from '@/constants/theme';
+import { Text } from '@/components/ui/text';
+import { useTopBarMetrics } from '@/components/ui/top-bar';
+import { Radius, Shadow } from '@/constants/theme';
 import { useMyDot } from '@/data/hooks';
 import { getPinned, nudge, pin, refreshPin, subscribe } from '@/data/location';
 import { signOut } from '@/data/supabase/client';
@@ -45,8 +46,7 @@ export function DemoButton({ flat = false }: { flat?: boolean }) {
 export function DemoOverlay() {
   const shown = useSyncExternalStore(onOpen, () => open);
   const pinned = usePinned();
-  const insets = useSafeAreaInsets();
-  const top = insets.top + 8 + MAP_BUTTON + 8;
+  const top = useTopBarMetrics().contentTop;
   return (
     <>
       {pinned && <Joystick top={top} />}
@@ -67,17 +67,12 @@ function Panel({ top }: { top: number }) {
   const pinned = usePinned();
   const dot = useMyDot();
 
-  const jump = (slug: string) => {
-    Haptics.selectionAsync();
-    pin(NODES[VENUE_ZONES[slug].node]);
-  };
-
   return (
     <Animated.View
       entering={FadeInUp.duration(180)}
       exiting={FadeOutUp.duration(140)}
       style={[styles.panel, { top, backgroundColor: theme.card }]}>
-      <Text style={[styles.label, { color: theme.textSecondary }]}>My location</Text>
+      <Text variant="label">My location</Text>
       <Segmented
         segments={[{ key: 'gps', label: 'GPS' }, { key: 'joystick', label: 'Joystick' }]}
         value={pinned ? 'joystick' : 'gps'}
@@ -86,12 +81,7 @@ function Panel({ top }: { top: number }) {
       {pinned && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {Object.values(VENUE_ZONES).map((z) => (
-            <Pressable
-              key={z.slug}
-              onPress={() => jump(z.slug)}
-              style={({ pressed }) => [styles.chip, { borderColor: theme.border, opacity: pressed ? 0.6 : 1 }]}>
-              <Text style={[styles.chipText, { color: theme.text }]}>{z.label}</Text>
-            </Pressable>
+            <Chip key={z.slug} label={z.label} onPress={() => pin(NODES[z.node])} />
           ))}
         </ScrollView>
       )}
@@ -172,23 +162,17 @@ const styles = StyleSheet.create({
   scrim: { backgroundColor: 'rgba(0, 0, 0, 0.08)' },
   panel: {
     position: 'absolute', right: 16, width: 280, padding: 12, gap: 10,
-    borderRadius: Radius.card, borderCurve: 'continuous', ...floating,
+    borderRadius: Radius.card, borderCurve: 'continuous', ...Shadow.floating,
   },
-  label: { fontSize: Type.footnote, fontWeight: '600' },
   chips: { gap: 6 },
-  chip: {
-    height: 30, paddingHorizontal: 10, justifyContent: 'center',
-    borderRadius: Radius.pill, borderWidth: StyleSheet.hairlineWidth * 2,
-  },
-  chipText: { fontSize: Type.caption, fontWeight: '600' },
   base: {
     position: 'absolute', right: 16, width: BASE, height: BASE, borderRadius: BASE / 2,
-    borderWidth: StyleSheet.hairlineWidth * 2, ...floating,
+    borderWidth: StyleSheet.hairlineWidth * 2, ...Shadow.floating,
   },
   pad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   track: {
     position: 'absolute', width: BASE - 24, height: BASE - 24, borderRadius: (BASE - 24) / 2,
     borderWidth: StyleSheet.hairlineWidth * 2,
   },
-  knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, borderWidth: 3, ...floating },
+  knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, borderWidth: 3, ...Shadow.floating },
 });

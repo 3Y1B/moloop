@@ -1,9 +1,11 @@
-import * as Haptics from 'expo-haptics';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Avatar } from '@/components/ui/avatar';
+import { Chip } from '@/components/ui/chip';
 import { Icon } from '@/components/ui/icon';
-import { Type } from '@/constants/theme';
+import { ListRow } from '@/components/ui/list-row';
+import { haptic } from '@/components/ui/pressable';
+import { Text } from '@/components/ui/text';
 import type { ProposalCandidate, Team, Volunteer } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -22,48 +24,44 @@ export function CandidateRow({ candidate, volunteer, team, busy, suggested, sele
 }) {
   const theme = useTheme();
   const picking = selected !== undefined;
+  const dim = busy && !selected && styles.dim;
+  // Its own Pressable (not ListRow's) so a pick reads as a checkbox.
   return (
     <Pressable
       accessibilityRole={picking ? 'checkbox' : 'button'}
       accessibilityState={picking ? { checked: selected } : undefined}
       accessibilityLabel={`${volunteer.name}${busy ? ', busy' : ''}, ${candidate.rationale}`}
       onPress={() => {
-        if (picking) Haptics.selectionAsync();
-        else Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptic(picking ? 'selection' : 'success');
         onPress();
       }}
-      style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.backgroundSelected }]}>
-      <View style={[styles.lead, busy && !selected && styles.dim]}>
-        <Avatar name={volunteer.name} color={team?.color} size={32} />
-        <View style={styles.body}>
-          <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+      style={({ pressed }) => pressed && { backgroundColor: theme.backgroundSelected }}>
+      <ListRow
+        leading={<Avatar name={volunteer.name} size={32} style={dim} />}
+        trailing={
+          <>
+            {suggested ? <Chip size="small" tone="tint" label="Suggested" /> : busy ? <Chip size="small" label="Busy" /> : null}
+            {picking && (
+              selected
+                ? <Icon sf="checkmark.circle.fill" md="check_circle" size={22} color={theme.tint} />
+                : <Icon sf="circle" md="radio_button_unchecked" size={22} color={theme.textTertiary} />
+            )}
+          </>
+        }>
+        <View style={[styles.body, dim]}>
+          <Text variant="rowTitle" numberOfLines={1}>
             {volunteer.name}
-            {team && <Text style={[styles.team, { color: theme.textTertiary }]}>  {team.name}</Text>}
+            {team && <Text variant="footnote" tone="tertiary" style={styles.regular}>  {team.name}</Text>}
           </Text>
-          <Text style={[styles.why, { color: theme.textSecondary }]} numberOfLines={1}>{candidate.rationale}</Text>
+          <Text variant="footnote" tone="secondary" numberOfLines={1}>{candidate.rationale}</Text>
         </View>
-      </View>
-      {suggested ? (
-        <Text style={[styles.tag, { color: theme.tint }]}>Suggested</Text>
-      ) : busy ? (
-        <Text style={[styles.tag, { color: theme.textTertiary }]}>Busy</Text>
-      ) : null}
-      {picking && (
-        selected
-          ? <Icon sf="checkmark.circle.fill" md="check_circle" size={22} color={theme.tint} />
-          : <Icon sf="circle" md="radio_button_unchecked" size={22} color={theme.textTertiary} />
-      )}
+      </ListRow>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, minHeight: 56 },
-  lead: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  body: { gap: 2 },
   dim: { opacity: 0.45 },
-  body: { flex: 1, gap: 2 },
-  name: { fontSize: Type.body - 1, fontWeight: '500' },
-  team: { fontSize: Type.footnote - 1, fontWeight: '400' },
-  why: { fontSize: Type.footnote - 1 },
-  tag: { fontSize: Type.caption, fontWeight: '600' },
+  regular: { fontWeight: '400' },
 });

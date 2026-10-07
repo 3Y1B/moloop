@@ -1,48 +1,79 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
 
-import { Icon } from '@/components/ui/icon';
-import { Type } from '@/constants/theme';
+import { ListRow } from '@/components/ui/list-row';
+import { StatusLine } from '@/components/ui/status-line';
+import { Text } from '@/components/ui/text';
 import { useLookups, useNow, useTaskStatus } from '@/data/hooks';
 import { ago } from '@/lib/format';
-import type { Task } from '@/lib/schema';
-import { useTheme } from '@/hooks/use-theme';
+import type { Priority, Task } from '@/lib/schema';
+import type { Status } from '@/lib/status';
 import { PrioritySignal } from './badges';
+import { Untranslated } from './untranslated';
 
-/** Compact list row (queue, history). Tap for the timeline. */
-export function TaskRow({ task }: { task: Task }) {
-  const theme = useTheme();
+/** The priority at the head of every task row, level with its title. */
+export function RowSignal({ priority }: { priority: Priority }) {
+  return (
+    <View style={styles.signal}>
+      <PrioritySignal priority={priority} size={12} />
+    </View>
+  );
+}
+
+/**
+ * The one task row: priority, what (dimmed once it's over), then its status line. In a card by default; `flat` is a
+ * hairline row in a sheet list. `zone` adds where it is to the status detail and `detail` whatever follows; `when`
+ * puts how long ago at the right of the title. `status` stands in for the task's own (the approval countdown); `trailing` sits at
+ * the right (Arrived). Tap opens the task page unless `onPress` says otherwise.
+ */
+export function TaskRow({ task, onPress, flat, zone, when, status: override, detail, trailing, chevron = !flat }: {
+  task: Task;
+  onPress?: () => void;
+  flat?: boolean;
+  zone?: boolean;
+  when?: number;
+  status?: Status;
+  detail?: string;
+  trailing?: ReactNode;
+  chevron?: boolean;
+}) {
   const now = useNow();
   const { zones } = useLookups();
-  const status = useTaskStatus(task);
-  const zone = task.zoneSlug ? zones[task.zoneSlug]?.name : null;
-  // Queued rows sit under "Up next" already; finished ones say how it ended and when ("Handed to medics 5 min ago").
-  const ended = (task.status === 'resolved' || task.status === 'cancelled') && task.resolvedAt;
-  const when = task.status === 'queued' ? null : ended ? `${status?.label} ${ago(task.resolvedAt!, now)}` : status?.label;
+  const own = useTaskStatus(task);
+  const status = override ?? own;
+  const place = zone && task.zoneSlug ? zones[task.zoneSlug]?.name : undefined;
+  const closed = task.status === 'resolved' || task.status === 'cancelled';
+  const more = [status?.detail, place, detail].filter(Boolean).join(' · ');
 
   return (
-    <Pressable
-      onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
-      style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.backgroundSelected }]}>
-      <PrioritySignal priority={task.priority} size={13} />
-      <View style={styles.body}>
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{task.title}</Text>
-        <View style={styles.subRow}>
-          {zone && <Icon sf="mappin" md="location_on" size={11} color={theme.textTertiary} />}
-          <Text style={[styles.sub, { color: theme.textSecondary }]} numberOfLines={1}>
-            {[zone, when].filter(Boolean).join(' · ')}
+    <ListRow
+      flush={flat}
+      divider={flat}
+      chevron={chevron}
+      accessibilityLabel={task.title}
+      onPress={onPress ?? (() => router.push({ pathname: '/task/[id]', params: { id: task.id } }))}
+      leading={<RowSignal priority={task.priority} />}
+      trailing={trailing}>
+      <View style={styles.top}>
+        <Text variant="rowTitle" tone={closed ? 'secondary' : 'primary'} style={styles.title} numberOfLines={1}>
+          {task.title}
+        </Text>
+        <Untranslated task={task} />
+        {when != null && (
+          <Text variant="meta" tone="tertiary" style={styles.when}>
+            {ago(when, now)}
           </Text>
-        </View>
+        )}
       </View>
-      <Icon sf="chevron.right" md="chevron_right" size={12} color={theme.textTertiary} weight="medium" />
-    </Pressable>
+      {status && <StatusLine status={{ ...status, detail: more || undefined }} />}
+    </ListRow>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 10, minHeight: 52 },
-  body: { flex: 1, gap: 1 },
-  title: { fontSize: Type.body - 1, fontWeight: '500' },
-  subRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  sub: { flexShrink: 1, fontSize: Type.footnote - 1 },
+  signal: { alignSelf: 'flex-start', paddingTop: 4 },
+  top: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  title: { flexShrink: 1 },
+  when: { marginLeft: 'auto' },
 });

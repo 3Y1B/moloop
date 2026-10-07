@@ -1,26 +1,28 @@
-import * as Haptics from 'expo-haptics';
-import { Link, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Fragment, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
 
-import { EmptyCard, Group } from '@/components/lead/group';
-import { OpenTaskRow } from '@/components/lead/open-task-row';
 import { attempt, callNumber, Sheet } from '@/components/lead/sheet';
 import { TaskHead, TaskProgress } from '@/components/lead/task-head';
 import { TeamChip } from '@/components/task/badges';
 import { TaskRow } from '@/components/task/task-row';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Card, Separator } from '@/components/ui/card';
-import { Icon } from '@/components/ui/icon';
+import { Card, Section, Separator } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { haptic } from '@/components/ui/pressable';
 import { StatusLine } from '@/components/ui/status-line';
-import { Radius, Type } from '@/constants/theme';
+import { Text, textStyle } from '@/components/ui/text';
+import { Radius } from '@/constants/theme';
 import { useLookups, usePerson, useRepo, useTeam } from '@/data/hooks';
 import { languageName } from '@/lib/format';
 import type { Task, Volunteer } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
 type Panel = 'message' | 'assign' | null;
+
+/** A task row's hairline starts under its title: padding, signal, gap. */
+const ROW_INSET = 38;
 
 /** A teammate, for a lead: status, what they're on, what's queued, where, what they can do; Call, Message, Assign. */
 export default function PersonSheet() {
@@ -36,9 +38,9 @@ export default function PersonSheet() {
   return (
     <Sheet>
       <View style={styles.head}>
-        <Avatar name={volunteer.name} color={volunteer.duty === 'on_duty' ? team?.color : theme.textTertiary} size={52} />
+        <Avatar name={volunteer.name} size={52} />
         <View style={styles.flex}>
-          <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>{volunteer.name}</Text>
+          <Text variant="hero" style={styles.name} numberOfLines={1}>{volunteer.name}</Text>
           <TeamChip team={team} />
         </View>
       </View>
@@ -64,16 +66,16 @@ export default function PersonSheet() {
       {current && <CurrentTask task={current} />}
 
       {queue.length > 0 && (
-        <Group title="Up next" count={queue.length}>
+        <Section title="Up next" count={queue.length}>
           <Card>
             {queue.map((t, i) => (
               <Fragment key={t.id}>
-                {i > 0 && <Separator inset={39} />}
-                <TaskRow task={t} />
+                {i > 0 && <Separator inset={ROW_INSET} />}
+                <TaskRow task={t} zone />
               </Fragment>
             ))}
           </Card>
-        </Group>
+        </Section>
       )}
 
       <Details volunteer={volunteer} />
@@ -83,17 +85,19 @@ export default function PersonSheet() {
 
 /** What they're on (or backing up): the card, how far through, and the way to its timeline. */
 function CurrentTask({ task }: { task: Task }) {
-  const theme = useTheme();
   return (
     <Card style={styles.card}>
       <TaskHead task={task} />
       <TaskProgress task={task} />
-      <Link href={{ pathname: '/task/[id]', params: { id: task.id, focus: 'timeline' } }} asChild>
-        <Pressable hitSlop={8} style={styles.link}>
-          <Text style={[styles.linkText, { color: theme.tint }]}>Timeline</Text>
-          <Icon sf="chevron.right" md="chevron_right" size={11} color={theme.tint} weight="bold" />
-        </Pressable>
-      </Link>
+      <Button
+        label="Timeline"
+        size="inline"
+        trailingSf="chevron.right"
+        trailingMd="chevron_right"
+        haptic="none"
+        onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
+        style={styles.link}
+      />
     </Card>
   );
 }
@@ -105,7 +109,7 @@ function Message({ volunteer, onSent }: { volunteer: Volunteer; onSent: () => vo
   const send = async () => {
     if (!text.trim()) return;
     if (await attempt(() => repo.sendDirect(volunteer.id, text.trim()))) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptic('success');
       setText('');
       onSent();
     }
@@ -120,7 +124,7 @@ function Message({ volunteer, onSent }: { volunteer: Volunteer; onSent: () => vo
         placeholderTextColor={theme.textTertiary}
         returnKeyType="send"
         onSubmitEditing={send}
-        style={[styles.input, { color: theme.text }]}
+        style={[textStyle('body'), styles.input, { color: theme.text }]}
       />
       <Button label="Send" size="small" haptic="none" disabled={!text.trim()} onPress={send} />
     </View>
@@ -132,17 +136,18 @@ function AssignTask({ volunteer, onAssigned }: { volunteer: Volunteer; onAssigne
   const repo = useRepo();
   const { openTasks } = useTeam(volunteer.teamSlug);
   const open = openTasks.filter((t) => t.status === 'open');
-  if (open.length === 0) return <EmptyCard text="No open tasks" />;
+  if (open.length === 0) return <EmptyState title="No open tasks" variant="card" />;
   return (
     <Card>
       {open.map((t, i) => (
         <Fragment key={t.id}>
-          {i > 0 && <Separator inset={39} />}
-          <OpenTaskRow
+          {i > 0 && <Separator inset={ROW_INSET} />}
+          <TaskRow
             task={t}
+            zone
             onPress={async () => {
               if (await attempt(() => repo.assign(t.id, volunteer.id))) {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                haptic('success');
                 onAssigned();
               }
             }}
@@ -156,7 +161,6 @@ function AssignTask({ volunteer, onAssigned }: { volunteer: Volunteer; onAssigne
 const skillName = (s: string) => (s === 'wwcc' ? 'WWCC' : s === 'rsa' ? 'RSA' : s.replace(/-/g, ' '));
 
 function Details({ volunteer }: { volunteer: Volunteer }) {
-  const theme = useTheme();
   const { zones } = useLookups();
   const rows = [
     { label: 'Zone', value: volunteer.zoneSlug ? zones[volunteer.zoneSlug]?.name ?? volunteer.zoneSlug : '—' },
@@ -169,8 +173,8 @@ function Details({ volunteer }: { volunteer: Volunteer }) {
         <Fragment key={r.label}>
           {i > 0 && <Separator inset={14} />}
           <View style={styles.detail}>
-            <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>{r.label}</Text>
-            <Text style={[styles.detailValue, { color: theme.text }]}>{r.value}</Text>
+            <Text variant="callout" tone="secondary" style={styles.detailLabel}>{r.label}</Text>
+            <Text variant="callout" style={styles.detailValue}>{r.value}</Text>
           </View>
         </Fragment>
       ))}
@@ -181,17 +185,16 @@ function Details({ volunteer }: { volunteer: Volunteer }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  name: { fontSize: Type.hero, fontWeight: '600', letterSpacing: -0.3, marginBottom: 2 },
+  name: { marginBottom: 2 },
   actions: { flexDirection: 'row', gap: 8 },
   card: { padding: 14, gap: 10 },
-  link: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-end', paddingVertical: 2 },
-  linkText: { fontSize: Type.footnote, fontWeight: '500' },
+  link: { alignSelf: 'flex-end' },
   compose: {
     flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 14, paddingRight: 6, height: 50,
     borderRadius: Radius.control, borderCurve: 'continuous', borderWidth: StyleSheet.hairlineWidth * 2,
   },
-  input: { flex: 1, fontSize: Type.body, padding: 0 },
+  input: { flex: 1, padding: 0 },
   detail: { flexDirection: 'row', gap: 12, paddingHorizontal: 14, paddingVertical: 11 },
-  detailLabel: { width: 84, fontSize: Type.callout },
-  detailValue: { flex: 1, fontSize: Type.callout, fontWeight: '500' },
+  detailLabel: { width: 84 },
+  detailValue: { flex: 1, fontWeight: '500' },
 });

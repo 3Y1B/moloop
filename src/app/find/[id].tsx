@@ -1,9 +1,8 @@
-import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -21,6 +20,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 import { useFinder } from '@/components/finder/use-finder';
 import { Icon } from '@/components/ui/icon';
+import { haptic, PressableOpacity } from '@/components/ui/pressable';
 import { Brand } from '@/constants/theme';
 import type { Step, Trend } from '@/lib/finder';
 
@@ -84,7 +84,7 @@ export default function FindScreen() {
 
   useEffect(() => {
     found.value = withTiming(lit ? 1 : 0, { duration: 350 });
-    if (lit && step !== 'here') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (lit && step !== 'here') haptic('light');
   }, [lit, step, found]);
 
   // Each step change: the cloud springs to its new size, and a tap you can feel, stronger the closer you are.
@@ -94,10 +94,9 @@ export default function FindScreen() {
     if (step === last.current) return;
     const closer = SPREAD[step] < SPREAD[last.current];
     last.current = step;
-    if (step === 'here') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    else if (step !== 'searching' && closer) {
-      Haptics.impactAsync(step === 'very_close' ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Medium);
-    }
+    if (step === 'here') haptic('success');
+    else if (step === 'very_close' && closer) haptic('heavy');
+    else if (step !== 'searching' && closer) haptic('medium');
   }, [step, spread]);
 
   const background = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(found.value, [0, 1], [Brand.night, Brand.blue]) }));
@@ -123,9 +122,10 @@ export default function FindScreen() {
           <Text style={styles.finding}>Finding</Text>
           <Text style={styles.name} numberOfLines={1}>{name ?? 'Your match'}</Text>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Done" hitSlop={10} onPress={() => router.back()} style={styles.close}>
+        {/* Not the app's CircleButton: mist on the black and blue, like the rest of this screen. */}
+        <PressableOpacity accessibilityRole="button" accessibilityLabel="Done" hitSlop={10} onPress={() => router.back()} style={styles.close}>
           <Icon sf="xmark" md="close" size={15} color="#FFFFFF" weight="bold" />
-        </Pressable>
+        </PressableOpacity>
       </View>
 
       <View style={styles.stage} accessibilityLabel={`${big}, ${small}`}>

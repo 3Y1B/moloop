@@ -103,7 +103,7 @@ export function reply(b: Batch, actorId: string, taskId: string, kind: ReplyKind
       note,
     });
     if (kind === 'decline') {
-      b.send(me.id, 'system', `Declined: ${task.title}.`, { taskId });
+      b.send(me.id, 'system', `Declined: ${task.title}.`, { taskId, quiet: true });
       freeUp(b, me.id);
       staffShort(b);
     }
@@ -130,6 +130,7 @@ export function reply(b: Batch, actorId: string, taskId: string, kind: ReplyKind
     const owner = t.task.escalation?.level === 'lead' ? lead : mo;
     b.send(me.id, 'system', `Asked ${owner ? `${first(owner)} ` : ''}for help: ${task.title}.`, {
       taskId,
+      quiet: true,
     });
     if (owner) b.send(owner.id, 'escalation', `${first(me)} asked for help: ${task.title}.`, { taskId });
   }
@@ -346,7 +347,10 @@ export function updateTask(b: Batch, taskId: string, from: UpdateFrom, text: str
 const URGENCY: Priority[] = ['P1', 'P2', 'P3'];
 const moreUrgent = (a: Priority, than: Priority) => URGENCY.indexOf(a) < URGENCY.indexOf(than);
 
-/** Volunteer → festival-goer, on a task that came from a request. */
+/**
+ * Staff → festival-goer, on a task that came from a request: the volunteer on it, or a lead or Mo. A lead's reply
+ * goes to the crew on it too, so they know what the festival-goer was told.
+ */
 export function guestReply(b: Batch, staffId: string, taskId: string, text: string) {
   const me = b.volunteers[staffId];
   const task = b.tasks[taskId];
@@ -357,9 +361,28 @@ export function guestReply(b: Batch, staffId: string, taskId: string, text: stri
     ...request,
     thread: [...request.thread, { from: 'staff', name: shortName(me), text, at: b.now }],
   });
-  // Talking to them is an update: nudges start over, same as a reply on the task.
-  b.task({ ...task, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null });
-  b.ev(taskId, 'note', 'Replied to the festival-goer', b.actor(me.id), { note: text });
+  const crew = b.onIt(task);
+  if (crew.includes(me.id)) {
+    // Talking to them is an update: nudges start over, same as a reply on the task.
+    b.task({ ...task, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null });
+    b.ev(taskId, 'note', 'Replied to the festival-goer', b.actor(me.id), { note: text });
+    return;
+  }
+  b.ev(taskId, 'note', `${me.name} replied to the festival-goer`, b.actor(me.id), { note: text });
+  for (const id of crew)
+    b.send(id, 'direct', `To the festival-goer: “${text}”`, { taskId, fromName: me.name, senderId: me.id });
+}
+
+/** Lead or Mo → everyone on the task, said out loud on their phones and kept on the task's log. */
+export function messageCrew(b: Batch, byId: string, taskId: string, text: string) {
+  const me = b.volunteers[byId];
+  const task = b.tasks[taskId];
+  if (!task || !me) throw new CommandError('not_found', `No task ${taskId}`);
+  const crew = b.onIt(task).filter((id) => id !== me.id);
+  if (!crew.length) throw new CommandError('conflict', `Nobody is on task ${taskId}`);
+  b.ev(taskId, 'note', `Message from ${me.name}`, b.actor(me.id), { note: text });
+  for (const id of crew)
+    b.send(id, 'direct', text, { taskId, fromName: me.name, senderId: me.id, delivery: 'spoken' });
 }
 
 // ── leads and Mo ──
@@ -435,7 +458,9 @@ export function respond(b: Batch, byId: string, taskId: string, input: RespondIn
     case 'close':
       b.ev(taskId, 'resolved', `Closed by ${by.name}`, actor, note);
       for (const id of b.onIt(task)) {
-        b.send(id, 'closed', `Closed by ${first(by)}: ${task.title}.`, { taskId });
+        // The reason is the lead's answer: it goes to whoever asked.
+        const why = input.note ? ` “${input.note}”` : '';
+        b.send(id, 'closed', `Closed by ${first(by)}: ${task.title}.${why}`, { taskId });
         freeUp(b, id);
       }
       break;

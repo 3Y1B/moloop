@@ -1,22 +1,18 @@
-import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated, { cancelAnimation, Easing, FadeIn, ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
+import { Chip } from '@/components/ui/chip';
+import { haptic } from '@/components/ui/pressable';
+import { Text } from '@/components/ui/text';
 import { Radius, Type } from '@/constants/theme';
 import type { HandoverTarget, Volunteer } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
 /** Quiet text action under a step. */
 function Back({ onPress }: { onPress: () => void }) {
-  const theme = useTheme();
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onPress} hitSlop={8} style={styles.back}>
-      <Text style={[styles.backText, { color: theme.textSecondary }]}>Back</Text>
-    </Pressable>
-  );
+  return <Button variant="plain" size="inline" tone="neutral" label="Back" haptic="none" onPress={onPress} style={styles.back} />;
 }
 
 export type Pickable = { volunteer: Volunteer; minutes: number | null; busy: boolean };
@@ -30,40 +26,25 @@ export function PickStep({ people, picked, onPick, reassign, onConfirm, onBack }
   onConfirm: (id: string) => void;
   onBack: () => void;
 }) {
-  const theme = useTheme();
   const chosen = people.find((p) => p.volunteer.id === picked);
   const name = chosen?.volunteer.name.split(' ')[0];
   return (
     <Animated.View entering={FadeIn.duration(160)} style={styles.stack}>
       {people.length === 0 ? (
-        <Text style={[styles.body, { color: theme.textSecondary }]}>No one on duty</Text>
+        <Text tone="secondary">No one on duty</Text>
       ) : (
         <View style={styles.chips}>
-          {people.map(({ volunteer: v, minutes, busy }) => {
-            const on = v.id === picked;
-            return (
-              <Pressable
-                key={v.id}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-                accessibilityLabel={`${v.name}${busy ? ', busy' : ''}`}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  onPick(v.id);
-                }}
-                style={[
-                  styles.chip,
-                  { backgroundColor: on ? theme.tintSoft : theme.backgroundElement, borderColor: on ? theme.tint : 'transparent' },
-                ]}>
-                <Text style={[styles.chipName, { color: on ? theme.tint : busy ? theme.textTertiary : theme.text }]} numberOfLines={1}>
-                  {v.name.split(' ')[0]}
-                </Text>
-                <Text style={[styles.chipMeta, { color: on ? theme.tint : theme.textSecondary }]} numberOfLines={1}>
-                  {busy ? 'Busy' : minutes != null ? `${minutes} min` : ' '}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {people.map(({ volunteer: v, minutes, busy }) => (
+            <Chip
+              key={v.id}
+              label={v.name.split(' ')[0]}
+              count={busy ? 'Busy' : minutes != null ? `${minutes} min` : undefined}
+              selected={v.id === picked}
+              accessibilityLabel={`${v.name}${busy ? ', busy' : ''}`}
+              onPress={() => onPick(v.id)}
+              style={styles.chip}
+            />
+          ))}
         </View>
       )}
       <Button
@@ -84,18 +65,8 @@ export function HandoverStep({ onPick, onEmergency, onBack }: {
   onEmergency: () => void;
   onBack: () => void;
 }) {
-  const theme = useTheme();
   const tile = (target: Exclude<HandoverTarget, 'emergency'>, label: string) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={() => {
-        Haptics.selectionAsync();
-        onPick(target);
-      }}
-      style={({ pressed }) => [styles.tile, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
-      <Text style={[styles.tileText, { color: theme.text }]}>{label}</Text>
-    </Pressable>
+    <Button variant="secondary" size="large" label={label} onPress={() => onPick(target)} style={styles.tile} />
   );
   return (
     <Animated.View entering={FadeIn.duration(160)} style={styles.stack}>
@@ -103,17 +74,15 @@ export function HandoverStep({ onPick, onEmergency, onBack }: {
         {tile('medics', 'First Aid medics')}
         {tile('security', 'Security')}
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Emergency services"
-        onPress={() => {
-          Haptics.selectionAsync();
-          onEmergency();
-        }}
-        style={({ pressed }) => [styles.outline, { borderColor: theme.danger, opacity: pressed ? 0.7 : 1 }]}>
-        <Text style={[styles.outlineText, { color: theme.danger }]}>Emergency services</Text>
-        <Icon sf="chevron.right" md="chevron_right" size={14} color={theme.danger} weight="semibold" />
-      </Pressable>
+      <Button
+        variant="outline"
+        size="large"
+        tone="danger"
+        label="Emergency services"
+        trailingSf="chevron.right"
+        trailingMd="chevron_right"
+        onPress={onEmergency}
+      />
       <Back onPress={onBack} />
     </Animated.View>
   );
@@ -132,11 +101,12 @@ export function EmergencyStep({ where, onCalled, onBack }: { where: string; onCa
   const fill = useAnimatedStyle(() => ({ width: `${progress.get() * 100}%` }));
 
   const start = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    // Heavier than any tap: this is the 000 hold.
+    haptic('heavy');
     progress.set(withTiming(1, { duration: HOLD_MS, easing: Easing.linear, reduceMotion: ReduceMotion.Never }));
     timer.current = setTimeout(() => {
       timer.current = null;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      haptic('warning');
       onCalled();
     }, HOLD_MS);
   };
@@ -150,16 +120,16 @@ export function EmergencyStep({ where, onCalled, onBack }: { where: string; onCa
 
   return (
     <Animated.View entering={FadeIn.duration(160)} style={styles.stack}>
-      <Text style={[styles.zeros, { color: theme.danger }]}>Call 000</Text>
-      {!!where && <Text style={[styles.body, { color: theme.text }]}>{where}</Text>}
+      <Text variant="hero" tone="danger" style={styles.zeros}>Call 000</Text>
+      {!!where && <Text>{where}</Text>}
       <Pressable
         onPressIn={start}
         onPressOut={end}
         accessibilityRole="button"
         accessibilityLabel="Hold: called 000"
-        style={[styles.outline, styles.holdable, { borderColor: theme.danger }]}>
+        style={[styles.holdable, { borderColor: theme.danger }]}>
         <Animated.View style={[styles.fill, { backgroundColor: theme.dangerSoft }, fill]} />
-        <Text style={[styles.outlineText, { color: theme.danger }]}>Hold · Called 000</Text>
+        <Text tone="danger" style={styles.strong}>Hold · Called 000</Text>
       </Pressable>
       <Back onPress={onBack} />
     </Animated.View>
@@ -195,39 +165,24 @@ export function ArrivedStep({ onArrived }: { onArrived: () => void }) {
 
 const styles = StyleSheet.create({
   stack: { gap: 12 },
-  body: { fontSize: Type.body },
   chips: { flexDirection: 'row', gap: 8 },
-  chip: {
-    flex: 1,
+  chip: { flex: 1, justifyContent: 'center' },
+  tiles: { flexDirection: 'row', gap: 8 },
+  tile: { flex: 1 },
+  // Held, not tapped: the outline fills as the hold runs, so it can't be a Button.
+  holdable: {
     height: 56,
-    paddingHorizontal: 6,
+    overflow: 'hidden',
     borderRadius: Radius.control,
     borderCurve: 'continuous',
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 1,
-  },
-  chipName: { fontSize: Type.callout, fontWeight: '600' },
-  chipMeta: { fontSize: Type.caption, fontVariant: ['tabular-nums'] },
-  tiles: { flexDirection: 'row', gap: 8 },
-  tile: { flex: 1, height: 64, borderRadius: Radius.card, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' },
-  tileText: { fontSize: Type.body, fontWeight: '600' },
-  outline: {
-    height: 52,
-    borderRadius: Radius.pill,
-    borderWidth: 1.5,
-    flexDirection: 'row',
-    gap: 6,
+    borderWidth: StyleSheet.hairlineWidth * 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  outlineText: { fontSize: Type.body, fontWeight: '600' },
-  holdable: { height: 56, overflow: 'hidden' },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, pointerEvents: 'none' },
+  strong: { fontWeight: '600' },
   zeros: { fontSize: 40, lineHeight: 44, fontWeight: '700', letterSpacing: -0.5 },
   back: { alignSelf: 'center', paddingVertical: 4 },
-  backText: { fontSize: Type.callout, fontWeight: '600' },
   input: { height: 48, borderRadius: Radius.control, borderCurve: 'continuous', paddingHorizontal: 14, justifyContent: 'center' },
   inputText: { fontSize: Type.body, padding: 0 },
 });

@@ -1,10 +1,12 @@
-import * as Haptics from 'expo-haptics';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, FadeOut } from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/icon';
+import { ListRow } from '@/components/ui/list-row';
+import { PressableOpacity } from '@/components/ui/pressable';
+import { Text } from '@/components/ui/text';
+import { NOT_CAUGHT } from '@/components/voice/flash';
 import { Waveform } from '@/components/voice/waveform';
-import { Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { VoicePhase } from './respond-voice';
 
@@ -35,11 +37,11 @@ export function RespondActions({ slots, more, moreOpen, setMoreOpen, voice }: {
     <View>
       {(listening || busy) && (
         <Animated.View entering={FadeInDown.duration(160)} exiting={FadeOut.duration(120)} style={styles.live}>
-          <Text style={[styles.label, { color: listening ? theme.tint : theme.textTertiary }]}>{listening ? 'Listening' : 'Heard'}</Text>
+          <Text variant="label" tone={listening ? 'tint' : 'tertiary'}>{listening ? 'Listening' : 'Heard'}</Text>
           {listening ? (
             <Waveform active level={voice.level} bars={28} height={22} />
           ) : (
-            <Text style={[styles.said, { color: phase.kind === 'acting' ? theme.text : theme.textTertiary }]} numberOfLines={3}>
+            <Text variant="title" tone={phase.kind === 'acting' ? 'primary' : 'tertiary'} style={styles.said} numberOfLines={3}>
               {phase.kind === 'acting' ? phase.text : '…'}
             </Text>
           )}
@@ -50,9 +52,9 @@ export function RespondActions({ slots, more, moreOpen, setMoreOpen, voice }: {
         <Animated.View entering={FadeInDown.duration(160)} exiting={FadeOut.duration(120)} style={styles.live}>
           <View style={styles.row}>
             <Icon sf="exclamationmark.circle.fill" md="error" size={16} color={theme.warning} />
-            <Text style={[styles.label, { color: theme.textSecondary }]}>Didn’t catch that</Text>
+            <Text variant="label">{NOT_CAUGHT}</Text>
           </View>
-          <Text style={[styles.said, { color: theme.text }]} numberOfLines={3} selectable>{phase.text}</Text>
+          <Text variant="title" style={styles.said} numberOfLines={3} selectable>{phase.text}</Text>
         </Animated.View>
       )}
 
@@ -64,26 +66,25 @@ export function RespondActions({ slots, more, moreOpen, setMoreOpen, voice }: {
             size={18}
             color={phase.ok ? theme.success : theme.warning}
           />
-          <Text style={[styles.flashText, { color: theme.text }]} numberOfLines={2}>{phase.message}</Text>
+          <Text variant="callout" style={styles.flashText} numberOfLines={2}>{phase.message}</Text>
         </Animated.View>
       )}
 
       {moreOpen && more.length > 0 && (phase.kind === 'idle' || phase.kind === 'missed') && (
         <Animated.View entering={FadeInDown.duration(180)} exiting={FadeOut.duration(120)} style={[styles.more, { borderBottomColor: theme.separator }]}>
           {more.map((x) => (
-              <Pressable
-                key={x.key}
-                accessibilityRole="button"
-                accessibilityLabel={x.label}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setMoreOpen(false);
-                  x.onPress();
-                }}
-                style={({ pressed }) => [styles.moreRow, pressed && { opacity: 0.5 }]}>
-                <Icon sf={x.sf} md={x.md} size={18} color={theme.textSecondary} />
-                <Text style={[styles.moreText, { color: theme.text }]}>{x.label}</Text>
-              </Pressable>
+            <ListRow
+              key={x.key}
+              flush
+              haptic="selection"
+              leading={<Icon sf={x.sf} md={x.md} size={18} color={theme.textSecondary} />}
+              title={x.label}
+              onPress={() => {
+                setMoreOpen(false);
+                x.onPress();
+              }}
+              style={styles.moreRow}
+            />
           ))}
         </Animated.View>
       )}
@@ -99,7 +100,7 @@ export function RespondActions({ slots, more, moreOpen, setMoreOpen, voice }: {
           <View style={[styles.circle, { backgroundColor: theme.tint }, listening && styles.big]}>
             <Icon sf="mic.fill" md="mic" size={22} color={theme.onTint} />
           </View>
-          <Text style={[styles.slotText, styles.primary, { color: theme.text }]} numberOfLines={1}>Hold</Text>
+          <Text variant="label" tone="primary" numberOfLines={1}>Hold</Text>
         </Pressable>
         {slots.map((x) => (
           <Round key={x.key} slot={x} />
@@ -118,19 +119,17 @@ export function RespondActions({ slots, more, moreOpen, setMoreOpen, voice }: {
 function Round({ slot, active }: { slot: Slot; active?: boolean }) {
   const theme = useTheme();
   return (
-    <Pressable
+    <PressableOpacity
       accessibilityRole="button"
       accessibilityLabel={slot.label}
-      onPress={() => {
-        Haptics.selectionAsync();
-        slot.onPress();
-      }}
-      style={({ pressed }) => [styles.slot, pressed && { opacity: 0.6 }]}>
+      haptic="selection"
+      onPress={slot.onPress}
+      style={styles.slot}>
       <View style={[styles.circle, { backgroundColor: active ? theme.backgroundSelected : theme.backgroundElement }]}>
         <Icon sf={slot.sf} md={slot.md} size={22} color={theme.text} />
       </View>
-      <Text style={[styles.slotText, { color: theme.text }]} numberOfLines={1}>{slot.label}</Text>
-    </Pressable>
+      <Text variant="footnote" numberOfLines={1}>{slot.label}</Text>
+    </PressableOpacity>
   );
 }
 
@@ -139,15 +138,12 @@ const styles = StyleSheet.create({
   slot: { flex: 1, alignItems: 'center', gap: 6 },
   circle: { width: SIZE, height: SIZE, borderRadius: SIZE / 2, alignItems: 'center', justifyContent: 'center' },
   big: { transform: [{ scale: 1.08 }] },
-  slotText: { fontSize: Type.footnote },
-  primary: { fontWeight: '600' },
   live: { gap: 6, paddingBottom: 14 },
   flash: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 14 },
-  flashText: { flex: 1, fontSize: Type.callout, fontWeight: '500' },
-  label: { fontSize: Type.caption, fontWeight: '600' },
-  said: { fontSize: Type.title, lineHeight: 24 },
+  flashText: { flex: 1, fontWeight: '500' },
+  // What was said reads as words, not a heading.
+  said: { fontWeight: '400', letterSpacing: 0 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   more: { paddingBottom: 6, marginBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
-  moreRow: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 46, paddingHorizontal: 6 },
-  moreText: { fontSize: Type.body },
+  moreRow: { gap: 14, paddingHorizontal: 6 },
 });

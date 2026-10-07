@@ -1,11 +1,10 @@
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { personSpot, volunteerMarker } from '@/components/map/people';
 import { VenueMap, zoneSpot, type MapMarker } from '@/components/map/venue-map';
 import { Radius } from '@/constants/theme';
 import { useLookups, useSnapshot } from '@/data/hooks';
-import { initials } from '@/lib/format';
 import { isQuiet, needsResponse } from '@/lib/lifecycle';
-import { placeOf } from '@/lib/presence';
 import type { Task } from '@/lib/schema';
 import { usePriorityColors, useTheme } from '@/hooks/use-theme';
 
@@ -33,27 +32,23 @@ export function TaskMap({ task, fill, frame, candidates, picked, onPick, style }
 
   const color = (task.teamSlug && teams[task.teamSlug]?.color) || theme.tint;
   const markers: MapMarker[] = [];
+  // Each where their phone says, else spread round their zone (the owner round the task's).
+  const spot = (id: string, zone: string | null, index: number) => personSpot(positions, id, now, () => zoneSpot(zone, index));
   const owner = task.assigneeId ? volunteers[task.assigneeId] : undefined;
-  const ownerLive = placeOf(positions, owner?.id, now);
-  const at = ownerLive?.at ?? zoneSpot(task.zoneSlug, 1);
-  if (owner && at) {
-    markers.push({
-      kind: 'volunteer', id: owner.id, at, color, initials: initials(owner.name), onTask: true,
-      needsHelp: needsResponse(task) || isQuiet(task), stale: ownerLive?.stale,
-    });
+  const ownerAt = owner && spot(owner.id, task.zoneSlug, 1);
+  if (owner && ownerAt) {
+    markers.push(volunteerMarker(owner, ownerAt, { color, onTask: true, needsHelp: needsResponse(task) || isQuiet(task) }));
   }
   task.helpers.forEach(({ volunteerId: id }, i) => {
     const v = volunteers[id];
-    const live = placeOf(positions, id, now);
-    const spot = live?.at ?? (v && zoneSpot(v.zoneSlug, i + 2));
-    if (v && spot) markers.push({ kind: 'volunteer', id, at: spot, color, initials: initials(v.name), onTask: true, stale: live?.stale });
+    const at = v && spot(id, v.zoneSlug, i + 2);
+    if (v && at) markers.push(volunteerMarker(v, at, { color, onTask: true }));
   });
   candidates?.forEach((id, i) => {
     const v = volunteers[id];
-    const live = placeOf(positions, id, now);
-    const spot = live?.at ?? (v && zoneSpot(v.zoneSlug, task.helpers.length + i + 2));
+    const at = v && spot(id, v.zoneSlug, task.helpers.length + i + 2);
     const on = id === picked;
-    if (v && spot) markers.push({ kind: 'volunteer', id, at: spot, color: on ? theme.tint : theme.textTertiary, initials: initials(v.name), onTask: on, stale: live?.stale });
+    if (v && at) markers.push(volunteerMarker(v, at, { color: on ? theme.tint : theme.textTertiary, onTask: on }));
   });
 
   const pickable = new Set(candidates);

@@ -242,6 +242,7 @@ export type Database = {
           delivery: string | null;
           language: string | null;
           message_id: string;
+          pushed_at: string | null;
           read_at: string | null;
           recipient_id: string;
         };
@@ -252,6 +253,7 @@ export type Database = {
           delivery?: string | null;
           language?: string | null;
           message_id: string;
+          pushed_at?: string | null;
           read_at?: string | null;
           recipient_id: string;
         };
@@ -262,6 +264,7 @@ export type Database = {
           delivery?: string | null;
           language?: string | null;
           message_id?: string;
+          pushed_at?: string | null;
           read_at?: string | null;
           recipient_id?: string;
         };
@@ -667,6 +670,27 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      push_tokens: {
+        Row: {
+          person_id: string;
+          platform: string | null;
+          token: string;
+          updated_at: string;
+        };
+        Insert: {
+          person_id: string;
+          platform?: string | null;
+          token: string;
+          updated_at?: string;
+        };
+        Update: {
+          person_id?: string;
+          platform?: string | null;
+          token?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       readings: {
         Row: {

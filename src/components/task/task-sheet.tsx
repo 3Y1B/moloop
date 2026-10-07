@@ -1,11 +1,11 @@
-import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
+import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
-import { Type } from '@/constants/theme';
+import { Text } from '@/components/ui/text';
 import { useLookups, useMe, useRouteTo, useSnapshot, useTaskEvents, useTaskStatus } from '@/data/hooks';
 import { clockTime } from '@/lib/format';
 import { confirmedPeopleCount } from '@/lib/lifecycle';
@@ -13,9 +13,9 @@ import { quoteFor } from '@/lib/quote';
 import type { Task } from '@/lib/schema';
 import { taskStatusFor } from '@/lib/status';
 import { useTheme } from '@/hooks/use-theme';
-import { Owner } from './active-task-card';
+import { Owner } from './owner';
 import { PrioritySignal } from './badges';
-import { Head, LogLines, LogSheet, NowLine, type LogEntry } from './task-log';
+import { eventEntry, Head, LogLines, LogSheet, NowLine, type LogEntry } from './task-log';
 
 type SheetProps = {
   /** The head's height, so the collapsed sheet shows exactly it. */
@@ -61,14 +61,15 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
         who: shown.label ? `${by} · ${shown.label}` : by,
         text: `“${shown.text}”`,
         quote: true,
+        icon: { sf: 'quote.bubble.fill', md: 'format_quote', color: theme.text },
         onPress: q.original ? () => setOriginal((o) => !o) : undefined,
       },
-      ...(task.mobilizationId ? [] : [{ id: 'summary', at: task.createdAt, who: 'Moloop', text: task.summary }]),
-      ...events
-        .filter((e) => e.kind !== 'created')
-        .map((e): LogEntry => ({ id: e.id, at: e.at, text: e.text, note: e.note })),
+      ...(task.mobilizationId
+        ? []
+        : [{ id: 'summary', at: task.createdAt, who: 'Moloop', text: task.summary, icon: { sf: 'sparkles', md: 'auto_awesome' } }]),
+      ...events.filter((e) => e.kind !== 'created').map((e) => eventEntry(e, theme)),
     ];
-  }, [task.createdAt, task.reporter, task.summary, task.mobilizationId, events, original]);
+  }, [task.createdAt, task.reporter, task.summary, task.mobilizationId, events, original, theme]);
 
   return (
     <Animated.View key={task.id} entering={FadeIn.duration(220)}>
@@ -79,7 +80,7 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
           <>
             <Head title={task.title} lead={<PrioritySignal priority={task.priority} size={14} />}>
               <View style={styles.where}>
-                <Text style={[styles.text, styles.flex, { color: theme.textSecondary }]} numberOfLines={1}>
+                <Text tone="secondary" style={styles.flex} numberOfLines={1}>
                   {place}
                 </Text>
                 {route && (
@@ -90,24 +91,19 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
                       size={14}
                       color={theme.tint}
                     />
-                    <Text style={[styles.text, styles.minutes, { color: theme.textSecondary }]}>
+                    <Text tone="secondary" tabular>
                       {route.here ? 'You’re here' : `${route.minutes} min`}
                     </Text>
                   </View>
                 )}
                 {route && !route.here && (
-                  <Pressable
-                    accessibilityRole="button"
+                  <Button
+                    variant="plain"
+                    size="inline"
+                    label="Directions"
                     accessibilityLabel={`${route.minutes} minute walk. Directions`}
-                    hitSlop={10}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      router.push({ pathname: '/navigate/[id]', params: { id: task.id } });
-                    }}
-                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-                  >
-                    <Text style={[styles.text, styles.strong, { color: theme.tint }]}>Directions</Text>
-                  </Pressable>
+                    onPress={() => router.push({ pathname: '/navigate/[id]', params: { id: task.id } })}
+                  />
                 )}
               </View>
             </Head>
@@ -121,18 +117,18 @@ export function TaskSheet({ task, onHeadLayout, minHeight, expanded, onExpand }:
       >
         {task.mobilizationId && (
           <View style={styles.brief}>
-            <Text style={[styles.text, { color: theme.text }]}>{task.summary}</Text>
-            <Text style={[styles.small, { color: theme.textSecondary }]}>
+            <Text>{task.summary}</Text>
+            <Text variant="footnote" tone="secondary" style={styles.small}>
               {confirmedPeopleCount(task)} of {task.requiredCount} people committed
             </Text>
             {!!task.requiredSkills?.length && (
-              <Text style={[styles.small, { color: theme.textSecondary }]}>
+              <Text variant="footnote" tone="secondary" style={styles.small}>
                 Required skills: {task.requiredSkills.join(', ')}
               </Text>
             )}
           </View>
         )}
-        <LogLines id={task.id} entries={entries} expanded={expanded} onExpand={onExpand} />
+        <LogLines id={task.id} entries={entries} expanded={expanded} onExpand={onExpand} continues={!!status} />
         {status && <NowLine status={status} />}
       </LogSheet>
     </Animated.View>
@@ -156,6 +152,7 @@ export function FreeSheet({ done, onHeadLayout, minHeight, expanded, onExpand }:
     at: t.resolvedAt ?? t.lastActivityAt,
     // How it ended, as the status says it ("Done", "Handed to medics").
     text: `${taskStatusFor(snapshot.meId, t, snapshot, snapshot.now).label} · ${t.title}`,
+    icon: { sf: 'checkmark.circle.fill', md: 'check_circle', color: theme.success },
     onPress: () => router.push({ pathname: '/task/[id]', params: { id: t.id } }),
   }));
 
@@ -166,7 +163,7 @@ export function FreeSheet({ done, onHeadLayout, minHeight, expanded, onExpand }:
       head={
         <Head title={onBreak ? 'On break' : 'Free'}>
           {!!sub && (
-            <Text style={[styles.text, { color: theme.textSecondary }]} numberOfLines={1}>
+            <Text tone="secondary" numberOfLines={1}>
               {sub}
             </Text>
           )}
@@ -181,11 +178,8 @@ export function FreeSheet({ done, onHeadLayout, minHeight, expanded, onExpand }:
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   where: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  text: { fontSize: Type.body, lineHeight: 21 },
-  strong: { fontWeight: '600' },
   walk: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  minutes: { fontVariant: ['tabular-nums'] },
   owner: { marginTop: 10 },
-  brief: { gap: 6, marginBottom: 12 },
-  small: { fontSize: Type.footnote, lineHeight: 18 },
+  brief: { gap: 6, marginBottom: 16 },
+  small: { lineHeight: 18 },
 });

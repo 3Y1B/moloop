@@ -1,11 +1,15 @@
 import { router } from 'expo-router';
 import { Fragment } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/ui/button';
 import { Card, Separator } from '@/components/ui/card';
+import { Dot } from '@/components/ui/dot';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
-import { Type } from '@/constants/theme';
+import { PageTitle } from '@/components/ui/page-title';
+import { Text } from '@/components/ui/text';
 import { useInbox, useNow, useRepo } from '@/data/hooks';
 import { ago } from '@/lib/format';
 import type { Message, MessageKind } from '@/lib/schema';
@@ -45,17 +49,18 @@ export default function InboxScreen() {
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.background }]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text }]}>Inbox</Text>
-        {!!unread && (
-          <Pressable hitSlop={10} onPress={() => repo.markRead(messages.map((m) => m.id))}>
-            <Text style={[styles.action, { color: theme.tint }]}>Read all</Text>
-          </Pressable>
-        )}
-      </View>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 16 }]}>
+      <PageTitle
+        title="Inbox"
+        right={
+          !!unread && (
+            <Button label="Read all" size="inline" haptic="none" onPress={() => repo.markRead(messages.map((m) => m.id))} />
+          )
+        }
+        style={styles.header}
+      />
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}>
       {messages.length === 0 ? (
-        <Text style={[styles.empty, { color: theme.textSecondary }]}>Nothing yet.</Text>
+        <EmptyState title="Nothing yet." variant="screen" />
       ) : (
         <Card>
           {messages.map((m, i) => (
@@ -88,19 +93,19 @@ function MessageRow({ message: m }: { message: Message }) {
 
   return (
     <Pressable onPress={open} style={({ pressed }) => [styles.row, pressed && m.taskId && { backgroundColor: theme.backgroundSelected }]}>
-      <View style={styles.unreadCol}>{!m.read && <View style={[styles.unread, { backgroundColor: theme.tint }]} />}</View>
+      <View style={styles.unreadCol}>{!m.read && <Dot color={theme.tint} size={6} />}</View>
       <View style={[styles.icon, { backgroundColor: `${color}14` }]}>
         <Icon sf={k.sf} md={k.md} size={15} color={color} />
       </View>
       <View style={styles.body}>
         <View style={styles.topRow}>
-          <Text style={[styles.from, { color: theme.text }, !m.read && styles.bold]} numberOfLines={1}>
+          <Text variant="rowTitle" style={[styles.from, !m.read && styles.bold]} numberOfLines={1}>
             {from}
           </Text>
-          <Text style={[styles.time, { color: theme.textTertiary }]}>{ago(m.at, now)}</Text>
+          <Text variant="meta" tone="tertiary">{ago(m.at, now)}</Text>
           {m.taskId && <Icon sf="chevron.right" md="chevron_right" size={10} color={theme.textTertiary} weight="semibold" />}
         </View>
-        <Text style={[styles.text, { color: m.read ? theme.textSecondary : theme.text }]} numberOfLines={4}>
+        <Text variant="footnote" tone={m.read ? 'secondary' : 'primary'} style={styles.text} numberOfLines={4}>
           {m.body}
         </Text>
         {m.delivery && (
@@ -111,7 +116,7 @@ function MessageRow({ message: m }: { message: Message }) {
               size={12}
               color={theme.textTertiary}
             />
-            <Text style={[styles.deliveryText, { color: theme.textTertiary }]}>
+            <Text variant="caption" tone="tertiary">
               {m.delivery === 'spoken' ? 'Read aloud' : 'Pinged (you were busy)'}
             </Text>
           </View>
@@ -123,21 +128,15 @@ function MessageRow({ message: m }: { message: Message }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 4 },
-  title: { fontSize: Type.hero, fontWeight: '700', letterSpacing: -0.4 },
-  content: { padding: 16 },
-  action: { fontSize: Type.callout, fontWeight: '500' },
-  empty: { textAlign: 'center', marginTop: 60, fontSize: Type.body },
+  header: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 4 },
+  content: { padding: 20 },
   row: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12, paddingRight: 14 },
   unreadCol: { width: 16, alignItems: 'center', paddingTop: 13 },
-  unread: { width: 6, height: 6, borderRadius: 3 },
   icon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   body: { flex: 1, gap: 2 },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  from: { flex: 1, fontSize: Type.body - 1, fontWeight: '500' },
+  from: { flex: 1 },
   bold: { fontWeight: '600' },
-  time: { fontSize: Type.caption },
-  text: { fontSize: Type.callout - 1, lineHeight: 18 },
+  text: { lineHeight: 18 },
   delivery: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  deliveryText: { fontSize: Type.caption - 1 },
 });

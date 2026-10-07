@@ -81,7 +81,7 @@ export function shiftStep(b: Batch) {
       b.shift({ ...s, status: 'completed' });
       if (v.duty === 'off_shift') continue;
       b.volunteer({ ...v, duty: 'off_shift' });
-      b.send(v.id, 'system', `Shift done. Thanks, ${first(v)}!`, { delivery: 'ping' });
+      b.send(v.id, 'system', `Shift done. Thanks, ${first(v)}!`, { delivery: 'ping', quiet: true });
     }
   }
 }

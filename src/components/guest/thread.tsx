@@ -1,30 +1,28 @@
-import { StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import { View } from 'react-native';
 
-import { Type } from '@/constants/theme';
+import { LogLine, type LogIcon } from '@/components/task/task-log';
 import type { GuestThreadEntry } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
 
 const WHO: Record<GuestThreadEntry['from'], string> = { guest: 'You', ai: 'Moloop', staff: 'Staff' };
 
-/** What was said, by whom, oldest first. A plain list: no bubbles. */
+/** What was said, by whom, oldest first: the same rail the crew's log uses, so a task reads alike on every phone. */
 export function Thread({ entries }: { entries: GuestThreadEntry[] }) {
   const theme = useTheme();
+  const icon: Record<GuestThreadEntry['from'], LogIcon> = {
+    guest: { sf: 'person.fill', md: 'person', color: theme.text },
+    ai: { sf: 'sparkles', md: 'auto_awesome' },
+    staff: { sf: 'person.crop.circle.badge.checkmark', md: 'person_check', color: theme.tint },
+  };
   return (
-    <View style={styles.list}>
+    <View>
       {entries.map((e, i) => (
-        <Animated.View key={`${e.at}-${i}`} entering={FadeIn.duration(200)} style={styles.entry}>
-          <Text style={[styles.who, { color: theme.textSecondary }]}>{e.name ?? WHO[e.from]}</Text>
-          <Text style={[styles.text, { color: theme.text }]} selectable>{e.text}</Text>
-        </Animated.View>
+        <LogLine
+          key={`${e.at}-${i}`}
+          entry={{ id: `${e.at}-${i}`, at: e.at, who: e.name ?? WHO[e.from], text: e.text, quote: true, icon: icon[e.from] }}
+          last={i === entries.length - 1}
+        />
       ))}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  list: { gap: 16 },
-  entry: { gap: 4 },
-  who: { fontSize: Type.footnote, lineHeight: 16 },
-  text: { fontSize: Type.body, lineHeight: 21 },
-});

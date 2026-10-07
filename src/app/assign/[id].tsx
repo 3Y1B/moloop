@@ -1,16 +1,15 @@
 import { useLocalSearchParams } from 'expo-router';
 import { Fragment } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import { CandidateRow } from '@/components/lead/candidate-row';
-import { EmptyCard } from '@/components/lead/group';
 import { attempt, Sheet, SheetTitle } from '@/components/lead/sheet';
 import { TaskLine } from '@/components/lead/task-head';
 import { Button } from '@/components/ui/button';
 import { Card, Separator } from '@/components/ui/card';
-import { Type } from '@/constants/theme';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Text } from '@/components/ui/text';
 import { useCandidates, useLookups, useMe, useRepo, useSnapshot, useTask } from '@/data/hooks';
-import { useTheme } from '@/hooks/use-theme';
 import { isBusy, isHeld } from '@/lib/lifecycle';
 import { goBack } from '@/lib/navigation';
 
@@ -27,7 +26,6 @@ export default function AssignSheet() {
   const { id, mode: rawMode } = useLocalSearchParams<{ id: string; mode?: Mode }>();
   const mode: Mode = rawMode === 'backup' || rawMode === 'reassign' ? rawMode : 'assign';
   const repo = useRepo();
-  const theme = useTheme();
   const me = useMe();
   const task = useTask(id);
   const { tasks } = useSnapshot();
@@ -56,12 +54,12 @@ export default function AssignSheet() {
       <TaskLine task={task} />
       {held?.reason && (
         <Card style={styles.reason}>
-          <Text style={[styles.reasonLabel, { color: theme.textSecondary }]}>Why the AI escalated it</Text>
-          <Text style={[styles.reasonText, { color: theme.text }]}>{held.reason}</Text>
+          <Text variant="label">Why the AI escalated it</Text>
+          <Text>{held.reason}</Text>
         </Card>
       )}
       {ranked.length === 0 ? (
-        <EmptyCard text="No one on duty" />
+        <EmptyState title="No one on duty" variant="card" />
       ) : (
         <Card>
           {ranked.map(({ c, busy }, i) => {
@@ -94,6 +92,4 @@ export default function AssignSheet() {
 
 const styles = StyleSheet.create({
   reason: { padding: 14, gap: 4 },
-  reasonLabel: { fontSize: Type.footnote, fontWeight: '600' },
-  reasonText: { fontSize: Type.body },
 });
