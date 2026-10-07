@@ -17,7 +17,7 @@ const REPLY_PATTERNS: [ReplyKind, RegExp][] = [
 
 // Keyword → team. First match wins.
 const TRIAGE: { team: TeamSlug; re: RegExp }[] = [
-  { team: 'first-aid', re: /(collapsed|faint|bleed|injur|hurt|dizzy|heat|unconscious|sting|vomit|asthma|breath|blister|plaster|sunscreen)/i },
+  { team: 'first-aid', re: /(collapsed|faint|bleed|injur|hurt|dizzy|heat|unconscious|sting|vomit|asthma|breath|blister|plaster|sunscreen|allerg|anaphyla|epi-?pen|swelling|swollen|throat)/i },
   { team: 'welfare', re: /(lost (child|kid)|can'?t find (my|their)|crying|harass|unsafe|lost property)/i },
   { team: 'crowd', re: /(queue|crowd|crush|gate|barrier|packed)/i },
   { team: 'security', re: /(fight|theft|stole|weapon|aggressive|drunk)/i },
@@ -25,7 +25,8 @@ const TRIAGE: { team: TeamSlug; re: RegExp }[] = [
   { team: 'vendors', re: /(vendor|stall|food|gas|bbq)/i },
   { team: 'ops', re: /(spill|bin|power|light|toilet|cable|water station|leak)/i },
 ];
-const P1 = /(unconscious|unresponsive|not breathing|not moving|isn'?t moving|not responding|isn'?t responding|collapsed|lost (child|kid)|weapon|crush)/i;
+// Swelling lips, tongue or throat: a possible anaphylaxis, which the models read as P2 about one run in three.
+const P1 = /(unconscious|unresponsive|not breathing|not moving|isn'?t moving|not responding|isn'?t responding|collapsed|lost (child|kid)|weapon|crush|anaphyla|epi-?pen|(lips?|tongue|throat|face) (is |are )?(swelling|swollen|closing)|swelling (up )?(lips?|tongue|throat)|throat (is )?closing)/i;
 /** First aid that can wait: P3 rather than P2. */
 const MINOR = /(blister|plaster|sunscreen|band-?aid|graze|ice pack)/i;
 /** Does added detail sound worse? */
@@ -46,6 +47,12 @@ export const GUEST_ANSWERS: { re: RegExp; answer: string }[] = [
   { re: /lost property|lost my|left my/i, answer: 'Lost property is at Info, the tent just inside Gate B, open until 11pm. Bring ID to collect.' },
   { re: /\b(times?|set|on next|playing|line-?up|schedule)\b/i, answer: 'Next up: Oval Stage at 5:30pm, Track Stage at 6:00pm. Full times are on the board at Info.' },
   { re: /\b(map|where is|where's|how do i get)\b/i, answer: 'Info is the tent just inside Gate B, on the left. Food Alley runs between the oval and the track.' },
+  // General advice, so "what do I do if my friend feels faint later?" gets an answer rather than a lead's decision.
+  // Keywords never give it: routineAnswer holds back anything that sounds medical, so only the AI quotes it.
+  {
+    re: /\bfeel(s|ing)? (faint|dizzy|unwell|sick)\b/i,
+    answer: 'If someone feels faint or unwell: sit them down in the shade, give them water, and ask any volunteer in a hi-vis vest, or go to First Aid on the south walk. If they collapse or stop responding, report it straight away.',
+  },
 ];
 
 /** Stand-in for triage: keyword → team + priority. */

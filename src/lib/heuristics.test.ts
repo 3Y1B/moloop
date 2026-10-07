@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { authorityFor, heuristicTriage, soundsUrgent } from './heuristics';
+import { authorityFor, heuristicTriage, soundsCritical, soundsUrgent } from './heuristics';
 
 describe('authorityFor: who decides before a volunteer is sent', () => {
   it.each([
@@ -34,3 +34,20 @@ describe('soundsUrgent', () => {
     expect(soundsUrgent('where can I get help finding the toilets?')).toBe(false);
   });
 });
+
+describe('soundsCritical', () => {
+  it.each([
+    'my friend ate something with peanuts and her lips are swelling',
+    'his throat is closing up',
+    'she needs her epipen',
+    'I think it is anaphylaxis',
+  ])('treats a possible anaphylaxis as P1: “%s”', (text) => {
+    expect(soundsCritical(text)).toBe(true);
+    expect(heuristicTriage(text).team).toBe('first-aid');
+  });
+
+  it('not a swollen ankle', () => {
+    expect(soundsCritical('I twisted my ankle and it is swollen')).toBe(false);
+  });
+});
+

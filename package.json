@@ -68,6 +68,7 @@
     "repo:check": "bun scripts/check-repo.ts",
     "commands:check": "bun scripts/check-commands.ts",
     "models:check": "bun scripts/check-models.ts",
+    "intake:check": "bun scripts/check-intake.ts",
     "voice:check": "bun scripts/check-voice.ts",
     "presence:check": "bun scripts/check-presence.ts",
     "db:types": "supabase gen types typescript --local > src/lib/database.types.ts",

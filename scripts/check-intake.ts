@@ -4,19 +4,29 @@
  * replays its `setup`, sends its message, then reads back what landed: an answer, a task for the allocator, a task
  * held for a lead or Mo, or an update to an open task.
  *
- * Needs the local stack (`supabase start`, `bun scripts/seed.ts`) and OPENAI_API_KEY. It empties tasks and requests,
- * so it refuses any database that isn't on localhost.
+ * Needs OPENAI_API_KEY (.env.local) and the local stack, which it finds itself through `supabase status`. It empties
+ * tasks and requests, so it only ever uses the local database, whatever .env.local points at.
  *
- *   DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
- *   SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_SECRET_KEY=<local secret> bun scripts/check-intake.ts [id-or-group …]
+ *   supabase start && bun scripts/seed.ts        once (seed.ts with the local SUPABASE_URL and SUPABASE_SECRET_KEY)
+ *   npm run intake:check                          all scenarios
+ *   npm run intake:check -- sec-fight medical     some, by id or group
+ *   npm run intake:check -- --say "two guys fighting by the bar" [--from kai] [--zone bar]
+ *                                                 one message of your own: where it lands, nothing checked
  */
 import { createClient } from '@supabase/supabase-js';
 
 import { SCENARIOS, type Route, type Said } from './intake-scenarios';
 
 process.env.USE_LIVE_MODELS = '1';
-const local = /@(127\.0\.0\.1|localhost):/.test(process.env.DATABASE_URL ?? '');
-if (!local) throw new Error('DATABASE_URL must point at the local Supabase: this script empties tasks and requests');
+
+// The local stack, never what .env.local points at: this empties tasks and requests.
+// The app's tsconfig has no Bun types; this is all the script uses.
+declare const Bun: { spawnSync(cmd: string[]): { exitCode: number; stdout: { toString(): string } } };
+const status = Bun.spawnSync(['supabase', 'status', '-o', 'json']);
+if (status.exitCode !== 0) throw new Error('Local Supabase isn\'t running: start Docker, then `supabase start` and `bun scripts/seed.ts`');
+const stack: { DB_URL: string; API_URL: string; SECRET_KEY: string } = JSON.parse(status.stdout.toString());
+if (!/@(127\.0\.0\.1|localhost):/.test(stack.DB_URL)) throw new Error(`Not a local database: ${stack.DB_URL}`);
+process.env.DATABASE_URL = stack.DB_URL;
 
 const C = await import('../src/lib/commands');
 const { understandRequest } = await import('../src/server/understand');
@@ -33,7 +43,7 @@ if (!crew.size) throw new Error('No crew: run bun scripts/seed.ts first');
 
 /** The festival-goer every request comes from: an auth user, as on a phone. */
 async function guestId() {
-  const admin = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, { auth: { persistSession: false } });
+  const admin = createClient(stack.API_URL, stack.SECRET_KEY, { auth: { persistSession: false } });
   const email = 'guest@moloop.test';
   const [found] = await sql()<{ id: string }[]>`select id from auth.users where email = ${email}`;
   if (found) return found.id;
@@ -90,8 +100,19 @@ async function outcome(before: Set<string>, requestId: string | undefined): Prom
 
 // ── run ──
 
-const only = process.argv.slice(2);
-const chosen = only.length ? SCENARIOS.filter((s) => only.includes(s.id) || only.includes(s.group)) : SCENARIOS;
+const args = process.argv.slice(2);
+const flag = (name: string) => {
+  const i = args.indexOf(name);
+  return i >= 0 ? args.splice(i, 2)[1] : undefined;
+};
+const typed = flag('--say');
+const from = flag('--from') ?? 'guest';
+const zone = flag('--zone');
+if (from !== 'guest' && !crew.has(from)) throw new Error(`No crew member "${from}". Try: guest, ${[...crew.keys()].slice(0, 8).join(', ')}, …`);
+// --say: one message of your own, every route allowed, so it only reports where it went.
+const yours = typed && { id: 'yours', group: 'your message', from, text: typed, zone, route: ['answer', 'allocator', 'lead', 'mo', 'joined'] as Route[] };
+const chosen = yours ? [yours] : args.length ? SCENARIOS.filter((s) => args.includes(s.id) || args.includes(s.group)) : SCENARIOS;
+if (!chosen.length) throw new Error(`No scenario or group named ${args.join(', ')}`);
 const list = <T>(x: T | T[]) => (Array.isArray(x) ? x : [x]);
 const failed: string[] = [];
 let group = '';

@@ -22,7 +22,7 @@ export const TEAMS = {
   welfare: 'A lost or separated child or adult, someone vulnerable, distressed, harassed, followed or feeling unsafe, or lost property',
   crowd: 'Too many people in one place, pushing or surging, long or blocked queues, gates, barriers, exits, evacuation routes',
   security: 'A fight, theft, weapon, threat, trespass or forced entry, or an aggressive or very drunk person who is not hurt',
-  info: 'Only a question: directions, times, accessibility, tickets, general information. If something needs doing, the team that does it',
+  info: 'Questions and the audience desk: directions, times, accessibility, tickets, refunds, and festival-goers\' complaints or feedback. If something needs doing on site, the team that does it',
   artist: 'Performers, bands, their crew or guests; backstage, green room, stage management, set times, riders',
   vendors: 'Food and drink stalls and their staff: gas, cooking, stock, payments, stallholder complaints',
   ops: 'Facilities and infrastructure: power, lighting, sound or PA, spills, bins, toilets, water, cables, fencing, weather damage',
