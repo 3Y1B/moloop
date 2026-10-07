@@ -202,6 +202,7 @@ export function toTask(row: TaskRow, refs: Refs, reporter: Reporter = toReporter
     mobilizationId: row.mobilization_id,
     mobilizationStepKey: row.mobilization_step_key,
     requiredSkills: row.required_skills ?? [],
+    declinedIds: row.declined_ids ?? [],
   };
 }
 

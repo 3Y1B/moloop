@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { Batch, type World } from './batch';
 import * as C from './commands';
 import type { Triage } from './ai';
-import type { GuestRequest, Proposal, Task, Volunteer } from './schema';
+import { isBusy } from './lifecycle';
+import type { GuestRequest, Mobilization, Proposal, Task, Volunteer } from './schema';
 
 const NOW = 1_800_000_000_000;
 const MIN = 60_000;
@@ -150,7 +151,7 @@ describe('manual helpers and automatic recruitment share one assignment', () => 
   });
 
   it('leaves a visible staffing gap rather than automatically recruit busy, off-team or unqualified helpers', () => {
-    const initial = ready({ requiredCount: 3 });
+    const initial = ready({ requiredCount: 3, mobilizationId: 'storm' });
     const b = crew(initial);
     b.volunteers.selected = person('selected', { skills: [] });
     b.volunteers.other = person('other', { skills: ['radio-trained'], teamSlug: 'crowd' });
@@ -574,5 +575,121 @@ describe('guestAddDetail: a festival-goer adds detail in their own language', ()
     expect(b.tasks.collapsed.summary).toMatch(/Update: Lleva una camiseta roja$/);
     expect(b.events).toContainEqual(expect.objectContaining({ kind: 'note', text: 'Detail from the festival-goer', note: 'Lleva una camiseta roja' }));
     expect(b.messages).toContainEqual(expect.objectContaining({ recipientId: 'priya', body: 'Update: “Lleva una camiseta roja”' }));
+  });
+});
+
+describe('a mobilization step stays staffed (audit D1-D6, S1)', () => {
+  const plan = (peopleNeeded: number): Mobilization => ({
+    id: 'storm', title: 'Severe storm, Oval Stage', status: 'proposed', rationale: 'Wind over the limit', relatedPlaybooks: [],
+    urgency: 'P1', zoneSlug: 'food-alley', evidence: null, analysisRunId: null, playbookSlug: null, createdAt: NOW,
+    decidedById: null, decidedAt: null,
+    steps: [{ stepKey: 'cover', teamSlug: 'first-aid', peopleNeeded, reason: 'Ready for injuries', candidates: [], title: 'Stand by at the stage' }],
+  });
+  /** First Aid: `free` people free, plus priya busy on the collapse. */
+  function venue(free: string[], peopleNeeded = 4) {
+    const b = festival([task()]);
+    for (const id of free) b.volunteers[id] = person(id);
+    b.mobilizations.storm = plan(peopleNeeded);
+    return b;
+  }
+  const step = (b: Batch) => b.all().find((t) => t.mobilizationId === 'storm')!;
+
+  it('approved with 2 free of 4 needed: 2 go, the other 2 join as people free up', () => {
+    const b = venue(['ana', 'kai']);
+    C.approveMobilization(b, 'mo', 'storm');
+    expect(step(b).assigneeId).toBeTruthy();
+    expect(step(b).helpers).toHaveLength(1);
+
+    C.reply(b, 'priya', 'collapsed', 'done');
+
+    expect(step(b).helpers.map((h) => h.volunteerId)).toContain('priya');
+    expect(b.messages).toContainEqual(expect.objectContaining({ recipientId: 'priya', kind: 'backup' }));
+  });
+
+  it('a step nobody could take is taken by the next person to free up', () => {
+    const b = venue([], 1);
+    C.approveMobilization(b, 'mo', 'storm');
+    expect(step(b)).toMatchObject({ status: 'open', assigneeId: null });
+
+    C.reply(b, 'priya', 'collapsed', 'done');
+
+    expect(step(b)).toMatchObject({ status: 'assigned', assigneeId: 'priya' });
+  });
+
+  it('a helper cannot mark it done before accepting', () => {
+    const b = venue(['ana', 'kai'], 2);
+    C.approveMobilization(b, 'mo', 'storm');
+    const t = step(b);
+    const helper = t.helpers[0].volunteerId;
+    C.reply(b, t.assigneeId!, t.id, 'accept');
+
+    expect(() => C.reply(b, helper, t.id, 'done')).toThrow(/Accept/);
+    expect(step(b).status).toBe('accepted');
+    C.reply(b, helper, t.id, 'accept');
+    C.reply(b, helper, t.id, 'done');
+    expect(step(b).status).toBe('resolved');
+  });
+
+  it('a helper declining is freed and the slot goes to someone else', () => {
+    const b = venue(['ana', 'kai', 'tom'], 2);
+    C.approveMobilization(b, 'mo', 'storm');
+    const helper = step(b).helpers[0].volunteerId;
+
+    C.reply(b, helper, step(b).id, 'decline');
+
+    expect(step(b).helpers).toHaveLength(1);
+    expect(step(b).helpers[0].volunteerId).not.toBe(helper);
+  });
+
+  it('the owner declining hands it to a helper who already accepted', () => {
+    const b = venue(['ana', 'kai'], 2);
+    C.approveMobilization(b, 'mo', 'storm');
+    const t = step(b);
+    const owner = t.assigneeId!;
+    const helper = t.helpers[0].volunteerId;
+    C.reply(b, helper, t.id, 'accept');
+
+    C.reply(b, owner, t.id, 'decline');
+
+    expect(step(b)).toMatchObject({ status: 'accepted', assigneeId: helper, helpers: [] });
+    expect(b.messages).toContainEqual(expect.objectContaining({ recipientId: helper, kind: 'task' }));
+  });
+
+  it('the owner declining with nobody accepted lets the helpers go and restaffs the step', () => {
+    const b = venue(['ana', 'kai', 'tom'], 2);
+    C.approveMobilization(b, 'mo', 'storm');
+    const t = step(b);
+    const owner = t.assigneeId!;
+    const asked = t.helpers[0].volunteerId;
+
+    C.reply(b, owner, t.id, 'decline');
+
+    expect(b.messages).toContainEqual(expect.objectContaining({ recipientId: asked, body: expect.stringMatching(/You're off/) }));
+    expect(step(b).assigneeId).toBeTruthy();
+    expect(step(b).assigneeId).not.toBe(owner);
+  });
+
+  it('stand down cancels its open tasks and frees their people', () => {
+    const b = venue(['ana', 'kai'], 2);
+    C.approveMobilization(b, 'mo', 'storm');
+    const on = b.onIt(step(b));
+
+    C.standDown(b, 'mo', 'storm', 'stood_down');
+
+    expect(step(b)).toMatchObject({ status: 'cancelled', resolution: 'cancelled' });
+    expect(b.mobilizations.storm.status).toBe('stood_down');
+    for (const id of on) expect(isBusy(b.all(), id)).toBe(false);
+  });
+
+  it('is over once all its tasks are', () => {
+    const b = venue(['ana'], 1);
+    C.approveMobilization(b, 'mo', 'storm');
+    const t = step(b);
+    C.reply(b, t.assigneeId!, t.id, 'accept');
+    C.reply(b, t.assigneeId!, t.id, 'done');
+
+    C.schedulerStep(b);
+
+    expect(b.mobilizations.storm.status).toBe('stood_down');
   });
 });

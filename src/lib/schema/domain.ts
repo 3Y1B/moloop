@@ -147,6 +147,8 @@ export type Task = {
   mobilizationStepKey?: string | null;
   /** Hard qualifications for a mobilization action, preserved through reassignment. */
   requiredSkills?: string[];
+  /** Who said no to it, as owner or helper. Nobody offers it to them again. */
+  declinedIds?: string[];
 };
 
 export type TaskResolution = 'done' | 'handed_over' | 'cancelled';

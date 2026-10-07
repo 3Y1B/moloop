@@ -965,6 +965,7 @@ export type Database = {
           assignee_id: string | null;
           category: Database["public"]["Enums"]["incident_category"];
           created_at: string;
+          declined_ids: string[];
           escalation: Json | null;
           eta_at: string | null;
           handled_by: Database["public"]["Enums"]["handled_by"];
@@ -1002,6 +1003,7 @@ export type Database = {
           assignee_id?: string | null;
           category: Database["public"]["Enums"]["incident_category"];
           created_at?: string;
+          declined_ids?: string[];
           escalation?: Json | null;
           eta_at?: string | null;
           handled_by: Database["public"]["Enums"]["handled_by"];
@@ -1039,6 +1041,7 @@ export type Database = {
           assignee_id?: string | null;
           category?: Database["public"]["Enums"]["incident_category"];
           created_at?: string;
+          declined_ids?: string[];
           escalation?: Json | null;
           eta_at?: string | null;
           handled_by?: Database["public"]["Enums"]["handled_by"];

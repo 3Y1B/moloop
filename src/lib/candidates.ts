@@ -35,7 +35,7 @@ export const SKILL_LABEL: Record<string, string> = {
 
 /** Only what the scoring reads: lets a mobilization step rank candidates before any real Task exists. */
 export type Rankable = Pick<Task, 'category' | 'zoneSlug' | 'reporter' | 'helpers' | 'assigneeId' | 'teamSlug'> &
-  Pick<Partial<Task>, 'id' | 'mobilizationId' | 'requiredSkills'>;
+  Pick<Partial<Task>, 'id' | 'mobilizationId' | 'requiredSkills' | 'declinedIds'>;
 
 const FIRST_AID = 'first-aid-cert';
 
@@ -99,9 +99,14 @@ function assess(
   };
 }
 
-/** Volunteers on duty and not already on this task. */
+/** Volunteers on duty, not already on this task and not one who said no to it. */
 export function eligible(task: Rankable, volunteers: Volunteer[], exclude: string[] = []) {
-  const skip = new Set([...exclude, ...task.helpers.map((h) => h.volunteerId), ...(task.assigneeId ? [task.assigneeId] : [])]);
+  const skip = new Set([
+    ...exclude,
+    ...(task.declinedIds ?? []),
+    ...task.helpers.map((h) => h.volunteerId),
+    ...(task.assigneeId ? [task.assigneeId] : []),
+  ]);
   return volunteers.filter((v) => v.role === 'volunteer' && v.duty === 'on_duty' && !skip.has(v.id));
 }
 

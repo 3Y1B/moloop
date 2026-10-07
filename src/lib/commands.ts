@@ -87,19 +87,26 @@ export function reply(b: Batch, actorId: string, taskId: string, kind: ReplyKind
   const mo = b.coordinator();
   if (!task || !me) throw new CommandError('not_found', `No task ${taskId}`);
 
-  // A recruited helper's own accept/decline on their slot, independent of the task's own status.
+  // A recruited helper's own accept/decline on their slot, independent of the task's own status. They can only finish
+  // it once they've accepted.
   const helperEntry = task.helpers.find((h) => h.volunteerId === actorId);
+  if (helperEntry && kind === 'done' && helperEntry.status !== 'accepted')
+    throw new CommandError('forbidden', `Accept task ${taskId} before marking it done`);
   if (helperEntry && kind !== 'done') {
     if (kind !== 'accept' && kind !== 'decline')
       throw new CommandError('forbidden', `A helper can only accept, decline or finish task ${taskId}`);
     const ht = applyHelperReply(task, actorId, kind, b.now);
     if (!ht) throw new CommandError('conflict', `Cannot ${kind} task ${taskId}`);
-    b.task(ht.task);
-    b.ev(taskId, kind === 'decline' ? 'reassigned' : 'reply', ht.text, b.actor(me.id), {
+    b.task(kind === 'decline' ? declinedBy(ht.task, actorId) : ht.task);
+    b.ev(taskId, kind === 'decline' ? 'reassigned' : 'reply', `${first(me)}: ${ht.text}`, b.actor(me.id), {
       reply: kind,
       note,
     });
-    if (kind === 'decline') b.send(me.id, 'system', `Declined: ${task.title}.`, { taskId });
+    if (kind === 'decline') {
+      b.send(me.id, 'system', `Declined: ${task.title}.`, { taskId });
+      freeUp(b, me.id);
+      staffShort(b);
+    }
     return;
   }
 
@@ -126,7 +133,7 @@ export function reply(b: Batch, actorId: string, taskId: string, kind: ReplyKind
     });
     if (owner) b.send(owner.id, 'escalation', `${first(me)} asked for help: ${task.title}.`, { taskId });
   }
-  if (kind === 'decline') b.ev(taskId, 'reassigned', 'Back in the pool for reassignment', AGENT);
+  if (kind === 'decline') ownerDeclined(b, declinedBy(b.tasks[taskId], me.id), me);
   // Done from anyone resolves it for everyone on it; each of them pulls their next queued task.
   if (kind === 'done') {
     for (const id of b.onIt(task)) {
@@ -134,7 +141,50 @@ export function reply(b: Batch, actorId: string, taskId: string, kind: ReplyKind
       freeUp(b, id);
     }
   }
-  if (kind === 'decline') freeUp(b, me.id);
+  if (kind === 'decline') {
+    freeUp(b, me.id);
+    staffShort(b);
+  }
+}
+
+const declinedBy = (task: Task, id: string): Task => ({
+  ...task,
+  declinedIds: [...new Set([...(task.declinedIds ?? []), id])],
+});
+
+/**
+ * The owner said no. An accepted helper takes it over. Otherwise anyone still only asked is let go, and the task goes
+ * back to be staffed: a mobilization step by `staffShort`, anything else to its lead.
+ */
+function ownerDeclined(b: Batch, task: Task, by: Volunteer) {
+  const next = task.helpers.find((h) => h.status === 'accepted');
+  if (next) {
+    const owner = b.volunteers[next.volunteerId];
+    b.task({
+      ...task,
+      status: 'accepted',
+      assigneeId: next.volunteerId,
+      assignedAt: b.now,
+      etaAt: b.now + POLICY.etaMs[task.priority],
+      helpers: task.helpers.filter((h) => h !== next),
+    });
+    b.ev(task.id, 'reassigned', `${first(by)} declined. ${owner?.name ?? 'A helper'} leads it now`, AGENT);
+    b.send(next.volunteerId, 'task', `${first(by)} dropped out. You're leading: ${task.title}.`, {
+      taskId: task.id,
+      delivery: 'spoken',
+    });
+    return;
+  }
+  const asked = task.helpers.map((h) => h.volunteerId);
+  b.task({ ...task, helpers: [] });
+  b.ev(task.id, 'reassigned', 'Back in the pool for reassignment', AGENT);
+  for (const id of asked) {
+    b.send(id, 'system', `You're off “${task.title}”.`, { taskId: task.id });
+    freeUp(b, id);
+  }
+  if (task.mobilizationId) return;
+  const lead = b.leadFor(task.teamSlug) ?? b.coordinator();
+  if (lead) b.send(lead.id, 'escalation', `${first(by)} declined: ${task.title}.`, { taskId: task.id });
 }
 
 /** On duty during a rostered shift checks them into it (lib/shifts.ts). */
@@ -879,17 +929,47 @@ export function place(
     busy ? `New task queued: ${task.title}. Check the app.` : `New task: ${task.title}. ${task.summary}`,
     { taskId: task.id, delivery: busy ? 'ping' : 'spoken' },
   );
-  const joining = final.helpers.filter((h) => !before.some((e) => e.volunteerId === h.volunteerId));
+  announceHelpers(b, final, before, actor, !busy);
+}
+
+/** Tells each helper new since `before` where to go, and the owner (when they're on it, not queued) who's coming. */
+function announceHelpers(b: Batch, task: Task, before: HelperAssignment[], actor: Actor, tellOwner: boolean) {
+  const owner = task.assigneeId ? b.volunteers[task.assigneeId] : undefined;
+  const joining = task.helpers.filter((h) => !before.some((e) => e.volunteerId === h.volunteerId));
   for (const h of joining) {
     b.ev(task.id, 'helper_added', `${b.volunteers[h.volunteerId]?.name ?? 'Someone'} recruited to help`, actor);
-    b.send(h.volunteerId, 'backup', `Help ${first(v)}: ${task.title}.`, {
+    b.send(h.volunteerId, 'backup', `Help ${first(owner)}: ${task.title}.`, {
       taskId: task.id,
       delivery: 'spoken',
     });
   }
-  if (joining.length && !busy) {
+  if (joining.length && tellOwner && owner) {
     const names = joining.map((h) => first(b.volunteers[h.volunteerId]));
-    b.send(volunteerId, 'backup', `${names.join(', ')} ${names.length > 1 ? 'are' : 'is'} joining you.`, { taskId: task.id });
+    b.send(owner.id, 'backup', `${names.join(', ')} ${names.length > 1 ? 'are' : 'is'} joining you.`, { taskId: task.id });
+  }
+}
+
+/**
+ * Fills what's still short whenever someone may have come free (S1, D4): a mobilization step nobody could take gets
+ * the best free person on its team, and a task under its `requiredCount` gets helpers for its empty slots (after a
+ * decline or a release). `scope` limits it to some tasks (the scheduler's tests).
+ */
+function staffShort(b: Batch, scope?: Set<string> | null) {
+  for (const task of b.all()) {
+    if (scope && !scope.has(task.id)) continue;
+    if (task.status === 'open' && !task.assigneeId && task.mobilizationId) {
+      const top = rankCandidates(task, Object.values(b.volunteers), b.all(), {
+        positions: b.positions,
+        limit: 1,
+        now: b.now,
+      })[0];
+      if (top) place(b, task, top.volunteerId, AGENT, 'Freed up');
+    } else if (isActive(task) && task.requiredCount - 1 > task.helpers.length) {
+      const topped = recruitHelpers(b, task, []);
+      if (topped === task) continue;
+      b.task(topped);
+      announceHelpers(b, topped, task.helpers, AGENT, true);
+    }
   }
 }
 
@@ -903,18 +983,7 @@ function recruitHelpers(b: Batch, task: Task, extraExclude: string[]): Task {
     limit: Object.keys(b.volunteers).length,
     now: b.now,
   })
-    .filter((candidate) => {
-      const volunteer = b.volunteers[candidate.volunteerId];
-      return (
-        volunteer.teamSlug === task.teamSlug &&
-        (volunteer.shiftEndsAt == null || volunteer.shiftEndsAt > b.now) &&
-        (task.requiredSkills ?? []).every((skill) => volunteer.skills.includes(skill)) &&
-        !isBusy(
-          b.all().filter((t) => t.id !== task.id),
-          volunteer.id,
-        )
-      );
-    })
+    .filter((candidate) => canHelp(task, b.volunteers[candidate.volunteerId], b.all(), b.now))
     .slice(0, need);
   if (!picks.length) return task;
   const recruited: HelperAssignment[] = picks.map((c) => ({
@@ -958,9 +1027,9 @@ export function rerank(b: Batch, proposalId: string, ranked: ProposalCandidate[]
 function freeUp(b: Batch, volunteerId: string) {
   if (isBusy(b.all(), volunteerId)) return;
   const next = nextQueued(b.all(), volunteerId);
-  if (!next) return;
   // One placement funnel means a queued multi-person task also recruits its helpers when it activates.
-  place(b, next, volunteerId, AGENT, 'Freed up');
+  if (next) place(b, next, volunteerId, AGENT, 'Freed up');
+  else staffShort(b);
 }
 
 function settleProposal(
@@ -1008,6 +1077,7 @@ export function schedulerStep(b: Batch, taskIds?: readonly string[]) {
         const helper = b.volunteers[a.volunteerId];
         b.ev(a.taskId, 'lead_alerted', `${first(helper)} didn't answer. Released.`, SCHEDULER);
         b.send(a.volunteerId, 'system', `You're off “${task.title}”.`, { taskId: a.taskId });
+        freeUp(b, a.volunteerId);
         const lead = b.leadFor(task.teamSlug) ?? mo;
         if (lead)
           b.send(lead.id, 'escalation', `${first(helper)} didn't answer: ${task.title}. Released.`, {
@@ -1059,7 +1129,19 @@ export function schedulerStep(b: Batch, taskIds?: readonly string[]) {
     place(b, sized, pick, AGENT, `auto-assigned, no approval in ${POLICY.autoAssignMs / 1000} s`, [], helpers);
     b.proposal({ ...p, status: 'auto_assigned', volunteerId: pick, decidedAt: b.now });
   }
+  staffShort(b, scope);
+  if (!scope) finishMobilizations(b);
   shiftStep(b);
+}
+
+/** An active mobilization whose tasks are all done or cancelled is over. */
+function finishMobilizations(b: Batch) {
+  for (const m of Object.values(b.mobilizations)) {
+    if (m.status !== 'active') continue;
+    const tasks = b.all().filter((t) => t.mobilizationId === m.id);
+    if (tasks.length && tasks.every((t) => t.status === 'resolved' || t.status === 'cancelled'))
+      b.mobilization({ ...m, status: 'stood_down' });
+  }
 }
 
 // ── mobilization ──
@@ -1172,13 +1254,29 @@ export function rejectMobilization(b: Batch, byId: string, mobilizationId: strin
   b.mobilization({ ...m, status: 'rejected', decidedById: byId, decidedAt: b.now });
 }
 
-/** Close out an active mobilization. Its tasks keep going through their own normal lifecycle, untouched. */
+/** Close out an active mobilization: its unfinished tasks are cancelled and everyone on them is freed. */
 export function standDown(b: Batch, byId: string, mobilizationId: string, outcome: 'stood_down' | 'cancelled') {
   requireMo(b, byId);
   const m = b.mobilizations[mobilizationId];
   if (!m) throw new CommandError('not_found', `No mobilization ${mobilizationId}`);
   if (m.status !== 'active') throw new CommandError('conflict', `Cannot stand down mobilization ${mobilizationId}`);
   b.mobilization({ ...m, status: outcome, decidedById: byId, decidedAt: b.now });
+  const open = b.all().filter((t) => t.mobilizationId === m.id && t.status !== 'resolved' && t.status !== 'cancelled');
+  for (const task of open) {
+    const on = b.onIt(task);
+    b.task({
+      ...task,
+      status: 'cancelled',
+      resolution: 'cancelled',
+      resolvedAt: b.now,
+      etaAt: null,
+      helpers: [],
+      lastActivityAt: b.now,
+    });
+    b.ev(task.id, 'resolved', 'Stood down', b.actor(byId));
+    for (const id of on) b.send(id, 'closed', `Stood down: ${task.title}.`, { taskId: task.id });
+    for (const id of on) freeUp(b, id);
+  }
 }
 
 /** Mobilizations are venue-wide safety decisions; a team lead cannot activate or dismiss one. */

@@ -58,6 +58,7 @@ export const taskRow = (t: Task, ids: Ids) => ({
   mobilization_id: t.mobilizationId,
   mobilization_step_key: t.mobilizationStepKey ?? null,
   required_skills: t.requiredSkills ?? [],
+  declined_ids: t.declinedIds ?? [],
   handled_by: t.handledBy,
 });
 
