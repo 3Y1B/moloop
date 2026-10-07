@@ -37,8 +37,11 @@ function markerView(m: MapMarker, danger: string, priorityColor: Record<string, 
   return { anchor: 'center', view: <Dot color={help ? danger : m.color} initials={m.initials} ring={ring} stale={stale} /> };
 }
 
-/** A person: a dot in their colour with initials, ringed when busy, faded where they were last seen. */
-function Dot({ color, initials, ring, stale }: { color: string; initials?: string; ring?: boolean; stale?: boolean }) {
+/**
+ * A person: a dot in their colour with initials, ringed when busy, faded where they were last seen. Mo's crew list
+ * wears the same dot, so a person reads the same in the list as on the map.
+ */
+export function Dot({ color, initials, ring, stale }: { color: string; initials?: string; ring?: boolean; stale?: boolean }) {
   const theme = useTheme();
   // An ink dot (the crew) inverts with the scheme, so its initials take the background colour.
   const ink = color === theme.text ? theme.background : theme.onTint;
