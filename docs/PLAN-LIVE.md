@@ -91,7 +91,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 
 **Done when:** two phones signed in as a volunteer and a lead see the same task change state within a second, and a silent task nudges once, not once per phone.
 
-**Status:** server side done locally; `SupabaseRepo` is in progress separately.
+**Status, server side:** done locally.
 
 - **Shared commands:** everything `MockRepo` did outside `lifecycle.ts` is now in `src/lib/commands.ts`: pure functions over a `Batch` (`src/lib/batch.ts`). `MockRepo`, the server and the simulator all run them. The mock behaves exactly as before.
 - **Routes:** `POST /api/<repoMethod>` for every command (`src/server/http/commands.ts`). The body is the named args, and the answer is `{}` or the result. Errors are `{ error }` with 400, 401, 403, 404 or 409.
@@ -103,9 +103,12 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
   - A festival's handful of writes a second fits through one lock easily.
 - **Scheduler:** `schedulerStep` every 5 s in the same process (`src/server/scheduler.ts`), under the same lock. A tick that overlaps a command, or a second server, can't double a nudge.
 - **Interpret:** still the keyword heuristic, behind one function (`src/server/interpret.ts`) for phase 3 to swap.
-- **Row mapping:** `src/server/rows.ts`. One `messages` row per recipient, and a proposal is an `agent_actions` row carrying its candidates in `payload`. Every new task gets a `reports` row.
+- **Rows:** the server reads with the phones' mappers (`src/data/supabase/rows.ts`) and writes with `src/server/rows.ts`.
+  - One `messages` row per recipient, so a message id is unique per person.
+  - Every new task gets a `reports` row.
+  - Everyone placed on a task keeps a `task_assignments` row that follows them (notified, accepted, done), and it turns `reassigned` when the task moves off them. That row is how their phone still sees the change.
 - **Timings:** `POLICY_SCALE`, `POLICY_*_MS` and `SCHEDULER_MS` in env shorten them for rehearsals and tests (`.env.example`).
-- **Check:** `npm run check:commands`, against a server started with `POLICY_SCALE=0.05 POLICY_AUTO_ASSIGN_MS=3000 SCHEDULER_MS=500`. It drives every flow over HTTP as real sessions, including a silent task raced by commands and a second scheduler: one nudge, one lead alert. Without the lock it gets six of each.
+- **Check:** `npm run commands:check`, against a server started with `POLICY_SCALE=0.05 POLICY_AUTO_ASSIGN_MS=3000 SCHEDULER_MS=500`. It brings its own throwaway crew and drives every flow over HTTP as real sessions, including a silent task raced by commands and a second scheduler: one nudge, one lead alert. Without the lock it gets six of each.
 - **Not yet:** `/api/reports` (the old pipeline) still writes through supabase-js outside the lock, and doesn't use the shared commands. That gets folded in with phase 3.
 
 ### 3. Real models on Spark

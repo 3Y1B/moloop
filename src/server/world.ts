@@ -1,9 +1,14 @@
 import postgres, { type Sql, type TransactionSql } from 'postgres';
 
-import { Batch, type World } from '@/lib/batch';
 import {
-  deliveryRow, eventRow, messageRow, proposalFromRow, proposalRow, reportRow, requestFromRow, requestRow, statusOf, taskFromRow, taskRow,
-  ts, volunteerFromRow, type ProposalRow, type Refs, type RequestRow, type TaskRow, type VolunteerRow,
+  PROPOSAL_ACTION_SELECT, PROPOSAL_CANDIDATE_SELECT, refsFrom, toGuestRequest, toProposal, toReporter, toTask, toVolunteer,
+  type ProfileRow, type ProposalActionRow, type ProposalCandidateRow, type Row,
+} from '@/data/supabase/rows';
+import { Batch, type World } from '@/lib/batch';
+import type { Database } from '@/lib/database.types';
+import {
+  assignmentStatus, deliveryRow, eventRow, idsFrom, messageRow, peopleOn, proposalRow, reportRow, requestRow, statusFromDuty, taskRow,
+  type Ids,
 } from './rows';
 
 /**
@@ -15,13 +20,27 @@ import {
  * tasks (is this volunteer busy, which queued task comes next, who's the top free pick), so two commands on
  * different tasks can still race. One lock serialises them, which a festival's few writes a second can afford.
  * A tick that overlaps a command waits for it, then sees what it wrote, so a silent task nudges once.
+ *
+ * Rows are read with the phones' own mappers (src/data/supabase/rows.ts) and written with ./rows.ts.
  */
 
 let client: Sql | undefined;
 
-/** Direct Postgres (DATABASE_URL), for transactions supabase-js can't do. prepare: false so a transaction-mode pooler works too. */
+/**
+ * Direct Postgres (DATABASE_URL), for transactions supabase-js can't do. Timestamps come back as the
+ * strings supabase-js would give, so the shared mappers read them. prepare: false so a pooler works too.
+ */
 export function sql(): Sql {
-  client ??= postgres(process.env.DATABASE_URL!, { max: 10, prepare: false, idle_timeout: 20, onnotice: () => {} });
+  client ??= postgres(process.env.DATABASE_URL!, {
+    max: 10, prepare: false, idle_timeout: 20, onnotice: () => {},
+    types: {
+      timestamptz: {
+        to: 1184, from: [1082, 1114, 1184],
+        serialize: (x: unknown) => (x instanceof Date ? x.toISOString() : String(x)),
+        parse: (x: string) => x,
+      },
+    },
+  });
   return client;
 }
 
@@ -30,7 +49,7 @@ export type Load = { taskIds?: string[]; requestIds?: string[]; proposalIds?: st
 
 export type Loaded = {
   world: World;
-  refs: Refs;
+  ids: Ids;
   /** guest_requests.guest_id, for "only your own request". */
   requestOwner: Record<string, string>;
 };
@@ -39,52 +58,50 @@ export type Loaded = {
 export type Owners = { guestId?: string; reporterId?: string };
 
 type Q = Sql | TransactionSql;
+type Enums = Database['public']['Enums'];
+
+type VolunteerRow = ProfileRow & { skills: string[]; phone: string | null };
+type TaskRow = Row<'tasks'> & {
+  reporter_kind: Enums['reporter_kind']; raw_text: string | null; detected_language: string | null; reporter_name: string | null;
+};
+
+const cols = (select: string) => select.split(',').map((c) => c.trim());
 
 export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
   const [teams, zones, volunteers] = await Promise.all([
     q<{ id: string; slug: string; name: string }[]>`select id, slug, name from teams`,
     q<{ id: string; slug: string }[]>`select id, slug from zones`,
     q<VolunteerRow[]>`
-      select p.id, p.full_name, p.role, t.slug as team_slug, z.slug as zone_slug, p.status, p.languages, pp.phone,
+      select p.id, p.full_name, p.role, p.team_id, p.status, p.languages, p.last_known_zone, pp.phone,
         coalesce(array_agg(s.slug order by s.slug) filter (where s.slug is not null), '{}') as skills
       from profiles p
-      left join teams t on t.id = p.team_id
-      left join zones z on z.id = p.last_known_zone
       left join profile_private pp on pp.id = p.id
       left join volunteer_skills vs on vs.volunteer_id = p.id
       left join skills s on s.id = vs.skill_id
-      group by p.id, t.slug, z.slug, pp.phone
+      group by p.id, pp.phone
       order by p.created_at, p.id`,
   ]);
-  const refs: Refs = {
-    teamId: new Map(teams.map((t) => [t.slug, t.id])),
-    teamSlug: new Map(teams.map((t) => [t.id, t.slug])),
-    teamName: new Map(teams.map((t) => [t.slug, t.name])),
-    zoneId: new Map(zones.map((z) => [z.slug, z.id])),
-    zoneSlug: new Map(zones.map((z) => [z.id, z.slug])),
-  };
+  const refs = refsFrom(teams, zones);
 
   const requestRows = await requestsById(q, spec.requestIds ?? []);
-  const proposalRows = await q<ProposalRow[]>`
-    select id, task_id, payload, rationale, status, decided_by, decided_at, auto_assign_at, created_at
-    from agent_actions
+  const actions = await q<ProposalActionRow[]>`
+    select ${q(cols(PROPOSAL_ACTION_SELECT))} from agent_actions
     where type = 'assign_volunteer' and task_id is not null and (status = 'pending' or id = any(${spec.proposalIds ?? []}::uuid[]))
     order by created_at, id`;
+  const candidates = actions.length ? await q<ProposalCandidateRow[]>`
+    select ${q(cols(PROPOSAL_CANDIDATE_SELECT))} from task_assignments
+    where task_id = any(${actions.map((a) => a.task_id!)}::uuid[]) and status = 'proposed'` : [];
+
   const named = new Set(spec.proposalIds ?? []);
   const explicit = [
     ...(spec.taskIds ?? []),
     ...requestRows.flatMap((r) => (r.task_id ? [r.task_id] : [])),
-    ...proposalRows.filter((p) => named.has(p.id)).map((p) => p.task_id),
+    ...actions.filter((a) => named.has(a.id)).map((a) => a.task_id!),
   ];
   const taskRows = await q<TaskRow[]>`
-    select t.id, t.title, t.summary, t.category, t.priority, tm.slug as team_slug, z.slug as zone_slug, t.location_hint, t.status,
-      t.assignee_id, t.handled_by, t.created_at, t.assigned_at, t.eta_at, t.last_activity_at, t.nudge_count, t.last_nudge_at,
-      t.lead_alerted_at, t.resolved_at, t.escalation, t.helper_ids, t.resolution, t.request_id,
-      r.reporter_kind, r.raw_text, r.detected_language, rp.full_name as reporter_name
+    select t.*, r.reporter_kind, r.raw_text, r.detected_language, rp.full_name as reporter_name
     from tasks t
     join reports r on r.id = t.report_id
-    left join teams tm on tm.id = t.team_id
-    left join zones z on z.id = t.zone_id
     left join profiles rp on rp.id = r.reporter_id
     where t.status not in ('resolved', 'cancelled') or t.id = any(${explicit}::uuid[])
     order by t.created_at, t.id`;
@@ -94,28 +111,37 @@ export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
   const more = taskRows.filter((t) => wanted.has(t.id) && t.request_id && !have.has(t.request_id)).map((t) => t.request_id!);
   if (more.length) requestRows.push(...(await requestsById(q, more)));
 
+  const tasks = taskRows.map((t) => toTask(t, refs, toReporter({
+    reporter_kind: t.reporter_kind, raw_text: t.raw_text, detected_language: t.detected_language,
+    reporter: t.reporter_name ? { full_name: t.reporter_name } : null,
+  })));
   return {
     world: {
-      volunteers: byId(volunteers.map(volunteerFromRow)),
-      tasks: byId(taskRows.map(taskFromRow)),
-      proposals: byId(proposalRows.map(proposalFromRow)),
-      requests: byId(requestRows.map(requestFromRow)),
+      volunteers: byId(volunteers.map((v) => toVolunteer(v, refs, { skills: v.skills, phone: v.phone }))),
+      tasks: byId(tasks),
+      // Only pending ones drive anything; a decided one is loaded to say it's already decided.
+      proposals: byId(actions.map((a) => toProposal(a, candidates))),
+      requests: byId(requestRows.map((r) => toGuestRequest(r, refs))),
       teams: Object.fromEntries(teams.map((t) => [t.slug, { name: t.name }])),
     },
-    refs,
+    ids: idsFrom(refs),
     requestOwner: Object.fromEntries(requestRows.map((r) => [r.id, r.guest_id])),
   };
 }
 
-const requestsById = (q: Q, ids: string[]) => (ids.length ? q<RequestRow[]>`
-  select r.id, r.guest_id, r.heard, z.slug as zone_slug, r.location_hint, r.stage, r.ai_answer, r.task_id, r.thread, r.reopened_at, r.created_at
-  from guest_requests r left join zones z on z.id = r.zone_id
-  where r.id = any(${ids}::uuid[])` : Promise.resolve([] as RequestRow[]));
+const requestsById = (q: Q, ids: string[]) =>
+  (ids.length ? q<Row<'guest_requests'>[]>`select * from guest_requests where id = any(${ids}::uuid[])` : Promise.resolve([] as Row<'guest_requests'>[]));
 
 const byId = <T extends { id: string }>(xs: T[]) => Object.fromEntries(xs.map((x) => [x.id, x])) as Record<string, T>;
 
-/** Write what a Batch changed. New tasks get a `reports` row; proposals get their task_assignments. */
-async function save(tx: TransactionSql, { world, refs }: Loaded, b: Batch, owners: Owners) {
+/**
+ * A batch's events (and messages) share one ms. The i-th gets i µs on top, so ordering by created_at keeps the
+ * order the command wrote them in ("moved it to Kai" before "Assigned to Kai"). Reads truncate back to the ms.
+ */
+const inOrder = (at: number, i: number) => new Date(at).toISOString().replace('Z', `${String(i % 1000).padStart(3, '0')}Z`);
+
+/** Write what a Batch changed. New tasks get a `reports` row; proposals and people on tasks get task_assignments. */
+async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch, owners: Owners) {
   const d = b.dirty;
   const json = (v: unknown) => (v == null ? null : tx.json(v as Parameters<typeof tx.json>[0]));
 
@@ -125,26 +151,26 @@ async function save(tx: TransactionSql, { world, refs }: Loaded, b: Batch, owner
     if (!owners.guestId) throw new Error(`request ${id} has no festival-goer`);
     const r = b.requests[id];
     await tx`insert into guest_requests ${tx({
-      id, guest_id: owners.guestId, ...requestRow(r, refs), task_id: null, thread: json(r.thread), created_at: ts(r.createdAt),
+      id, guest_id: owners.guestId, ...requestRow(r, ids), task_id: null, thread: json(r.thread), created_at: new Date(r.createdAt),
     })}`;
   }
 
   for (const id of d.tasks) {
     const t = b.tasks[id];
-    const row = { ...taskRow(t, refs), escalation: json(t.escalation) };
+    const row = { ...taskRow(t, ids), escalation: json(t.escalation) };
     if (id in world.tasks) {
       await tx`update tasks set ${tx(row)} where id = ${id}`;
       continue;
     }
-    const report = reportRow(t, refs, t.reporter.kind === 'festivalgoer' ? null : owners.reporterId ?? null);
+    const report = reportRow(t, ids, t.reporter.kind === 'festivalgoer' ? null : owners.reporterId ?? null);
     await tx`insert into reports ${tx(report)}`;
-    await tx`insert into tasks ${tx({ id, report_id: report.id, created_at: ts(t.createdAt), ...row })}`;
+    await tx`insert into tasks ${tx({ id, report_id: report.id, created_at: new Date(t.createdAt), ...row })}`;
     if (t.requestId) await tx`update guest_requests set report_id = coalesce(report_id, ${report.id}) where id = ${t.requestId}`;
   }
 
   for (const id of d.requests) {
     const r = b.requests[id];
-    await tx`update guest_requests set ${tx({ ...requestRow(r, refs), thread: json(r.thread) })} where id = ${id}`;
+    await tx`update guest_requests set ${tx({ ...requestRow(r, ids), thread: json(r.thread) })} where id = ${id}`;
   }
 
   for (const id of d.proposals) {
@@ -169,10 +195,21 @@ async function save(tx: TransactionSql, { world, refs }: Loaded, b: Batch, owner
     }
   }
 
+  // After proposals, so the pick's approved row is the one that carries on.
+  for (const id of d.tasks) {
+    const before = peopleOn(world.tasks[id]);
+    const after = peopleOn(b.tasks[id]);
+    for (const v of after) {
+      const status = assignmentStatus(b.tasks[id], v);
+      if (status) await follow(tx, id, v, status);
+    }
+    for (const v of before) if (!after.includes(v)) await follow(tx, id, v, 'reassigned');
+  }
+
   for (const id of d.volunteers) {
     const v = b.volunteers[id];
-    const zone = v.zoneSlug ? refs.zoneId.get(v.zoneSlug) ?? null : null;
-    await tx`update profiles set status = ${statusOf(v.duty)}, last_known_zone = ${zone} where id = ${id}`;
+    const zone = v.zoneSlug ? ids.zones.get(v.zoneSlug) ?? null : null;
+    await tx`update profiles set status = ${statusFromDuty(v.duty)}, last_known_zone = ${zone} where id = ${id}`;
   }
 
   if (b.events.length) {
@@ -188,10 +225,21 @@ async function save(tx: TransactionSql, { world, refs }: Loaded, b: Batch, owner
 }
 
 /**
- * A batch's events (and messages) share one ms. The i-th gets i µs on top, so ordering by created_at keeps the
- * order the command wrote them in ("moved it to Kai" before "Assigned to Kai"). Reads truncate back to the ms.
+ * Keep someone's task_assignments row in step with where they stand on a task. One row per person per task,
+ * reused if they come back; candidate rows (proposed, rejected) are the proposal's, not theirs. An approved
+ * pick stays approved until they accept.
  */
-const inOrder = (at: number, i: number) => new Date(at).toISOString().replace('Z', `${String(i % 1000).padStart(3, '0')}Z`);
+async function follow(tx: TransactionSql, taskId: string, volunteerId: string, status: Enums['task_assignment_status']) {
+  const [row] = await tx<{ id: string; status: Enums['task_assignment_status'] }[]>`
+    select id, status from task_assignments
+    where task_id = ${taskId} and volunteer_id = ${volunteerId} and status not in ('proposed', 'rejected')
+    order by created_at desc limit 1`;
+  if (!row) {
+    await tx`insert into task_assignments ${tx({ task_id: taskId, volunteer_id: volunteerId, status })}`;
+  } else if (row.status !== status && !(row.status === 'approved' && status === 'notified')) {
+    await tx`update task_assignments set status = ${status} where id = ${row.id}`;
+  }
+}
 
 /** Run one shared command atomically against the shared world. Throws roll everything back. */
 export async function transact<T>(spec: Load, run: (b: Batch, loaded: Loaded) => T, owners: Owners = {}): Promise<T> {

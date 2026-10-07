@@ -3,13 +3,13 @@
  * sign-in) and checks what each command writes. Needs the server on fast timings:
  *
  *   POLICY_SCALE=0.05 POLICY_AUTO_ASSIGN_MS=3000 SCHEDULER_MS=500 npm run server
- *   npm run check:commands            (SERVER_URL defaults to http://127.0.0.1:8787)
+ *   npm run commands:check            (SERVER_URL defaults to http://127.0.0.1:8787)
  *
  * It brings its own crew: a security lead, two security volunteers and one artist liaison. The seeded
  * cast has nobody on those teams, so assignment always lands on them, whatever else is going on in the
  * local stack. Seeded Mo is the one shared account (the coordinator). Everything it creates is removed.
  */
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import postgres from 'postgres';
 
 import { setPolicy, type Policy } from '../src/lib/lifecycle';
@@ -61,7 +61,7 @@ async function post(token: string | null, name: string, body: unknown): Promise<
 
 // ── people ──
 
-type Person = { id: string; call: (name: string, body?: unknown) => Promise<Res> };
+type Person = { id: string; client: SupabaseClient; call: (name: string, body?: unknown) => Promise<Res> };
 
 async function signIn(email: string, id: string): Promise<Person> {
   const { data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email });
@@ -70,7 +70,7 @@ async function signIn(email: string, id: string): Promise<Person> {
   const { data: v, error: e2 } = await client.auth.verifyOtp({ email, token: data.properties.email_otp, type: 'email' });
   if (e2) throw e2;
   const token = v.session!.access_token;
-  return { id, call: (n, b = {}) => post(token, n, b) };
+  return { id, client, call: (n, b = {}) => post(token, n, b) };
 }
 
 const run = Date.now().toString(36);
@@ -117,6 +117,7 @@ const events = (id: string) => sql`select kind, actor_id, data from task_events 
 const messagesFor = (taskId: string, who: Person) => sql`
   select m.kind, m.body, d.delivery from messages m join message_deliveries d on d.message_id = m.id
   where m.task_id = ${taskId} and d.recipient_id = ${who.id} order by m.created_at`;
+const assignments = (taskId: string) => sql`select volunteer_id, status from task_assignments where task_id = ${taskId} order by created_at`;
 const count = (xs: string[], k: string) => xs.filter((x) => x === k).length;
 const sameKinds = (a: string[], b: string[]) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 
@@ -165,6 +166,8 @@ try {
     expect('events: created, assigned, reply, resolved', sameKinds(kinds, ['created', 'assigned', 'reply', 'resolved']), kinds);
     const ev = await events(id);
     expect('done event keeps the note and actor', ev.some((e) => e.kind === 'resolved' && e.actor_id === ana.id && e.data.note === 'talked him down, mates took him home'), ev);
+    expect('every event has text and an actor name', ev.every((e) => e.data.text && e.data.actorName), ev);
+    expect('Ana\'s task_assignments row followed her to done', (await assignments(id)).map((a) => `${a.volunteer_id === ana.id}:${a.status}`).join() === 'true:done', await assignments(id));
     const toAna = await messagesFor(id, ana);
     expect('Ana got the task spoken', toAna.length === 1 && toAna[0].kind === 'task' && toAna[0].delivery === 'spoken', toAna);
     const toCam = await messagesFor(id, cam);
@@ -263,27 +266,39 @@ try {
     expect('auto_assign_at is set from the policy', p.auto_assign_at.getTime() - p.created_at.getTime() === policy.autoAssignMs, p);
     expect('Lee and Mo are asked to approve', (await messagesFor(req.task_id, lee)).some((m) => /^Approve:/.test(m.body)) && (await messagesFor(req.task_id, mo)).some((m) => /^Approve:/.test(m.body)));
     const proposed = await sql`select volunteer_id from task_assignments where task_id = ${req.task_id} and status = 'proposed'`;
-    expect('candidates recorded as task_assignments', proposed.length === p.payload.candidates.length && proposed.length > 0, proposed.length);
-    expect('the AI\'s top pick is on the team', [ana.id, ben.id].includes(p.payload.candidates[0].volunteerId), p.payload.candidates[0]);
+    const order = p.payload.volunteerIds as string[];
+    expect('candidates recorded as task_assignments, ranked in payload.volunteerIds', proposed.length === order.length && proposed.length > 0 && proposed.every((c) => order.includes(c.volunteer_id)), { proposed, order });
+    expect('the AI\'s top pick is on the team', [ana.id, ben.id].includes(order[0]), order);
 
     const decided = await until('the scheduler to auto-assign', async () => (await sql`select * from agent_actions where id = ${p.id} and status <> 'pending'`)[0], policy.autoAssignMs + 5_000);
     const t = await task(req.task_id);
-    expect('proposal executed (auto_assigned) after auto_assign_at', decided.status === 'executed' && decided.decided_at.getTime() >= p.auto_assign_at.getTime() && decided.payload.volunteerId === t.assignee_id, decided);
-    expect('task assigned to the top pick', t.status === 'assigned' && t.assignee_id === p.payload.candidates[0].volunteerId, t);
+    expect('proposal executed (auto_assigned) after auto_assign_at', decided.status === 'executed' && decided.decided_by == null && decided.decided_at.getTime() >= p.auto_assign_at.getTime(), decided);
+    expect('task assigned to the top pick', t.status === 'assigned' && t.assignee_id === order[0], t);
     expect('assigned event says auto-assigned', (await events(req.task_id)).some((e) => e.kind === 'assigned' && /auto-assigned/.test(e.data.text)));
-    expect('the pick is task_assignments approved', (await sql`select count(*)::int as n from task_assignments where task_id = ${req.task_id} and status = 'approved'`)[0].n === 1);
+    const rows = await assignments(req.task_id);
+    expect('the pick\'s row is approved, the rest rejected', rows.filter((a) => a.status === 'approved').map((a) => a.volunteer_id).join() === t.assignee_id && rows.every((a) => a.status === 'approved' || a.status === 'rejected'), rows);
     await casey.call('guestCancel', { requestId: req.id });
 
     const drew = await guest();
     const req2 = await ask(drew, 'There was a theft from a bag near the stage', 'lawn-stage');
     const [p2] = await sql`select * from agent_actions where task_id = ${req2.task_id}`;
     expect('a P2 asks only the lead', (await messagesFor(req2.task_id, lee)).some((m) => /^Approve:/.test(m.body)) && (await messagesFor(req2.task_id, mo)).length === 0);
-    const other = p2.payload.candidates[0].volunteerId === ana.id ? ben : ana;
+    const other = p2.payload.volunteerIds[0] === ana.id ? ben : ana;
+    const first = other === ana ? ben : ana;
     const ok = await lee.call('approve', { proposalId: p2.id, volunteerId: other.id });
     expect('Lee approves, picking the other volunteer', ok.status === 200, ok);
     const [after] = await sql`select * from agent_actions where id = ${p2.id}`;
-    expect('proposal approved by Lee, task to his pick', after.status === 'approved' && after.decided_by === lee.id && after.payload.volunteerId === other.id && (await task(req2.task_id)).assignee_id === other.id, after);
+    expect('proposal approved by Lee, task to his pick', after.status === 'approved' && after.decided_by === lee.id && (await task(req2.task_id)).assignee_id === other.id, after);
     expect('approving again → 409', (await mo.call('approve', { proposalId: p2.id })).status === 409);
+
+    // Moving a task off someone keeps their row, now reassigned, so their phone still sees the change.
+    expect('Lee moves it to the other volunteer', (await lee.call('assign', { taskId: req2.task_id, volunteerId: first.id })).status === 200);
+    const moved = await assignments(req2.task_id);
+    const statusOf = (who: Person) => moved.filter((a) => a.volunteer_id === who.id).map((a) => a.status).join();
+    expect('the first pick\'s row is reassigned, the new owner notified', statusOf(other) === 'reassigned' && statusOf(first) === 'rejected,notified', moved);
+    expect('the first pick hears it moved', (await messagesFor(req2.task_id, other)).some((m) => m.kind === 'moved'));
+    const still = await other.client.from('tasks').select('id, assignee_id').eq('id', req2.task_id);
+    expect('and can still read the task, now someone else\'s', still.data?.length === 1 && still.data[0].assignee_id === first.id, still);
     await drew.call('guestCancel', { requestId: req2.id });
   }
 

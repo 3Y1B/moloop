@@ -159,7 +159,7 @@ function understandLater(requestId: string) {
 
 route('guestAsk', 'any', z.object({ text: Text, zoneSlug: z.string().nullable(), locationHint: z.string().trim().max(200).nullish() }), async (a, caller) => {
   const requestId = await transact({}, (b, w) => {
-    if (a.zoneSlug && !w.refs.zoneId.has(a.zoneSlug)) throw new CommandError('invalid', `No zone ${a.zoneSlug}`);
+    if (a.zoneSlug && !w.ids.zones.has(a.zoneSlug)) throw new CommandError('invalid', `No zone ${a.zoneSlug}`);
     return C.guestAsk(b, a.text, a.zoneSlug, a.locationHint || null).id;
   }, { guestId: caller.id });
   understandLater(requestId);
