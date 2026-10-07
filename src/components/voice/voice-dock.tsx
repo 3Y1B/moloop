@@ -13,7 +13,8 @@ import { PILL_HEIGHT, VoicePill } from './voice-pill';
 
 /** `clips` are the holds it was said in, sent along with it. */
 type Held = { before?: string; clips: string[] };
-type Said = { text: string; clips: string[] };
+/** `typed` came from the keyboard: it skips the "Heard" check and goes straight out. */
+type Said = { text: string; clips: string[]; typed?: boolean };
 type Flash = { message: string };
 type Phase =
   | { kind: 'idle' }
@@ -35,8 +36,8 @@ export function useDockHeight() {
 /**
  * The assistant, pinned to the bottom of the screen: hold the pill to talk, or tap the keyboard to type.
  * Letting go sends the recording to be transcribed, and what was heard comes back in a small tray above
- * the pill to check before it goes. Sending hands the words to the AI, which triages and acts; what it
- * did comes back as the confirmation.
+ * the pill to check before it goes. Typed words go straight out: there's nothing to mishear. Sending hands
+ * the words to the AI, which triages and acts; what it did comes back as the confirmation.
  */
 export function VoiceDock({ placeholder, onSend }: {
   placeholder: string;
@@ -70,15 +71,26 @@ export function VoiceDock({ placeholder, onSend }: {
     setTimeout(() => setPhase((p) => (p.kind === kind && flashedAt.current === at ? { kind: 'idle' } : p)), 2500);
   };
 
-  const send = async (text: string, clips: string[]) => {
-    setPhase({ kind: 'sending', text, clips });
+  const send = async (text: string, clips: string[], typed = false) => {
+    setPhase({ kind: 'sending', text, clips, typed });
     try {
       const message = await onSend(text, clips);
       if (!message) return setPhase({ kind: 'idle' });
       flash('sent', message);
     } catch {
-      setPhase({ kind: 'review', text, clips });
+      if (!typed) return setPhase({ kind: 'review', text, clips });
+      // Back in the box to send again, rather than a "Heard" check of what was typed.
+      setTyped(text);
+      setTyping(true);
+      flash('missed', 'Didn’t send');
     }
+  };
+
+  const submitTyped = () => {
+    const t = typed.trim();
+    setTyped('');
+    setTyping(false);
+    if (t) send(t, [], true);
   };
 
   const startHold = () => {
@@ -138,6 +150,13 @@ export function VoiceDock({ placeholder, onSend }: {
                 </Text>
               </Caption>
             </>
+          ) : phase.kind === 'sending' && phase.typed ? (
+            <>
+              <Text style={[styles.label, { color: theme.textTertiary }]}>Sending</Text>
+              <Caption>
+                <Text style={[styles.text, { color: theme.text }]}>{phase.text}</Text>
+              </Caption>
+            </>
           ) : (
             <>
               <Text style={[styles.label, { color: theme.textTertiary }]}>Heard</Text>
@@ -178,11 +197,7 @@ export function VoiceDock({ placeholder, onSend }: {
               placeholderTextColor={theme.textSecondary}
               returnKeyType="send"
               submitBehavior="blurAndSubmit"
-              onSubmitEditing={() => {
-                heard(typed);
-                setTyped('');
-                setTyping(false);
-              }}
+              onSubmitEditing={submitTyped}
               style={[styles.inputText, { color: theme.text }]}
             />
           </View>
