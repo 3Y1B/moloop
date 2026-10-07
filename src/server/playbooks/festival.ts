@@ -2,8 +2,21 @@ import type { z } from "zod";
 
 import type { PlaybookContentSchema, PlaybookSlug } from "@/lib/mobilization-contracts";
 
+/**
+ * A reading that starts a playbook's plan (src/server/triggers.ts). Rules, not AI: the number is the number. `key` is
+ * from the observation catalog (src/lib/mobilization-observations.ts); `zoneKinds` limits it to zones of those kinds
+ * ("stage" is a performance zone). `overCapacity`: a count per zone over that zone's capacity (zones.capacity).
+ */
+export type PlaybookTrigger = { key: string; zoneKinds?: string[] } & (
+  | { above: number }
+  | { atLeast: number }
+  | { below: number }
+  | { is: (string | boolean)[] }
+  | { overCapacity: true }
+);
+
 /** The festival's playbooks. The planner reads these; change them here, in code. */
-export const FESTIVAL_PLAYBOOKS: z.input<typeof PlaybookContentSchema>[] = [
+export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { triggers: PlaybookTrigger[] })[] = [
   {
     schemaVersion: 1,
     slug: "severe-weather-main-stage",
@@ -119,6 +132,12 @@ export const FESTIVAL_PLAYBOOKS: z.input<typeof PlaybookContentSchema>[] = [
         instructions: "Follow approved procedures for gas, electrical equipment, awnings, loose objects, and temporary structures.",
         peopleNeeded: null
       }
+    ],
+    triggers: [
+      { key: "weather.warning", is: ["storm"] },
+      { key: "stageSafety.windLimitExceeded", is: [true] },
+      { key: "weather.windSpeed", above: 60, zoneKinds: ["stage"] },
+      { key: "weather.lightningDistance", below: 10 }
     ],
     source: "festival.ts"
   },
@@ -237,6 +256,10 @@ export const FESTIVAL_PLAYBOOKS: z.input<typeof PlaybookContentSchema>[] = [
         instructions: "Close queues and remove movable obstructions from designated crowd-release and emergency corridors.",
         peopleNeeded: null
       }
+    ],
+    triggers: [
+      { key: "crowd.densityByZone", atLeast: 4, zoneKinds: ["stage"] },
+      { key: "barrierStatus", is: ["breached", "collapsed"] }
     ],
     source: "festival.ts"
   },
@@ -357,6 +380,10 @@ export const FESTIVAL_PLAYBOOKS: z.input<typeof PlaybookContentSchema>[] = [
         peopleNeeded: 2
       }
     ],
+    triggers: [
+      { key: "weather.heatIndex", atLeast: 40 },
+      { key: "water.tankLevels", below: 20 }
+    ],
     source: "festival.ts"
   },
   {
@@ -474,6 +501,11 @@ export const FESTIVAL_PLAYBOOKS: z.input<typeof PlaybookContentSchema>[] = [
         instructions: "Keep stages ready to pause if crowd distribution or total attendance cannot be safely verified.",
         peopleNeeded: 2
       }
+    ],
+    triggers: [
+      { key: "gateSystemStatus", is: ["failed"] },
+      { key: "ticketScanStatus", is: ["failed"] },
+      { key: "gateCounts", overCapacity: true, zoneKinds: ["gate"] }
     ],
     source: "festival.ts"
   }

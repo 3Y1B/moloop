@@ -5,6 +5,7 @@ import { POLICY } from '@/lib/lifecycle';
 import { requireCaller, type AuthEnv } from './auth';
 import { briefsEnabled, speechAvailable } from '../models/speech';
 import { commands } from './commands';
+import { readings } from './readings';
 import { signIn } from './sign-in';
 import { voice } from './voice';
 
@@ -30,6 +31,9 @@ app.get('/health', (c) =>
 // Crew sign-in by email (./sign-in.ts): before there's a session, so outside /api.
 app.use('/auth/*', cors({ origin: (origin) => origin, allowHeaders: ['content-type'] }));
 app.route('/auth', signIn);
+
+// Sensors and the demo simulator (./readings.ts): the server key, not a session, so before requireCaller.
+app.route('/api', readings);
 
 app.use('/api/*', requireCaller);
 

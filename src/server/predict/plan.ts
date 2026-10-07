@@ -2,6 +2,8 @@ import { CommandError, type Batch } from "@/lib/batch";
 import * as C from "@/lib/commands";
 import { isBusy } from "@/lib/lifecycle";
 import type {
+  ManagedPlaybook,
+  MobilizationOutput,
   PlanningEvidence,
   PlanningSnapshot,
   PlaybookSlug,
@@ -24,6 +26,7 @@ import { playbooks } from "../playbooks";
 import { PLAYBOOK_NAMES } from "../playbooks/festival";
 import { loadWorld, sql, transact } from "../world";
 import { createTriggeredPlanningRequest, type TriggerBrief } from "./planning-request";
+import { plainPlan } from "./plain-text";
 import { playbookKey } from "./playbook-retrieval";
 import { mobilizationTimeouts } from "./timeouts";
 import { groundMobilizationPlans } from "./validate";
@@ -273,7 +276,9 @@ export function briefFor(playbook: PlaybookSlug, zoneSlug: string | null, causes
       why.push(`${cause.priority} report: ${cause.title}`);
       if (refs.has(`incident-${cause.taskId}`)) evidenceRefs.push(`incident-${cause.taskId}`);
     } else {
-      why.push(`${cause.key} reading ${JSON.stringify(cause.value)} (${cause.line})`);
+      const definition = observationDefinition(cause.key);
+      const value = typeof cause.value === "number" && definition?.unit ? `${cause.value} ${definition.unit}` : String(cause.value);
+      why.push(`${definition?.label ?? cause.key}: ${value}${cause.line ? ` (${cause.line})` : ""}`);
       const ref = observationRef(cause.key, cause.zoneSlug) ??
         (Object.values(WEATHER).includes(cause.key) && refs.has("weather-latest") ? "weather-latest" : undefined);
       if (ref) evidenceRefs.push(ref);
@@ -282,26 +287,85 @@ export function briefFor(playbook: PlaybookSlug, zoneSlug: string | null, causes
   return { playbookKey: playbookKey(playbook, 1), zoneSlug, why, evidenceRefs: [...new Set(evidenceRefs)] };
 }
 
-/**
- * A plan straight from the playbook: its required actions, at the trigger's zone, each asking for the people the
- * playbook names (else 2). What Mo gets when the model can't give a plan that passes the rules check.
- */
-export function playbookSteps(playbook: PlaybookSlug, zoneSlug: string | null): MobilizationStep[] {
+type PlaybookAction = ManagedPlaybook["content"]["actions"][number];
+const bookFor = (playbook: PlaybookSlug) => {
   const book = playbooks().find((entry) => entry.content.slug === playbook);
   if (!book) throw new Error(`No playbook ${playbook}`);
+  return book;
+};
+/** One playbook action as it reads on a step: its own words, the people it names (else 2). */
+const actionFields = (book: ManagedPlaybook, action: PlaybookAction) => ({
+  teamSlug: action.teamSlug,
+  peopleNeeded: action.peopleNeeded ?? 2,
+  title: action.title,
+  instructions: action.instructions,
+  reason: action.title,
+  requiredSkills: action.requiredSkills,
+  playbookRefs: [{ slug: book.content.slug, version: book.version, actionId: action.id }],
+});
+
+/**
+ * A plan straight from the playbook: its required actions, at the trigger's zone. What Mo gets when the model can't
+ * give a plan that passes the rules check.
+ */
+export function playbookSteps(playbook: PlaybookSlug, zoneSlug: string | null): MobilizationStep[] {
+  const book = bookFor(playbook);
   return book.content.actions.filter((action) => action.requirement === "must").map((action) => ({
+    ...actionFields(book, action),
     stepKey: action.id,
-    teamSlug: action.teamSlug,
-    peopleNeeded: action.peopleNeeded ?? 2,
-    reason: action.title,
     candidates: [],
-    title: action.title,
-    instructions: action.instructions,
     zoneSlug,
-    requiredSkills: action.requiredSkills,
     ...(action.completionCriteria ? { completionCriteria: action.completionCriteria } : {}),
-    playbookRefs: [{ slug: book.content.slug, version: book.version, actionId: action.id }],
   }));
+}
+
+/**
+ * Every required action of the triggered playbook reaches Mo as a step. The model's tasks stay as written; a required
+ * action it left as a gap (a blocker, or nothing) is added straight from the playbook, onto the first plan, so one gap
+ * never costs Mo the rest of a good plan (audit S5). Returns the actions it added.
+ */
+export function completeRequiredActions(output: MobilizationOutput, playbook: PlaybookSlug,
+  zoneSlug: string | null): { output: MobilizationOutput; added: string[] } {
+  const book = bookFor(playbook);
+  const first = output.mobilizations[0];
+  if (output.decision !== "propose" || !first) return { output, added: [] };
+  const mine = (ref: { slug: string; version: number }) => ref.slug === book.content.slug && ref.version === book.version;
+  const covered = new Set(output.mobilizations.flatMap((plan) =>
+    plan.tasks.flatMap((task) => task.playbookRefs.filter(mine).map((ref) => ref.actionId))));
+  const missing = book.content.actions.filter((action) => action.requirement === "must" && !covered.has(action.id));
+  if (!missing.length) return { output, added: [] };
+  // Every proposal has a finding (validate.ts); an added task answers the first, on its evidence.
+  const finding = output.assessment.findings[0];
+  if (!finding) throw new Error("No finding to add the missing required actions to");
+  const keys = new Set(output.mobilizations.flatMap((plan) => plan.tasks.map((task) => task.key)));
+  const keyFor = (id: string) => {
+    let key = id;
+    for (let n = 2; keys.has(key); n++) key = `${id}-${n}`;
+    keys.add(key);
+    return key;
+  };
+  const added = new Set(missing.map((action) => action.id));
+  const zone = zoneSlug ?? first.tasks[0].zoneSlug;
+  const tasks = missing.map((action) => ({
+    ...actionFields(book, action),
+    key: keyFor(action.id),
+    zoneSlug: zone,
+    completionCriteria: action.completionCriteria || action.title,
+    addressesFindingIds: [finding.id],
+    evidenceRefs: [...finding.evidenceRefs],
+  }));
+  return {
+    added: [...added],
+    output: {
+      ...output,
+      mobilizations: output.mobilizations.map((plan, index) => ({
+        ...plan,
+        tasks: index === 0 ? [...plan.tasks, ...tasks] : plan.tasks,
+        unmetRequirements: plan.unmetRequirements.filter((gap) =>
+          !(mine(gap.playbookRef) && added.has(gap.playbookRef.actionId))),
+      })),
+    },
+  };
 }
 
 /** No step asks for more than its team has on duty, nor more than ten (audit S4). */
@@ -348,6 +412,7 @@ export async function planMobilization(runId: string): Promise<string[]> {
   let output: SimulationRunResult["output"] = null;
   let validationErrors: string[] = [];
   let failure: string | null = null;
+  let filled: string[] = [];
   const [zone] = zoneSlug ? await db<{ name: string }[]>`select name from zones where slug = ${zoneSlug}` : [];
   const title = titleFor(playbook, zone?.name);
   try {
@@ -378,6 +443,13 @@ export async function planMobilization(runId: string): Promise<string[]> {
     validationErrors = planning.validate(output);
     if (validationErrors.length) throw new Error("Model output failed the rules check");
     if (output.decision !== "propose") throw new Error(`The model answered ${output.decision}`);
+    // Required actions the model left as gaps come from the playbook; then the text people read is made plain. The
+    // saved result is what approval checks the steps against, so it's this version, checked again.
+    const completed = completeRequiredActions(output, playbook, zoneSlug);
+    filled = completed.added;
+    output = plainPlan(completed.output, snapshot);
+    validationErrors = planning.validate(output);
+    if (validationErrors.length) throw new Error("The completed plan failed the rules check");
   } catch (error) {
     failure = safeFailure(error);
   }
@@ -422,7 +494,7 @@ export async function planMobilization(runId: string): Promise<string[]> {
           error = ${failure}, updated_at = clock_timestamp() where id = ${runId}`;
       },
     );
-    const from = modelPlan ? "model" : `playbook (${failure})`;
+    const from = modelPlan ? `model${filled.length ? ` + ${filled.length} from the playbook` : ""}` : `playbook (${failure})`;
     console.log(`plan ${playbook} ${zoneSlug ?? "site"}: ${from} in ${Date.now() - t0} ms`);
     return ids;
   } catch (error) {

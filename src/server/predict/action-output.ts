@@ -70,12 +70,17 @@ All task keys must be unique ACROSS all plans. No numeric aliases, defaults or i
 Do not drop findings, contextual gaps, uncertainty, operational instructions or completion criteria
 to shorten output. Canonical semantic and full-retrieval checks still run after exact expansion.`;
 
-/** The same contract when the server read the one triggered SOP and put it in the prompt (no get_playbooks call). */
-export const TRIGGERED_SUPPLEMENT = promptSupplement
-  .replace("The tool's requiredInputChecks lists each selected playbookKey", 'retrievedPlaybooks.requiredInputChecks lists the playbookKey')
-  .replace('EVERY action in the SOPs actually read by get_playbooks', 'EVERY action in the SOP in retrievedPlaybooks');
-if (TRIGGERED_SUPPLEMENT.includes('get_playbooks') || TRIGGERED_SUPPLEMENT.includes("The tool's"))
-  throw new Error('Triggered prompt supplement still refers to the retrieval tool');
+/**
+ * The wire format for a run a trigger started: one SOP, read by the server and put in the prompt. Short, because the
+ * plan has to be on Mo's phone in about 20 seconds; the rules it relies on are in TRIGGERED_SYSTEM_PROMPT.
+ */
+export const TRIGGERED_SUPPLEMENT = `WIRE FORMAT
+- playbookAssessments: one entry {playbookKey, applicability, reason, evidenceRefs, contextualMissingInputs}.
+- Tasks have no playbookRefs and use singular addressesFindingId. Plans have no unmetRequirements.
+- actionCoverage: one slot per action of the SOP, keyed exactly "slug:version:actionId", each {taskKey, blocker}.
+  For a must action set taskKey to the task that does it (same team, its requiredSkills, at least its peopleNeeded)
+  and blocker null. Only if it truly cannot start: taskKey null and a short blocker. Recommended actions may be null/null.
+- Task keys are unique across plans.`;
 
 const bookKey = (slug: string, version: number) => `${slug}:${version}`;
 const actionKey = (ref: PlaybookActionRef) => `${bookKey(ref.slug, ref.version)}:${ref.actionId}`;
@@ -92,6 +97,8 @@ export function createActionMobilizationOutput(
   snapshot: PlanningSnapshot,
   getSelectedKeys: () => readonly string[],
   supplement = promptSupplement,
+  /** Triggered runs: a must action left null/null is a gap the planner fills from the playbook, not a failure. */
+  { omittedMustIsGap = false } = {},
 ): ActionMobilizationOutputContract {
   const captured = structuredClone(snapshot);
   const compact = createCompactMobilizationOutput(captured);
@@ -164,8 +171,10 @@ export function createActionMobilizationOutput(
           continue;
         }
         if (!chosenTask && !blocked) {
-          if (wire.decision === 'propose' && action.requirement === 'must')
-            throw new Error(`Missing required action decision ${key}`);
+          if (wire.decision !== 'propose' || action.requirement !== 'must') continue;
+          if (!omittedMustIsGap) throw new Error(`Missing required action decision ${key}`);
+          if (!expandedPlans[0]) throw new Error(`Action ${key} has no plan for its gap`);
+          expandedPlans[0].unmetRequirements.push({ playbookRef: { ...ref }, reason: 'Not planned' });
           continue;
         }
         if (chosenTask) {

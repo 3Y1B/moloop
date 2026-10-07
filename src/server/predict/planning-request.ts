@@ -48,7 +48,7 @@ export function createMobilizationPlanningRequest(snapshot: PlanningSnapshot) {
 }
 
 /** Recorded on a triggered run from the moment it's saved (src/server/triggers.ts). */
-export const TRIGGERED_PROMPT_VERSION = `${MOBILIZATION_TOOL_PROMPT_VERSION}.triggered.v1`;
+export const TRIGGERED_PROMPT_VERSION = `${MOBILIZATION_TOOL_PROMPT_VERSION}.triggered.v2`;
 
 /** What set a triggered run off, in the words and evidence refs the model reads. */
 export type TriggerBrief = { playbookKey: string; zoneSlug: string | null; why: string[]; evidenceRefs: string[] };
@@ -67,7 +67,8 @@ export async function createTriggeredPlanningRequest(
   const retrieval = createPlaybookRetrieval(captured);
   const read = retrieval.read({ playbookKeys: [trigger.playbookKey] });
   await audit(read);
-  const contract = createActionMobilizationOutput(captured, () => [trigger.playbookKey], TRIGGERED_SUPPLEMENT);
+  const contract = createActionMobilizationOutput(captured, () => [trigger.playbookKey], TRIGGERED_SUPPLEMENT,
+    { omittedMustIsGap: true });
   return {
     promptVersion: TRIGGERED_PROMPT_VERSION,
     system: `${TRIGGERED_SYSTEM_PROMPT}\n${contract.promptSupplement}`,

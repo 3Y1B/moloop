@@ -25,6 +25,9 @@ const { db, calls, models, request } = vi.hoisted(() => {
     if (sql.includes('from zones order by name')) return [{ slug: 'oval-stage', name: 'Oval Stage', kind: 'stage',
       capacity: 5000, isOpenAir: true }];
     if (sql.includes('from teams')) return [{ slug: 'crowd', name: 'Crowd', description: 'Crowd' }];
+    if (sql.includes('from tasks t join reports')) return [{ id: 'task-1', report_id: 'report-1', title: 'Crush',
+      summary: 'Crush at the barrier', category: 'crowd', status: 'open', zone_slug: 'oval-stage',
+      created_at: new Date(Date.now() - 60_000).toISOString() }];
     if (sql.includes('set raw_responses')) return [{ status: 'running' }];
     if (sql.includes('for update')) return [{ causes: [{ kind: 'report', taskId: 'task-1' }, { kind: 'report',
       taskId: 'task-2' }] }];
@@ -36,7 +39,8 @@ const { db, calls, models, request } = vi.hoisted(() => {
     return Promise.resolve(answer(sql));
   }, { json: (value: unknown) => value, begin: (fn: (q: unknown) => unknown) => Promise.resolve(fn(db)) });
   const models = { ready: true, generatePlan: vi.fn() };
-  const request = { errors: [] as string[] };
+  // The rules check's answers, in order: the model's plan, then the completed plan.
+  const request = { errors: [] as string[], afterCompletion: [] as string[], checks: 0 };
   return { db, calls, models, request };
 });
 vi.mock('../world', () => ({
@@ -60,20 +64,32 @@ vi.mock('./planning-request', () => ({
   createTriggeredPlanningRequest: async (_s: unknown, _b: unknown, audit: (read: unknown) => Promise<void>) => {
     await audit({});
     return { promptVersion: 'test', system: 'system', prompt: 'prompt', schema: {}, expand: (wire: unknown) => wire,
-      validate: () => request.errors };
+      validate: () => (request.checks++ === 0 ? request.errors : request.afterCompletion) };
   },
 }));
 let lastBatch: Batch;
 
-const output = (): MobilizationOutput => ({
-  decision: 'propose', assessment: { summary: 'Crush at the barrier', severity: 'urgent', findings: [],
-    missingInputs: [], playbookAssessments: [] },
-  mobilizations: [{ title: 'Relieve the barrier', priority: 'P1', rationale: 'Reports of a crush', tasks: [{
-    key: 'freeze-inflow', title: 'Stop entry to the front', instructions: 'Hold the lanes', teamSlug: 'crowd',
-    zoneSlug: 'oval-stage', peopleNeeded: 6, reason: 'Crush reported', requiredSkills: [],
-    completionCriteria: 'Lanes held', addressesFindingIds: [], evidenceRefs: ['incident-task-1'], playbookRefs: [],
-  }], unmetRequirements: [] }],
+const BOOK = 'crowd-crush-main-stage';
+const ref = (actionId: string) => ({ slug: BOOK, version: 1, actionId });
+const required = playbookSteps(BOOK, 'oval-stage');
+type ModelTask = MobilizationOutput['mobilizations'][number]['tasks'][number];
+const task = (over: Partial<ModelTask> = {}): ModelTask => ({
+  key: 'freeze-inflow', title: 'Stop entry to the front', instructions: 'Hold the lanes', teamSlug: 'crowd',
+  zoneSlug: 'oval-stage', peopleNeeded: 6, reason: 'Crush reported', requiredSkills: [],
+  completionCriteria: 'Lanes held', addressesFindingIds: ['crush'], evidenceRefs: ['incident-task-1'],
+  playbookRefs: [ref('freeze-inflow')], ...over,
 });
+/** The live failure: one required action planned, one given a blocker, the rest left out. */
+const output = (tasks: ModelTask[] = [task()]): MobilizationOutput => ({
+  decision: 'propose', assessment: { summary: 'Crush at the barrier', severity: 'urgent', findings: [{
+    id: 'crush', risk: 'Crush at the barrier', possibleCause: '', evidenceRefs: ['incident-task-1'], uncertainty: '',
+  }], missingInputs: [], playbookAssessments: [] },
+  mobilizations: [{ title: 'Relieve the barrier', priority: 'P1', rationale: 'Reports of a crush', tasks,
+    unmetRequirements: [{ playbookRef: ref('secure-extraction-corridor'), reason: 'No approved corridor' }] }],
+});
+/** A plan that does every required action itself. */
+const full = () => output(required.map((step) => task({ key: `t-${step.stepKey}`, teamSlug: step.teamSlug,
+  title: `Our ${step.title}`, instructions: `Do ${step.stepKey}`, playbookRefs: [ref(step.stepKey!)] })));
 /** The run's last write: its status, result, mobilizations and error. */
 const finished = () => {
   const call = calls.findLast((c) => c.sql.includes('set status =') && c.sql.includes('result ='))!;
@@ -88,20 +104,64 @@ describe('the planner always gives Mo a plan', () => {
     models.ready = true;
     models.generatePlan.mockReset();
     request.errors = [];
+    request.afterCompletion = [];
+    request.checks = 0;
   });
 
-  it('uses the model’s plan when it passes the rules check, capped at the team on duty', async () => {
+  it('keeps the model’s plan and adds the required actions it left out, capped at the team on duty', async () => {
     models.generatePlan.mockResolvedValue(output());
     expect(await planMobilization('run-1')).toEqual(['mobilization-1']);
     const plan = proposed();
     expect(plan).toMatchObject({ title: 'Crowd surge, Oval Stage', analysisRunId: 'run-1',
-      triggerPlaybook: 'crowd-crush-main-stage', zoneSlug: 'oval-stage' });
-    expect(plan.steps.map((s) => [s.stepKey, s.peopleNeeded])).toEqual([['freeze-inflow', 2]]);
-    // Approval checks the steps against the saved result, so it's capped the same.
-    expect(finished()).toMatchObject({ status: 'completed', error: null, mobilizationIds: ['mobilization-1'] });
-    expect(finished().result?.mobilizations[0].tasks[0].peopleNeeded).toBe(2);
+      triggerPlaybook: BOOK, zoneSlug: 'oval-stage' });
+    // The model's own step first, as written; every other required action straight from the playbook.
+    expect(plan.steps.map((s) => s.stepKey)).toEqual(required.map((s) => s.stepKey));
+    expect(plan.steps[0]).toMatchObject({ title: 'Stop entry to the front', peopleNeeded: 2 });
+    expect(plan.steps.slice(1).map((s) => s.title)).toEqual(required.slice(1).map((s) => s.title));
+    expect(plan.steps.flatMap((s) => s.playbookRefs!.map((r) => r.actionId)))
+      .toEqual(required.map((s) => s.stepKey));
+    expect(plan.steps.every((s) => s.zoneSlug === 'oval-stage' && s.peopleNeeded >= 1 &&
+      s.addressesFindingIds?.[0] === 'crush' && s.evidenceRefs?.[0] === 'incident-task-1')).toBe(true);
+    // Approval checks the steps against the saved result, so it's the completed, capped plan, with no gaps left.
+    const saved = finished();
+    expect(saved).toMatchObject({ status: 'completed', error: null, mobilizationIds: ['mobilization-1'],
+      validationErrors: [] });
+    expect(saved.result?.mobilizations[0].tasks.map((t) => [t.key, t.peopleNeeded]))
+      .toEqual(plan.steps.map((s) => [s.stepKey, s.peopleNeeded]));
+    expect(saved.result?.mobilizations[0].unmetRequirements).toEqual([]);
     const causes = calls.find((c) => c.sql.includes('update mobilizations set causes'))!;
     expect(causes.values[0]).toHaveLength(2);
+  });
+
+  it('passes a plan that does every required action through unchanged', async () => {
+    models.generatePlan.mockResolvedValue(full());
+    await planMobilization('run-1');
+    expect(proposed().analysisRunId).toBe('run-1');
+    expect(proposed().steps.map((s) => [s.stepKey, s.title])).toEqual(
+      required.map((s) => [`t-${s.stepKey}`, `Our ${s.title}`]));
+  });
+
+  it('gives Mo and volunteers plain words: no refs, ids, sources, JSON or timestamps', async () => {
+    models.generatePlan.mockResolvedValue(output([task({
+      title: 'Stop entry at oval-stage (incident-task-1)',
+      instructions: 'Hold the lanes until 2026-10-08T10:30:00Z; report to 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed. '
+        + 'Sources: incident-task-1, roster-crowd',
+      reason: 'Density {"value": 5, "unit": "p/m2"} at the barrier [evidence refs: incident-task-1]',
+    })]));
+    await planMobilization('run-1');
+    const step = proposed().steps[0];
+    expect(step.title).toBe('Stop entry at Oval Stage');
+    expect(step.instructions).toBe('Hold the lanes until 9:30 pm; report to.');
+    expect(step.reason).toBe('Density at the barrier');
+    expect(finished().result?.mobilizations[0].tasks[0].instructions).toBe(step.instructions);
+  });
+
+  it('falls back when the completed plan fails the rules check', async () => {
+    models.generatePlan.mockResolvedValue(output());
+    request.afterCompletion = ['Repeated action task freeze-inflow'];
+    await planMobilization('run-1');
+    expect(proposed().analysisRunId).toBeNull();
+    expect(finished()).toMatchObject({ status: 'failed', error: 'The completed plan failed the rules check' });
   });
 
   it('falls back to the playbook’s plan when the model fails', async () => {
