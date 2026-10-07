@@ -3,6 +3,7 @@ import { Fragment, useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenHeader } from '@/components/screen-header';
+import { TaskMap } from '@/components/lead/task-map';
 import { ActiveTaskCard } from '@/components/task/active-task-card';
 import { Timeline } from '@/components/task/timeline';
 import { Avatar } from '@/components/ui/avatar';
@@ -49,6 +50,13 @@ export default function TaskDetailScreen() {
       <ScrollView ref={scroll} contentContainerStyle={styles.content}>
 
       <ActiveTaskCard task={task} showReplies={onIt} showTimelineLink={false} defaultExpanded />
+
+      {/* Where it is, and who's there. Nothing without a zone. */}
+      {task.zoneSlug && (
+        <Section title="Where">
+          <TaskMap task={task} />
+        </Section>
+      )}
 
       <Section title="Assigned to">
         <Card>
