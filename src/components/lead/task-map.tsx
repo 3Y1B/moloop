@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { VenueMap, zoneSpot, type MapMarker } from '@/components/map/venue-map';
@@ -16,7 +15,6 @@ export function TaskMap({ task }: { task: Task }) {
   const theme = useTheme();
   const accent = usePriorityColors()[task.priority];
   const { volunteers, teams } = useLookups();
-  const [width, setWidth] = useState(330);
   if (!task.zoneSlug) return null;
 
   const color = (task.teamSlug && teams[task.teamSlug]?.color) || theme.tint;
@@ -33,8 +31,8 @@ export function TaskMap({ task }: { task: Task }) {
   });
 
   return (
-    <View style={styles.wrap} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      <VenueMap route={null} me={null} target={task.zoneSlug} targetColor={accent} markers={markers} aspect={width / HEIGHT} style={StyleSheet.absoluteFill} />
+    <View style={styles.wrap}>
+      <VenueMap route={null} me={null} target={task.zoneSlug} targetColor={accent} markers={markers} interactive={false} style={StyleSheet.absoluteFill} />
     </View>
   );
 }

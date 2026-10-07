@@ -9,19 +9,39 @@ import type {
 
 const MIN = 60_000;
 
-export const POLICY = {
+export type Policy = {
   /** How long a volunteer has to accept a fresh assignment before we nudge. */
-  ackTimeoutMs: 2 * MIN,
+  ackTimeoutMs: number;
   /** Gap between first nudge and alerting the lead. */
-  nudgeGapMs: 3 * MIN,
+  nudgeGapMs: number;
   /** Expected time to reach the scene / finish, by priority. */
-  etaMs: { P1: 4 * MIN, P2: 10 * MIN, P3: 20 * MIN } satisfies Record<Priority, number>,
-  delayExtendMs: 5 * MIN,
+  etaMs: Record<Priority, number>;
+  delayExtendMs: number;
   /** An unanswered "need help" goes from the lead up to Mo after this long. */
-  bumpToCoordinatorMs: { P1: 1 * MIN, P2: 2 * MIN, P3: 3 * MIN } satisfies Record<Priority, number>,
+  bumpToCoordinatorMs: Record<Priority, number>;
   /** P1/P2 guest reports: nobody approves the AI's pick in this long, the top pick is assigned. */
+  autoAssignMs: number;
+};
+
+/** The shipped timings. */
+export const DEFAULT_POLICY: Readonly<Policy> = {
+  ackTimeoutMs: 2 * MIN,
+  nudgeGapMs: 3 * MIN,
+  etaMs: { P1: 4 * MIN, P2: 10 * MIN, P3: 20 * MIN },
+  delayExtendMs: 5 * MIN,
+  bumpToCoordinatorMs: { P1: 1 * MIN, P2: 2 * MIN, P3: 3 * MIN },
   autoAssignMs: 30_000,
-} as const;
+};
+
+/** The timings in force. */
+export const POLICY: Readonly<Policy> = {
+  ...DEFAULT_POLICY, etaMs: { ...DEFAULT_POLICY.etaMs }, bumpToCoordinatorMs: { ...DEFAULT_POLICY.bumpToCoordinatorMs },
+};
+
+/** Override timings in place (the server reads them from env, so tests run fast). Everything reads POLICY at call time. */
+export function setPolicy(overrides: Partial<Policy>) {
+  Object.assign(POLICY as Policy, overrides);
+}
 
 /** Statuses where the volunteer is "busy" with this task. One per volunteer. */
 export const ACTIVE: readonly TaskStatus[] = ['assigned', 'accepted', 'in_progress', 'escalated'];

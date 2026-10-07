@@ -29,7 +29,7 @@ export default function NavigateScreen() {
   const theme = useTheme();
   const repo = useRepo();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const { height } = useWindowDimensions();
   const task = useTask(id);
   const me = useMe();
   const route = useRouteTo(task);
@@ -63,7 +63,7 @@ export default function NavigateScreen() {
         targetColor={accent}
         people={people}
         fit={fit}
-        aspect={width / mapHeight}
+        frame={{ top: 0, bottom: 40 / (mapHeight + 40) }}
         style={{ height: mapHeight + 40 }}
       />
       <CircleButton

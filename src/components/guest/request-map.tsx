@@ -1,4 +1,4 @@
-import { StyleSheet, useWindowDimensions } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import { VenueMap, zoneSpot, type MapMarker } from '@/components/map/venue-map';
 import type { Point } from '@/data/venue';
@@ -30,12 +30,11 @@ export function RequestMap({ view, frame }: { view: RequestView; frame: { top: n
   const theme = useTheme();
   const now = useNow();
   const { teams } = useLookups();
-  const { width, height } = useWindowDimensions();
   const { request, task, status, volunteer } = view;
 
   const zone = request.zoneSlug ?? task?.zoneSlug ?? null;
   const here = zoneSpot(zone);
-  if (!here) return <VenueMap route={null} me={null} fit="site" aspect={width / height} frame={frame} style={StyleSheet.absoluteFill} />;
+  if (!here) return <VenueMap route={null} me={null} fit="site" frame={frame} style={StyleSheet.absoluteFill} />;
 
   const markers: MapMarker[] = [];
   let route: Route | null = null;
@@ -56,6 +55,6 @@ export function RequestMap({ view, frame }: { view: RequestView; frame: { top: n
   markers.push({ kind: 'person', id: 'me', at: here, color: theme.tint });
 
   return (
-    <VenueMap route={route} me={null} markers={markers} fit="route" aspect={width / height} frame={frame} style={StyleSheet.absoluteFill} />
+    <VenueMap route={route} me={null} markers={markers} fit="route" frame={frame} style={StyleSheet.absoluteFill} />
   );
 }

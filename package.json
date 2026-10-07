@@ -4,9 +4,13 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~57.0.21",
+    "@maplibre/maplibre-react-native": "^11.5.0",
     "@supabase/supabase-js": "^2.117.2",
+    "@typesafe-ai/sdk": "^0.6.0",
     "expo": "~57.0.26",
+    "expo-asset": "~57.0.19",
     "expo-constants": "~57.0.20",
+    "expo-dev-client": "~57.0.19",
     "expo-device": "~57.0.2",
     "expo-font": "~57.0.4",
     "expo-glass-effect": "~57.0.4",
@@ -15,10 +19,14 @@
     "expo-linking": "~57.0.11",
     "expo-router": "~57.0.24",
     "expo-splash-screen": "~57.0.9",
+    "expo-sqlite": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "expo-symbols": "~57.0.3",
     "expo-system-ui": "~57.0.4",
     "expo-web-browser": "~57.0.3",
+    "hono": "4.13.13",
+    "maplibre-gl": "^5.24.0",
+    "postgres": "^3.4.9",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -32,18 +40,29 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/geojson": "^7946.0.16",
     "@types/react": "~19.2.2",
+    "@types/react-dom": "~19.2.3",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3"
   },
   "scripts": {
+    "prestart": "node scripts/ensure-supabase.mjs",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "preserver": "node scripts/ensure-supabase.mjs",
+    "server": "bun --watch src/server/main.ts",
+    "db:seed": "bun scripts/seed.ts",
+    "db:check": "bun scripts/check-rls.ts",
+    "repo:check": "bun scripts/check-repo.ts",
+    "commands:check": "bun scripts/check-commands.ts",
+    "models:check": "bun scripts/check-models.ts",
+    "db:types": "supabase gen types typescript --local > src/lib/database.types.ts"
   },
   "private": true
 }
