@@ -3,7 +3,11 @@ import {
   type ModelHttpErrorKind, type ModelProviderErrorCode,
 } from './errors';
 
-const TRANSIENT = new Set([408, 429, 500, 502, 503, 504]);
+// Both the Spark gateway and OpenAI answer 429 when busy; the Spark answers 502 while a model restarts, and its
+// relay drops the odd connection. Every model call gets one retry on those. Mobilization opts into `PATIENT_RETRIES`.
+const TRANSIENT: readonly number[] = [429, 502];
+/** Mobilization's slow /responses calls can afford two retries on any transient status. */
+export const PATIENT_RETRIES = { maxRetries: 2, retryStatuses: [408, 429, 500, 502, 503, 504] } as const;
 const ERROR_BODY_LIMIT = 64 * 1024;
 
 /** Safe, optional telemetry only. Model content, credentials, URLs and arbitrary errors never belong here. */
@@ -39,7 +43,7 @@ export function diagnosticRequestId(res: Response): string | undefined {
 
 export type HttpOptions = {
   baseUrl: string; apiKey: string | undefined; fetch: typeof fetch; retryDelayMs: number;
-  maxRetries?: number; maxRetryElapsedMs?: number;
+  maxRetries?: number; maxRetryElapsedMs?: number; retryStatuses?: readonly number[];
 };
 
 export async function postWithRetry(
@@ -67,7 +71,8 @@ export async function postWithRetry(
   if (signal?.aborted) { aborted(); signal.throwIfAborted(); }
   signal?.addEventListener('abort', aborted, { once: true });
   // The caller's signal bounds provider execution; this additional budget bounds retries/backoff.
-  const maxRetries = Number.isFinite(http.maxRetries) ? Math.max(0, Math.min(2, Math.floor(http.maxRetries!))) : 2;
+  const maxRetries = Number.isFinite(http.maxRetries) ? Math.max(0, Math.min(2, Math.floor(http.maxRetries!))) : 1;
+  const retryStatuses = new Set(http.retryStatuses ?? TRANSIENT);
   const maxRetryElapsedMs = Number.isFinite(http.maxRetryElapsedMs) ? Math.max(0, Math.min(30_000, http.maxRetryElapsedMs!)) : 30_000;
   try {
     for (let retry = 0; ; retry++) {
@@ -93,7 +98,7 @@ export async function postWithRetry(
       signal?.throwIfAborted();
       // Billing/quota errors need human action. Retrying them only consumes more requests.
       const retryable = failure instanceof ModelTransportError ||
-        (failure.kind !== 'quota' && TRANSIENT.has(failure.status));
+        (failure.kind !== 'quota' && retryStatuses.has(failure.status));
       if (!retryable || retry >= maxRetries) throw failure;
       const base = (Number.isFinite(http.retryDelayMs) ? Math.max(0, http.retryDelayMs) : 1000) * 2 ** retry;
       const backoffMs = base + Math.floor(Math.random() * base / 2);

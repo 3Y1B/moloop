@@ -90,9 +90,9 @@ export class LunaLlm {
       JSON.stringify({
         model: this.id,
         reasoning_effort: options.reasoningEffort ?? 'none',
-        ...(new URL(this.http.baseUrl).hostname === 'api.openai.com'
-          ? { max_completion_tokens: Math.max(32, Math.min(16_000, options.maxTokens ?? 700)) }
-          : { max_tokens: Math.max(32, Math.min(16_000, options.maxTokens ?? 700)) }),
+        ...(options.maxTokens == null ? {} : new URL(this.http.baseUrl).hostname === 'api.openai.com'
+          ? { max_completion_tokens: Math.max(32, Math.min(16_000, options.maxTokens)) }
+          : { max_tokens: Math.max(32, Math.min(16_000, options.maxTokens)) }),
         response_format: { type: 'json_schema', json_schema: { name: 'output', strict: true, schema: jsonSchema } },
         messages,
       }),

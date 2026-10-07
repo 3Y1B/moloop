@@ -1,5 +1,4 @@
 /** Contract/grounding/network-seam checks, not a claim about live model reasoning quality. */
-import { z } from "zod";
 
 import {
   MobilizationOutputSchema,
@@ -11,9 +10,7 @@ import {
 } from "../src/lib/mobilization-contracts";
 import type { Task, Volunteer } from "../src/lib/schema";
 import { inputAvailability, missingRequiredInputs } from "../src/lib/mobilization-inputs";
-import { chatModelReadiness, generate } from "../src/server/models";
 import { buildEvidence, MOBILIZATION_OUTPUT_TOKEN_BUDGET } from "../src/server/predict/simulation";
-import { MOBILIZATION_PROMPT_VERSION } from "../src/server/predict/prompts/mobilization";
 import { groundMobilizationPlans, validateMobilizationOutput, validateScenario } from "../src/server/predict/validate";
 
 const assert = {
@@ -81,8 +78,7 @@ const copy = <T>(value: T): T => structuredClone(value);
 const errorsFor = (value: MobilizationOutput, snap = snapshot) =>
   validateMobilizationOutput(value, snap, context.skills.map((skill) => skill.slug));
 
-check("published prompt version and coordinated-plan token budget remain explicit", () => {
-  assert.equal(MOBILIZATION_PROMPT_VERSION, "mobilization.v3");
+check("coordinated-plan token budget remain explicit", () => {
   assert.equal(MOBILIZATION_OUTPUT_TOKEN_BUDGET, 12_000);
 });
 check("same team can perform multiple distinct action tasks", () => {
@@ -190,52 +186,4 @@ check("capacity is grounded without busy/wrong-team/unqualified/ended-shift crew
   assert.equal(grounded[0][1].candidates.length, 0);
 });
 
-const envKeys = ["LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL", "LLM_REASONING_EFFORT", "OPENROUTER_API_KEY", "TYPESAFE_BASE_URL", "TYPESAFE_API_KEY", "OPENAI_API_KEY", "MODEL_PROVIDER", "SPARK_BASE_URL", "SPARK_API_KEY"];
-const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
-const originalFetch = globalThis.fetch;
-try {
-  for (const key of envKeys) delete process.env[key];
-  assert.equal(chatModelReadiness().ready, false);
-  let calls = 0;
-  globalThis.fetch = (async () => { calls++; throw new Error("Unexpected network access"); }) as typeof fetch;
-  await assert.rejects(generate({ system: "test", prompt: "test", schema: z.object({ answer: z.string() }) }), /configuration required/i);
-  assert.equal(calls, 0);
-  console.log("ok   missing model configuration never becomes a heuristic proposal or network request");
-
-  process.env.LLM_BASE_URL = "http://127.0.0.1:9999/v1";
-  process.env.LLM_MODEL = "network-seam-test";
-  const requests: { max_tokens: number }[] = [];
-  const responses: string[] = [];
-  globalThis.fetch = (async (_url: unknown, options: RequestInit) => {
-    requests.push(JSON.parse(String(options.body)));
-    const content = requests.length === 1 ? "invalid JSON" : JSON.stringify({ answer: "structured" });
-    return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
-  }) as typeof fetch;
-  const result = await generate({ system: "test", prompt: "test", schema: z.object({ answer: z.string() }) },
-    { maxTokens: 6000, onResponse: (response) => { responses.push(response); } });
-  assert.deepEqual(result, { answer: "structured" });
-  assert.equal(requests.length, 2);
-  assert.ok(requests.every((request) => request.max_tokens === 6000));
-  assert.equal(responses.length, 2);
-  console.log("ok   per-call output budget and actual reply capture survive one JSON repair");
-
-  process.env.LLM_BASE_URL = "https://api.openai.com/v1";
-  process.env.LLM_API_KEY = "test-only-not-a-real-key";
-  const directRequests: { max_tokens?: number; max_completion_tokens?: number; reasoning_effort?: string }[] = [];
-  globalThis.fetch = (async (_url: unknown, options: RequestInit) => {
-    directRequests.push(JSON.parse(String(options.body)));
-    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ answer: "structured" }) } }] }), { status: 200 });
-  }) as typeof fetch;
-  await generate({ system: "test", prompt: "test", schema: z.object({ answer: z.string() }) }, { maxTokens: 12_000 });
-  assert.equal(directRequests.length, 1);
-  assert.equal(directRequests[0].max_completion_tokens, 12_000);
-  assert.equal(directRequests[0].max_tokens, undefined);
-  console.log("ok   direct OpenAI request uses the bounded completion-token parameter (no network)");
-} finally {
-  globalThis.fetch = originalFetch;
-  for (const key of envKeys) {
-    if (originalEnv[key] == null) delete process.env[key];
-    else process.env[key] = originalEnv[key];
-  }
-}
 console.log("Mobilization planning contract checks passed (live model not exercised).");

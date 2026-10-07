@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { ModelAuditError, ModelHttpError } from './errors';
 import { fakeHttp } from './fake-http';
-import { callTool, chatModelReadiness, generate, generateWithReadTool, mobilizationModelId, mobilizationModelReadiness } from './index';
+import { callTool, chatModelReadiness, generate, generateWithReadTool, mobilizationModelReadiness } from './index';
 import { MobilizationModelConfigurationError, resolveMobilizationModelConfiguration } from './mobilization-configuration';
 import type { ModelDiagnostic } from './http';
 import type { ChatProvider, ModelIdentity } from './providers';
@@ -111,8 +111,7 @@ describe('pure Mobilization configuration scope', () => {
   });
 });
 
-const keys = ['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_REASONING_EFFORT', 'OPENROUTER_API_KEY',
-  'TYPESAFE_BASE_URL', 'TYPESAFE_API_KEY', 'OPENAI_API_KEY', 'MODEL_PROVIDER', 'SPARK_BASE_URL', 'SPARK_API_KEY',
+const keys = ['MOBILIZATION_BASE_URL', 'MOBILIZATION_API_KEY', 'OPENAI_API_KEY', 'MODEL_PROVIDER', 'SPARK_BASE_URL', 'SPARK_API_KEY',
   'MOBILIZATION_MODEL', 'MOBILIZATION_SERVICE_TIER', 'MOBILIZATION_REASONING_EFFORT'];
 beforeEach(() => { for (const key of keys) vi.stubEnv(key, undefined); });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -126,10 +125,7 @@ const retrieval = (service_tier?: string) => ({ status: 'completed', service_tie
   status: 'completed', call_id: 'call-test', name: 'get_playbooks', arguments: '{"keys":[]}' }] });
 const final = (service_tier?: string) => ({ status: 'completed', service_tier, output: [{ type: 'message', role: 'assistant',
   status: 'completed', content: [{ type: 'output_text', text: '{"answer":"valid"}' }] }] });
-const configured = () => {
-  vi.stubEnv('LLM_BASE_URL', 'https://api.openai.com/v1'); vi.stubEnv('LLM_API_KEY', 'test-only');
-  vi.stubEnv('LLM_MODEL', 'gpt-6-luna'); vi.stubEnv('LLM_REASONING_EFFORT', 'medium');
-};
+const configured = () => { vi.stubEnv('OPENAI_API_KEY', 'test-only'); };
 const audits = () => ({ timeoutMs: 60_000, onAttempt: vi.fn(async (_identity: ModelIdentity) => {}),
   onResponse: vi.fn(async (_raw: string, _identity: ModelIdentity) => {}) });
 
@@ -140,15 +136,14 @@ describe('Mobilization-only facade configuration (offline HTTP)', () => {
     const o = audits(); const diagnostics: { event: ModelDiagnostic; identity: ModelIdentity }[] = [];
     expect(chatModelReadiness().model).toBe('gpt-6-luna');
     expect(mobilizationModelReadiness()).toEqual({ ready: true, model: 'gpt-6-sol', serviceTier: 'fast', reasoningEffort: 'medium', missing: [] });
-    expect(mobilizationModelId()).toBe('gpt-6-sol');
     await expect(generateWithReadTool(ask(), { ...o, onDiagnostic: (event, identity) => { diagnostics.push({ event, identity }); } }))
       .resolves.toEqual({ answer: 'valid' });
     expect(fake.requests.map(({ json }) => ({ model: json.model, reasoning: json.reasoning, tier: json.service_tier })))
       .toEqual([{ model: 'gpt-6-sol', reasoning: { effort: 'medium' }, tier: 'fast' },
         { model: 'gpt-6-sol', reasoning: { effort: 'medium' }, tier: 'fast' }]);
-    expect(o.onAttempt).toHaveBeenCalledExactlyOnceWith({ provider: 'configured', model: 'gpt-6-sol' });
+    expect(o.onAttempt).toHaveBeenCalledExactlyOnceWith({ provider: 'openai', model: 'gpt-6-sol' });
     expect(o.onResponse.mock.calls.map(([, identity]) => identity)).toEqual([
-      { provider: 'configured', model: 'gpt-6-sol' }, { provider: 'configured', model: 'gpt-6-sol' },
+      { provider: 'openai', model: 'gpt-6-sol' }, { provider: 'openai', model: 'gpt-6-sol' },
     ]);
     expect(diagnostics.every(({ identity, event }) => identity.model === 'gpt-6-sol' && event.requestedServiceTier === 'fast')).toBe(true);
     expect(diagnostics.filter(({ event }) => event.stage === 'response_body').map(({ event }) => event.actualServiceTier))
@@ -158,13 +153,13 @@ describe('Mobilization-only facade configuration (offline HTTP)', () => {
   it('does not apply Mobilization model/tier/reasoning overrides to other structured chat or intake tools', async () => {
     configured(); vi.stubEnv('OPENAI_API_KEY', 'test-only');
     vi.stubEnv('MOBILIZATION_MODEL', 'gpt-6-sol'); vi.stubEnv('MOBILIZATION_SERVICE_TIER', 'fast');
-    vi.stubEnv('MOBILIZATION_REASONING_EFFORT', 'low'); vi.stubEnv('LLM_REASONING_EFFORT', 'high');
+    vi.stubEnv('MOBILIZATION_REASONING_EFFORT', 'low');
     const fake = fakeHttp({ json: { choices: [{ message: { content: '{"answer":"valid"}' } }] } },
       { json: { choices: [{ message: { content: 'A tool-free reply' } }] } }); vi.stubGlobal('fetch', fake.fetch);
     await expect(generate({ system: 'Test', prompt: 'Test', schema: Answer })).resolves.toEqual({ answer: 'valid' });
     await expect(callTool({ system: 'Test', prompt: 'Test', tools: [] })).resolves.toEqual({ text: 'A tool-free reply' });
     expect(fake.requests.map(({ json }) => json.model)).toEqual(['gpt-6-luna', 'gpt-6-luna']);
-    expect(fake.requests.map(({ json }) => json.reasoning_effort)).toEqual(['high', 'none']);
+    expect(fake.requests.map(({ json }) => json.reasoning_effort)).toEqual(['none', 'none']);
     expect(fake.requests.every(({ json }) => !('service_tier' in json))).toBe(true);
     expect(chatModelReadiness()).toEqual({ ready: true, model: 'gpt-6-luna', missing: [] });
   });
@@ -204,8 +199,8 @@ describe('Mobilization-only facade configuration (offline HTTP)', () => {
     await expect(generate({ system: 'Test', prompt: 'Test', schema: Answer })).resolves.toEqual({ answer: 'valid' });
   });
 
-  it.each(['none', 'low', 'high'])('uses explicit medium in both Mobilization rounds when global reasoning is %s and scoped reasoning is omitted', async (globalEffort) => {
-    configured(); vi.stubEnv('LLM_REASONING_EFFORT', globalEffort);
+  it('uses medium in both Mobilization rounds when scoped reasoning is omitted', async () => {
+    configured();
     const fake = fakeHttp({ json: retrieval() }, { json: final() }); vi.stubGlobal('fetch', fake.fetch);
     await expect(generateWithReadTool(ask(), audits())).resolves.toEqual({ answer: 'valid' });
     expect(fake.requests.map(({ json }) => json.reasoning.effort)).toEqual(['medium', 'medium']);

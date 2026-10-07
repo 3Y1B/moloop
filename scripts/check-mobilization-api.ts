@@ -39,16 +39,11 @@ declare const Bun: {
 };
 
 const modelKeys = [
-  "LLM_BASE_URL",
-  "LLM_API_KEY",
-  "LLM_MODEL",
-  "LLM_REASONING_EFFORT",
+  "MOBILIZATION_BASE_URL",
+  "MOBILIZATION_API_KEY",
   "MOBILIZATION_MODEL",
   "MOBILIZATION_SERVICE_TIER",
   "MOBILIZATION_REASONING_EFFORT",
-  "TYPESAFE_BASE_URL",
-  "TYPESAFE_API_KEY",
-  "OPENROUTER_API_KEY",
   "OPENAI_API_KEY",
   "MODEL_PROVIDER",
   "SPARK_BASE_URL",
@@ -324,10 +319,8 @@ const fakeModel = Bun.serve({
 
 function configureTestModel(nextMode: ModelMode) {
   clearModelConfig();
-  process.env.LLM_BASE_URL = `http://127.0.0.1:${fakeModel.port}/v1`;
-  process.env.LLM_API_KEY = "local-integration-test-key-not-a-real-secret";
-  process.env.LLM_MODEL = LOCAL_MODEL;
-  process.env.LLM_REASONING_EFFORT = "medium";
+  process.env.MOBILIZATION_BASE_URL = `http://127.0.0.1:${fakeModel.port}/v1`;
+  process.env.MOBILIZATION_API_KEY = "local-integration-test-key-not-a-real-secret";
   process.env.MOBILIZATION_MODEL = LOCAL_MODEL;
   process.env.MOBILIZATION_SERVICE_TIER = "default";
   process.env.MOBILIZATION_REASONING_EFFORT = "medium";
@@ -774,7 +767,7 @@ try {
   );
 
   clearModelConfig();
-  process.env.LLM_BASE_URL = "https://local-integration-test.invalid/v1";
+  process.env.MOBILIZATION_BASE_URL = "https://local-integration-test.invalid/v1";
   const missingKey = await simulate(mo, scenario("missing-remote-key"));
   check(
     "a remote provider without a key does not make a request",

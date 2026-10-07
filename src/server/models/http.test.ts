@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ModelHttpError, ModelTransportError } from './errors';
-import { postWithRetry, type HttpOptions, type ModelDiagnostic } from './http';
+import { PATIENT_RETRIES, postWithRetry, type HttpOptions, type ModelDiagnostic } from './http';
 
 const ok = () => new Response('{}', { status: 200 });
 const failed = (status = 429, code?: string, headers?: HeadersInit, type?: string) =>
   new Response(JSON.stringify({ error: { code, type, message: 'Echoed TEST_SECRET and https://private.test/key' } }), { status, headers });
+// Mobilization's patient policy; `shared` below is what every other model call gets.
 const options = (fetch: typeof globalThis.fetch, extra: Partial<HttpOptions> = {}): HttpOptions => ({
-  baseUrl: 'https://private.test/v1', apiKey: 'TEST_SECRET', fetch, retryDelayMs: 1000, ...extra,
+  baseUrl: 'https://private.test/v1', apiKey: 'TEST_SECRET', fetch, retryDelayMs: 1000, ...PATIENT_RETRIES, ...extra,
 });
+const shared = (fetch: typeof globalThis.fetch): HttpOptions => ({ baseUrl: 'https://private.test/v1', apiKey: 'TEST_SECRET', fetch, retryDelayMs: 1000 });
 const post = (http: HttpOptions, signal?: AbortSignal) => postWithRetry(http, '/chat/completions', '{}', signal);
 
 beforeEach(() => {
@@ -17,6 +19,26 @@ beforeEach(() => {
   vi.spyOn(Math, 'random').mockReturnValue(0);
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+describe('shared retry policy', () => {
+  it('retries a 429 or 502 once', async () => {
+    for (const status of [429, 502]) {
+      const fetch = vi.fn(async () => failed(status));
+      const result = post(shared(fetch)).catch((error) => error);
+      await vi.runAllTimersAsync();
+      expect(await result).toMatchObject({ status });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  it('does not retry a 500 or 503', async () => {
+    for (const status of [500, 503]) {
+      const fetch = vi.fn(async () => failed(status));
+      await expect(post(shared(fetch))).rejects.toMatchObject({ status });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    }
+  });
+});
 
 describe('safe, bounded model transport (offline only)', () => {
   it('records only safe metadata at dispatch, headers and HTTP error-body stages', async () => {

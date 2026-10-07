@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { ModelAuditError, ModelTransportError } from './errors';
 import {
-  diagnosticRequestId, emitDiagnostic, httpOptions, postWithRetry,
+  diagnosticRequestId, emitDiagnostic, httpOptions, PATIENT_RETRIES, postWithRetry,
   type DiagnosticCallback, type HttpOptions, type ModelDiagnostic,
 } from './http';
 
@@ -58,7 +58,7 @@ export class ReadToolResponses {
     baseUrl: string; apiKey: string | undefined; model: string;
     fetch?: typeof fetch; retryDelayMs?: number;
   }) {
-    this.http = httpOptions(configuration, configuration);
+    this.http = { ...httpOptions(configuration, configuration), ...PATIENT_RETRIES };
   }
 
   async generate<T extends z.ZodType, A extends z.ZodType>(
@@ -134,29 +134,6 @@ export class ReadToolResponses {
     options.signal?.throwIfAborted();
     report(diagnostics, { stage: 'complete' });
     return resultValue;
-  }
-
-  /** One-round strict JSON experiment seam; it does not replace the read-tool workflow. */
-  async generateStrict<T extends z.ZodType>(
-    { system, prompt, schema }: { system: string; prompt: string; schema: T }, options: ResponsesOptions,
-  ): Promise<z.infer<T>> {
-    if (typeof options.onResponse !== 'function') throw new ModelAuditError();
-    const maxTokens = boundedTokens(options.maxTokens, 12_000);
-    const tier = validatedServiceTier(options.serviceTier);
-    const diagnostics: Diagnostics = { callback: options.onDiagnostic, startedAt: Date.now(), request: 1, attempt: 1,
-      requestedServiceTier: tier };
-    const response = await this.complete({
-      model: this.configuration.model, reasoning: { effort: options.reasoningEffort }, store: false,
-      include: ['reasoning.encrypted_content'], truncation: 'disabled', parallel_tool_calls: false,
-      ...(tier == null ? {} : { service_tier: tier }),
-      input: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
-      max_output_tokens: maxTokens, tool_choice: 'none',
-      text: { verbosity: 'low', format: { type: 'json_schema', name: 'output', strict: true, schema: jsonSchemaOf(schema) } },
-    }, options, diagnostics);
-    const result = parseFinal(response, schema);
-    options.signal?.throwIfAborted();
-    report(diagnostics, { stage: 'complete' });
-    return result;
   }
 
   private async complete(body: Record<string, unknown>, options: ResponsesOptions, diagnostics: Diagnostics): Promise<ResponseEnvelope> {

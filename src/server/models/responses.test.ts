@@ -295,75 +295,18 @@ describe('bounded read-tool Responses transport (offline only)', () => {
   });
 });
 
-describe('single-round strict Responses experiment seam', () => {
-  it('uses one no-tool, low-verbosity strict-schema request with an audited raw envelope', async () => {
-    const a = agent({ ...final(), service_tier: 'fast' }); const o = options(); const events: ModelDiagnostic[] = [];
-    await expect(a.llm.generateStrict({ system: 'Test', prompt: 'Snapshot', schema: Answer }, {
-      ...o, serviceTier: 'fast', maxTokens: 2_000, onDiagnostic: (event) => { events.push(event); },
-    })).resolves.toEqual({ answer: 'valid' });
-    expect(a.requests).toHaveLength(1); expect(o.onResponse).toHaveBeenCalledTimes(1);
-    expect(a.requests[0].json).toMatchObject({ model: 'gpt-6-luna', reasoning: { effort: 'medium' },
-      service_tier: 'fast', store: false, max_output_tokens: 2_000, tool_choice: 'none', truncation: 'disabled',
-      text: { verbosity: 'low', format: { type: 'json_schema', name: 'output', strict: true } } });
-    expect(a.requests[0].json).not.toHaveProperty('tools');
-    expect(events.find((event) => event.stage === 'response_body')).toMatchObject({
-      request: 1, requestedServiceTier: 'fast', actualServiceTier: 'fast',
-    });
-  });
-
-  it.each([
-    ['tool call', retrieval([call])],
-    ['unknown action', retrieval([{ type: 'computer_call' }])],
-    ['refusal', { status: 'completed', output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'No' }] }] }],
-    ['incomplete', { ...final(), status: 'incomplete' }],
-    ['bad schema', final('{"answer":123}')],
-    ['bad JSON', final('invalid')],
-    ['empty reply', final('')],
-    ['wrong speaker', { status: 'completed', output: [{ type: 'message', role: 'user', content: [{ type: 'output_text', text: '{"answer":"bad"}' }] }] }],
-  ])('audits %s then fails closed without a repair or another model call', async (_name, reply) => {
-    const a = agent(reply); const o = options();
-    await expect(a.llm.generateStrict({ system: 'Test', prompt: 'Test', schema: Answer }, o)).rejects.toThrow();
-    expect(o.onResponse).toHaveBeenCalledTimes(1); expect(a.requests).toHaveLength(1);
-  });
-
-  it('does not return a valid final response if raw audit fails', async () => {
-    const a = agent(final()); const o = options(); o.onResponse.mockRejectedValue(new Error('TEST_SECRET'));
-    await expect(a.llm.generateStrict({ system: 'Test', prompt: 'Test', schema: Answer }, o)).rejects.toEqual(new ModelAuditError());
-    expect(a.requests).toHaveLength(1);
-  });
-
-  it('rejects missing raw-audit callback, invalid token budget and invalid tier before fetching', async () => {
-    const a = agent(); const input = { system: 'Test', prompt: 'Test', schema: Answer };
-    await expect(a.llm.generateStrict(input, { ...options(), onResponse: undefined as never })).rejects.toEqual(new ModelAuditError());
-    await expect(a.llm.generateStrict(input, { ...options(), maxTokens: 1 })).rejects.toThrow(/token budget/);
-    await expect(a.llm.generateStrict(input, { ...options(), serviceTier: 'priority' as never })).rejects.toThrow(/service tier/);
-    expect(a.requests).toHaveLength(0);
-  });
-
-  it('does not return output after cancellation during the raw audit', async () => {
-    const a = agent(final()); const o = options(); const cancel = new AbortController();
-    o.onResponse.mockImplementation(async () => { cancel.abort(); });
-    await expect(a.llm.generateStrict({ system: 'Test', prompt: 'Test', schema: Answer }, { ...o, signal: cancel.signal })).rejects.toThrow();
-    expect(a.requests).toHaveLength(1);
-  });
-});
-
-const keys = ['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_REASONING_EFFORT', 'OPENROUTER_API_KEY',
-  'TYPESAFE_BASE_URL', 'TYPESAFE_API_KEY', 'OPENAI_API_KEY', 'MODEL_PROVIDER', 'SPARK_BASE_URL', 'SPARK_API_KEY',
+const keys = ['MOBILIZATION_BASE_URL', 'MOBILIZATION_API_KEY', 'OPENAI_API_KEY', 'MODEL_PROVIDER', 'SPARK_BASE_URL', 'SPARK_API_KEY',
   'MOBILIZATION_MODEL', 'MOBILIZATION_SERVICE_TIER', 'MOBILIZATION_REASONING_EFFORT'];
 beforeEach(() => { for (const key of keys) vi.stubEnv(key, undefined); });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 const auditedOptions = () => ({ maxTokens: 12_000, timeoutMs: 60_000, onAttempt: vi.fn(async () => {}), onResponse: vi.fn(async () => {}) });
-const configured = () => {
-  vi.stubEnv('LLM_BASE_URL', 'https://api.openai.com/v1'); vi.stubEnv('LLM_API_KEY', 'test-key');
-  vi.stubEnv('LLM_MODEL', 'gpt-6-luna'); vi.stubEnv('LLM_REASONING_EFFORT', 'medium');
-};
+const configured = () => { vi.stubEnv('OPENAI_API_KEY', 'test-key'); };
 
 describe('scoped read-tool facade', () => {
   it('preserves configured model and medium, and records one provider attempt around both rounds', async () => {
     configured(); const fake = fakeHttp({ json: retrieval() }, { json: final() }); vi.stubGlobal('fetch', fake.fetch);
     const o = auditedOptions(); await expect(generateWithReadTool(ask(), o)).resolves.toEqual({ answer: 'valid' });
-    expect(o.onAttempt).toHaveBeenCalledExactlyOnceWith({ provider: 'configured', model: 'gpt-6-luna' });
+    expect(o.onAttempt).toHaveBeenCalledExactlyOnceWith({ provider: 'openai', model: 'gpt-6-luna' });
     expect(o.onResponse).toHaveBeenCalledTimes(2);
     expect(fake.requests.every((request) => request.json.model === 'gpt-6-luna' && request.json.reasoning.effort === 'medium')).toBe(true);
   });

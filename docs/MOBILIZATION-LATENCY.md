@@ -70,8 +70,7 @@ coverage were rejected during human review, not adopted.
 
 Raw requests, responses, failed samples and immutable snapshots are retained locally
 under ignored `.local/mobilization-experiments/`; never commit these operational
-artifacts or secrets. `scripts/benchmark-mobilization.ts` reproduces read-only tests.
-No benchmark approves a Mobilization or dispatches a task.
+artifacts or secrets. The benchmark harness was removed after the model was chosen.
 
 ## Safety and failure behavior
 
