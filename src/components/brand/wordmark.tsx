@@ -20,7 +20,8 @@ type Props = {
  */
 export function Wordmark({ size = 84, spin = false, draw = false, style }: Props) {
   const theme = useTheme();
-  const word = [styles.word, { color: theme.text, fontSize: size, lineHeight: size * 1.1, letterSpacing: -size * 0.04 }];
+  // No lineHeight: anything tighter than the font's own clips the letters on iOS, and the "p" loses its tail.
+  const word = [styles.word, { color: theme.text, fontSize: size, letterSpacing: -size * 0.04 }];
 
   return (
     <View
@@ -29,8 +30,8 @@ export function Wordmark({ size = 84, spin = false, draw = false, style }: Props
       accessibilityLabel="moloop"
       style={[styles.row, style]}>
       <Text style={word}>mol</Text>
-      {/* Sits on the x-height band, as the "oo" would. */}
-      <View style={{ marginBottom: size * 0.19, marginHorizontal: size * 0.02 }}>
+      {/* Sits on the x-height band, as the "oo" would: the row ends at the descender, about 0.24em below the baseline. */}
+      <View style={{ marginBottom: size * 0.23, marginHorizontal: size * 0.02 }}>
         <LoopMark
           width={size * 0.92}
           color={theme.tint}
