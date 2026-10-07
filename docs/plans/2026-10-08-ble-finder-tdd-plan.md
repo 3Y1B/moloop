@@ -89,3 +89,23 @@ Thresholds start at: here ≥ −55 dBm, very close ≥ −65, getting closer �
 4. On devices: assign a task to the volunteer, open Find on both phones, walk from ~15 m to touching. Expect
    Nearby → Getting closer → Very close → Here, green at the end, Searching when one phone closes the app.
    Tune `FINDER` thresholds in the room.
+
+## Addendum: the UWB arrow, iPhone ↔ iPhone
+
+Two iPhones (11 or newer) get Apple's arrow on the same screen; every other pair keeps the Bluetooth dots.
+
+- **Token swap over Bluetooth, no server.** Each iPhone starts an `NISession` and serves its archived discovery token
+  as a readable characteristic (`6d6f6c6f-6f70-4000-8000-746f6b656e00`) under the task's service. On hearing a
+  *connectable* advertiser for the task (only iPhones; Android's beacon isn't connectable), it connects, reads the
+  token, disconnects and runs `NINearbyPeerConfiguration`, with camera assistance where supported (iPhone 14+ needs
+  it for direction). Peer gone (`didRemove`): read their token again when next heard.
+- **Event** `onNearby({ distance?, azimuth?, at })`: metres, radians positive to the right (`horizontalAngle`, else
+  `asin(direction.x)`). Verify the sign on two devices.
+- **Seam S3** `readPeer({ distance, azimuth })`, tested: null without a distance; `here` under 0.5 m; `sweep` (distance
+  only, "Move your iPhone around"); `arrow` with angle in degrees, `ahead` and green within ±15°, else left/right;
+  "3.2 m" under 10 m, whole metres from there.
+- **Screen**: arrow springs to the angle, an arc from the "straight ahead" dot round to them, distance big, "to your
+  right" under it. The arrow drops back to the dots after 1.5 s without UWB.
+- **Permissions**: `NSNearbyInteractionUsageDescription`, `NSCameraUsageDescription` in `app.json`.
+- **Verify**: two iPhone 11+ on one task, both on Find: the arrow should track as one walks round the other; turning
+  to face them turns the screen green.
