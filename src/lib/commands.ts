@@ -1,4 +1,4 @@
-import type { DetailRead, Triage, Understood } from '@/lib/ai';
+import type { DetailRead, Match, Reread, Triage, Understood } from '@/lib/ai';
 import { AGENT, Batch, CommandError, FESTIVALGOER, SCHEDULER, TRIAGE_AGENT, type Actor } from '@/lib/batch';
 import { rankCandidates } from '@/lib/candidates';
 import { REPLY_LABEL } from '@/lib/format';
@@ -85,14 +85,30 @@ export function interpretHeuristic(tasks: Task[], meId: string | null, text: str
 /** A message to send once triage has had time to run. The server sends it straight away. */
 export type Later = { recipientId: string; body: string; taskId: string };
 
-/** Commit what the volunteer confirmed: a reply to their task, or a new report (triaged by `ai`, or by keywords). */
-export function commit(b: Batch, actorId: string, i: { heard: string; intent: Intent }, ai?: Triage): { confirmation: string; later?: Later } {
+/**
+ * Commit what the volunteer confirmed: a reply to their task, an update to an open task it's about (`match`), or a
+ * new report (triaged by `ai`, or by keywords).
+ */
+export function commit(
+  b: Batch, actorId: string, i: { heard: string; intent: Intent }, ai?: Triage, match?: Match,
+): { confirmation: string; later?: Later } {
   if (i.intent.kind === 'reply') {
     reply(b, actorId, i.intent.taskId, i.intent.reply, noteFor(i.intent.reply, i.heard));
     return { confirmation: `Sent “${REPLY_LABEL[i.intent.reply]}”` };
   }
+  const open = openMatch(b, match);
+  if (open) {
+    updateTask(b, open.id, { volunteerId: actorId }, i.heard, match!.read);
+    return { confirmation: `Added to “${open.title}”` };
+  }
   return fileReport(b, actorId, i.heard, ai);
 }
+
+/** The task a report matched, if it's still open now the lock is held. */
+const openMatch = (b: Batch, match: Match | undefined) => {
+  const t = match ? b.tasks[match.taskId] : undefined;
+  return t && t.status !== 'resolved' && t.status !== 'cancelled' ? t : undefined;
+};
 
 /** A volunteer's own report: triage, then straight to a teammate (or queued behind their current task). */
 export function fileReport(b: Batch, reporterId: string, text: string, ai?: Triage): { confirmation: string; later?: Later } {
@@ -123,6 +139,38 @@ export function fileReport(b: Batch, reporterId: string, text: string, ai?: Tria
     : `Your report “${draft.title}” is with ${teamName}. A lead will pick it up.`;
   return { confirmation: 'Report sent', later: me ? { recipientId: me.id, body, taskId: draft.id } : undefined };
 }
+
+/** Who a report about an open task came from: a volunteer, or a festival-goer's request. */
+export type UpdateFrom = { volunteerId: string } | { requestId: string };
+
+/** A new report that's about a task already open: it goes on that task, read again with what's new. */
+export function updateTask(b: Batch, taskId: string, from: UpdateFrom, text: string, read: Reread) {
+  const task = b.tasks[taskId];
+  if (!task) throw new CommandError('not_found', `No task ${taskId}`);
+  const actor = 'volunteerId' in from ? b.actor(from.volunteerId) : FESTIVALGOER;
+  const worse = moreUrgent(read.priority, task.priority);
+  b.task({ ...task, priority: worse ? read.priority : task.priority, summary: `${task.summary} Update: ${text}` });
+  b.ev(taskId, 'note', worse ? `Another report: worse. Now ${read.priority}` : 'Another report about this', actor, { note: text });
+  // A festival-goer's request follows the task already open, so they see who's coming.
+  const r = 'requestId' in from ? b.requests[from.requestId] : undefined;
+  if (r) b.request({ ...r, stage: 'finding', taskId });
+  // Worse is read out to whoever is on it; anything else waits until they look.
+  for (const id of b.onIt(task)) b.send(id, 'system', `Update: ${text}`, { taskId, delivery: worse ? 'spoken' : 'ping' });
+  // Better or sorted is only ever an offer: a lead decides, nothing closes on its own.
+  const ask = worse ? `Worse: ${task.title}. Now ${read.priority}. Send backup?`
+    : read.resolved ? `Sounds sorted: ${task.title}. Close it?`
+      : moreUrgent(task.priority, read.priority) ? `Sounds less urgent: ${task.title}. Downgrade to ${read.priority}?`
+        : null;
+  if (!ask) return;
+  const lead = b.leadFor(task.teamSlug);
+  const mo = b.coordinator();
+  for (const who of [lead, (worse && read.priority === 'P1') || !lead ? mo : undefined]) {
+    if (who) b.send(who.id, 'escalation', ask, { taskId });
+  }
+}
+
+const URGENCY: Priority[] = ['P1', 'P2', 'P3'];
+const moreUrgent = (a: Priority, than: Priority) => URGENCY.indexOf(a) < URGENCY.indexOf(than);
 
 /** Volunteer → festival-goer, on a task that came from a request. */
 export function guestReply(b: Batch, staffId: string, taskId: string, text: string) {
@@ -296,12 +344,17 @@ export function guestAsk(b: Batch, text: string, zoneSlug: string | null, locati
   return request;
 }
 
-/** A routine question gets an answer; anything else becomes a task. `ai` is the model's call, else keywords decide. */
-export function understand(b: Batch, requestId: string, ai?: Understood) {
+/**
+ * A routine question gets an answer; a report about a task already open joins it (`match`); anything else becomes a
+ * task. `ai` is the model's call, else keywords decide.
+ */
+export function understand(b: Batch, requestId: string, ai?: Understood, match?: Match) {
   const r = b.requests[requestId];
   if (!r || r.stage !== 'understanding') return;
   const u = ai ?? heuristicUnderstanding(r.heard, r.zoneSlug, r.locationHint);
-  if (u.kind === 'answer') b.request({ ...r, stage: 'answered', aiAnswer: u.answer, thread: [...r.thread, { from: 'ai', text: u.answer, at: b.now }] });
+  const open = u.kind === 'task' ? openMatch(b, match) : undefined;
+  if (open) updateTask(b, open.id, { requestId }, r.heard, match!.read);
+  else if (u.kind === 'answer') b.request({ ...r, stage: 'answered', aiAnswer: u.answer, thread: [...r.thread, { from: 'ai', text: u.answer, at: b.now }] });
   else createGuestTask(b, r, u);
 }
 

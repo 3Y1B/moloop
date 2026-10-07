@@ -1,5 +1,6 @@
 import * as C from '@/lib/commands';
 import { interpreter } from './models/interpreter';
+import { matchOpen } from './retriage';
 import { read, sql, transact } from './world';
 
 /**
@@ -16,7 +17,16 @@ export async function understandRequest(requestId: string) {
     const r = await read({ requestIds: [requestId] }, ({ world }) => world.requests[requestId]);
     if (!r || r.stage !== 'understanding') return;
     const { value, run } = await interpreter.understand({ text: r.heard, zoneSlug: r.zoneSlug, locationHint: r.locationHint });
-    await transact({ requestIds: [requestId] }, (b) => C.understand(b, requestId, value), { run: { ...run, requestId } });
+    // A report (not a question) may be about something already open nearby.
+    const matched = value.kind === 'task'
+      ? await read({}, ({ world }) => Object.values(world.tasks)).then((tasks) => matchOpen(tasks, {
+        text: r.heard, zoneSlug: r.zoneSlug ?? value.zoneSlug, locationHint: r.locationHint ?? value.locationHint,
+      }))
+      : undefined;
+    const taskId = matched?.value?.taskId;
+    await transact({ requestIds: [requestId], taskIds: taskId ? [taskId] : [] }, (b) => C.understand(b, requestId, value, matched?.value), {
+      run: taskId ? { ...matched!.run, requestId, taskId } : { ...run, requestId },
+    });
   } finally {
     inFlight.delete(requestId);
   }

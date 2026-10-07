@@ -27,3 +27,9 @@ export type Understood =
 
 /** Did the festival-goer's added detail make it worse? */
 export type DetailRead = { worse: boolean };
+
+/** A new report read together with the task it's about: how urgent it is now, and whether it says it's sorted. */
+export type Reread = { priority: Priority; resolved: boolean };
+
+/** The open task a new report is about, read again with what's new. Null: a new incident. */
+export type Match = { taskId: string; read: Reread } | null;

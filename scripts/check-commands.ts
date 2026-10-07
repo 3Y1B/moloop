@@ -42,9 +42,10 @@ async function until<T>(what: string, f: () => Promise<T | null | undefined | fa
 
 // ── server ──
 
-const health = await fetch(`${server}/health`).then((r) => r.json()).catch(() => null) as { policy: Policy } | null;
+const health = await fetch(`${server}/health`).then((r) => r.json()).catch(() => null) as { policy: Policy; models?: string } | null;
 if (!health) throw new Error(`No server at ${server}. Start it with: POLICY_SCALE=0.05 POLICY_AUTO_ASSIGN_MS=3000 SCHEDULER_MS=500 npm run server`);
 const policy = health.policy;
+const live = health.models === 'live';
 if (policy.ackTimeoutMs > 15_000) throw new Error('The server is on real timings. Restart it with POLICY_SCALE=0.05 POLICY_AUTO_ASSIGN_MS=3000 SCHEDULER_MS=500');
 // The in-process scheduler below plays a second server, so it runs on the same timings.
 setPolicy(policy);
@@ -345,7 +346,38 @@ try {
     expect('and Ben can finish it', (await ben.call('reply', { taskId: id, reply: 'done' })).status === 200);
   }
 
-  // ── 7. Messages and duty ──
+  // ── 7. Re-triage: a second report about the same incident ──
+  section(`re-triage (${live ? 'live models' : 'keywords: never merges'})`);
+  {
+    const fight = (await say(cam, 'Two guys are fighting by the food trucks')).taskId;
+    let t = await task(fight);
+    expect('the first report is a security task', t.team_id === (await teamId('security')) && t.status === 'assigned', t);
+    const owner = t.assignee_id === ana.id ? ana : ben;
+
+    const erin = await guest();
+    const req = await ask(erin, 'Two men fighting next to the burger van, one of them has a knife now', 'food-alley');
+    if (!live) {
+      expect('keywords make it a task of its own', !!req.task_id && req.task_id !== fight, req);
+      await erin.call('guestCancel', { requestId: req.id });
+    } else {
+      expect('the festival-goer\'s report joins the open task instead of making a new one', req.task_id === fight && req.stage === 'finding', req);
+      t = await task(fight);
+      expect('the knife makes it P1', t.priority === 'P1', t.priority);
+      expect('the volunteer on it hears the update', (await messagesFor(fight, owner)).some((m) => m.delivery === 'spoken' && /^Update: .*knife/.test(m.body)));
+      expect('Lee is asked about backup', (await messagesFor(fight, lee)).some((m) => m.kind === 'escalation' && /^Worse:/.test(m.body)));
+
+      const again = await say(cam, 'Update on the fight at the food trucks, his mates have pulled them apart and it has calmed down');
+      expect('a volunteer\'s follow-up joins it too', again.taskId === fight && /^Added to/.test(again.commit.body?.confirmation), again.commit);
+      expect('calmed down is only an offer to the lead: the task stays open', (await task(fight)).status === 'assigned'
+        && (await messagesFor(fight, lee)).some((m) => /Close it\?|Downgrade/.test(m.body)));
+      const runs = await sql`select tr.models from triage_runs tr join tasks t on t.report_id = tr.report_id where t.id = ${fight}`;
+      expect('each match is logged on the task\'s report', runs.length >= 2, runs);
+    }
+    await owner.call('reply', { taskId: fight, reply: 'accept' });
+    await owner.call('reply', { taskId: fight, reply: 'done' });
+  }
+
+  // ── 8. Messages and duty ──
   section('messages and duty');
   {
     expect('broadcast to security', (await lee.call('broadcast', { body: `check-commands ${run}: water break`, scope: { teamSlug: 'security' } })).status === 200);
