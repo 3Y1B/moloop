@@ -6,7 +6,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { DemoButton } from '@/components/demo-panel';
 import { DutyChip, DutyPanel } from '@/components/duty-header';
 import { openTaskSheet } from '@/components/lead/open-sheet';
-import { TeamMap } from '@/components/lead/team-map';
+import { useTeamMarkers } from '@/components/lead/team-map';
 import { TeamSheet } from '@/components/lead/team-sheet';
 import { MAP_BUTTON, MapButton } from '@/components/map/map-button';
 import { MapTopBar, useMapLayout } from '@/components/map/map-screen';
@@ -42,7 +42,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.mapGround }]}>
-      {team ? <LeadMap frame={layout.frame} /> : <MyMap task={active} frame={layout.frame} />}
+      <HomeMap team={team} task={active} frame={layout.frame} />
 
       <MapTopBar
         top={layout.barTop}
@@ -88,12 +88,42 @@ export default function HomeScreen() {
   );
 }
 
-/** Me, and the way to my task. Free: the whole site with me on it. */
-function MyMap({ task, frame }: { task: Task | undefined; frame: { top: number; bottom: number } }) {
+/**
+ * One map for both views, so switching to the team doesn't rebuild it. Mine: me, and the way to my task (free: the
+ * whole site with me on it). Team: a lead's team, or for Mo the whole crew, live on the site.
+ */
+function HomeMap({ team, task, frame }: { team: boolean; task: Task | undefined; frame: { top: number; bottom: number } }) {
+  const theme = useTheme();
   const me = useMyDot();
   const reporter = useReporterPlace(task);
   const route = useRouteTo(task);
   const accent = usePriorityColors()[task?.priority ?? 'P3'];
+  const role = useRole();
+  const mine = useTeam();
+  const crew = useCrew();
+  const everyone = role === 'coordinator';
+  const { proposals, tasks } = useSnapshot();
+  const crewMarkers = useTeamMarkers(
+    everyone ? crew.members : mine.members,
+    everyone ? crew.openTasks : mine.openTasks,
+    mine.team?.color ?? theme.tint,
+  );
+  if (team) {
+    return (
+      <VenueMap
+        route={null}
+        me={me}
+        markers={crewMarkers}
+        onMarkerPress={(m) => {
+          if (m.kind === 'task') return tasks[m.id] && openTaskSheet(tasks[m.id], proposals);
+          router.push({ pathname: '/person/[id]', params: { id: m.id } });
+        }}
+        fit="site"
+        frame={frame}
+        style={StyleSheet.absoluteFill}
+      />
+    );
+  }
   return (
     <VenueMap
       route={route}
@@ -104,28 +134,6 @@ function MyMap({ task, frame }: { task: Task | undefined; frame: { top: number; 
       fit={task ? 'route' : 'site'}
       frame={frame}
       style={StyleSheet.absoluteFill}
-    />
-  );
-}
-
-/** A lead's team, or for Mo the whole crew, live on the site. */
-function LeadMap({ frame }: { frame: { top: number; bottom: number } }) {
-  const theme = useTheme();
-  const me = useMyDot();
-  const role = useRole();
-  const team = useTeam();
-  const crew = useCrew();
-  const everyone = role === 'coordinator';
-  const { proposals, tasks } = useSnapshot();
-  return (
-    <TeamMap
-      members={everyone ? crew.members : team.members}
-      tasks={everyone ? crew.openTasks : team.openTasks}
-      color={team.team?.color ?? theme.tint}
-      me={me}
-      frame={frame}
-      onPerson={(id) => router.push({ pathname: '/person/[id]', params: { id } })}
-      onTask={(id) => tasks[id] && openTaskSheet(tasks[id], proposals)}
     />
   );
 }

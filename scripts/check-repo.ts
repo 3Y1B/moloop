@@ -137,6 +137,29 @@ const one = async <T>(q: PromiseLike<{ data: T; error: { message: string } | nul
   return data;
 };
 
+// A run killed before its `finally` leaves its tasks on everyone's screens ("repo: open" in Mo's list): clear them first.
+async function sweepLeftovers() {
+  const { data: reports } = await admin.from('reports').select('id').like('raw_text', 'repo check%');
+  const reportIds = (reports ?? []).map((r) => r.id);
+  if (!reportIds.length) return;
+  const { data: old } = await admin.from('tasks').select('id').in('report_id', reportIds);
+  const ids = (old ?? []).map((t) => t.id);
+  if (ids.length) {
+    const { data: msgs } = await admin.from('messages').select('id').in('task_id', ids);
+    const msgIds = (msgs ?? []).map((m) => m.id);
+    if (msgIds.length) await admin.from('message_deliveries').delete().in('message_id', msgIds);
+    await admin.from('messages').delete().in('task_id', ids);
+    await admin.from('agent_actions').delete().in('task_id', ids);
+    await admin.from('task_assignments').delete().in('task_id', ids);
+    await admin.from('task_events').delete().in('task_id', ids);
+    await admin.from('guest_requests').delete().in('task_id', ids);
+    await admin.from('tasks').delete().in('id', ids);
+  }
+  await admin.from('reports').delete().in('id', reportIds);
+  console.log(`swept ${ids.length} leftover task(s) from an earlier run`);
+}
+await sweepLeftovers();
+
 const report = await one(admin.from('reports').insert({
   channel: 'voice', reporter_kind: 'volunteer', reporter_id: tom, raw_text: 'repo check: he is dizzy', detected_language: 'en',
 }).select('id').single(), 'report');

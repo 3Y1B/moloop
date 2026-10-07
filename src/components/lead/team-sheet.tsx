@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Card, Separator } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { Type } from '@/constants/theme';
-import { useNeedsMe, useSnapshot, useTeam } from '@/data/hooks';
+import { useCrew, useLookups, useNeedsMe, useRole, useSnapshot, useTeam } from '@/data/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { EmptyCard, Group } from './group';
 import { MEMBER_INSET, MemberRow } from './member-row';
@@ -15,12 +15,20 @@ import { OpenTaskRow } from './open-task-row';
 /** Past the priority signal, in line with the row title. */
 const ROW_INSET = 39;
 
-/** The lead's view in the sheet: what needs them first, then everyone's status, then what's still open. */
+/**
+ * The lead's view in the sheet: what needs them first, then everyone's status, then what's still open.
+ * Mo has no team of their own: theirs is the whole crew.
+ */
 export function TeamSheet() {
   const theme = useTheme();
   const { proposals } = useSnapshot();
   const needs = useNeedsMe();
-  const { team, members, openTasks } = useTeam();
+  const everyone = useRole() === 'coordinator';
+  const mine = useTeam();
+  const crew = useCrew();
+  const { teams } = useLookups();
+  const { team } = mine;
+  const { members, openTasks } = everyone ? crew : mine;
   const color = team?.color ?? theme.tint;
   const onDuty = members.filter((m) => m.volunteer.duty === 'on_duty').length;
 
@@ -28,7 +36,7 @@ export function TeamSheet() {
     <View style={styles.stack}>
       <View style={styles.header}>
         {team && <Icon sf={team.sf} md={team.md} size={17} color={team.color} weight="medium" />}
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{team?.name ?? 'Team'}</Text>
+        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{everyone ? 'Crew' : team?.name ?? 'Team'}</Text>
         <Text style={[styles.meta, { color: theme.textTertiary }]}>{onDuty} on duty</Text>
       </View>
 
@@ -55,7 +63,7 @@ export function TeamSheet() {
             {members.map((m, i) => (
               <Fragment key={m.volunteer.id}>
                 {i > 0 && <Separator inset={MEMBER_INSET} />}
-                <MemberRow member={m} color={color} />
+                <MemberRow member={m} color={(everyone && m.volunteer.teamSlug && teams[m.volunteer.teamSlug]?.color) || color} />
               </Fragment>
             ))}
           </Card>
