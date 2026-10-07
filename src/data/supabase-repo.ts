@@ -55,7 +55,7 @@ const must = <T>(res: { data: T | null; error: { message: string } | null }, wha
 /** Repos made so far in this process: each one's realtime channels carry its number. */
 let repoCount = 0;
 
-type Change<T extends keyof Database['public']['Tables']> =RealtimePostgresChangesPayload<Row<T>>;
+type Change<T extends keyof Database['public']['Tables']> = RealtimePostgresChangesPayload<Row<T>>;
 
 /**
  * The live Repo. Reads straight from Supabase (RLS decides what this caller sees) and stays fresh over
@@ -306,7 +306,6 @@ export class SupabaseRepo implements Repo {
   private connect(gen: number) {
     const uid = this.userId;
     if (!uid) return;
-    console.warn('[DBG] connect', this.id, gen, new Error().stack?.split('\n').slice(2,5).join(' | '));
     this.hydrating = true;
     const pg = <T extends keyof Database['public']['Tables']>(table: T, handle: (p: Change<T>) => void, filter?: string) =>
       (channel: RealtimeChannel) =>
