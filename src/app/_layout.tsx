@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { DemoOverlay } from '@/components/demo-panel';
+import { FinderPrompt } from '@/components/finder/finder-prompt';
 import { LocationSharing } from '@/components/location-sharing';
 import { Colors } from '@/constants/theme';
 import { RepoProvider } from '@/data/provider';
@@ -62,6 +63,7 @@ export default function RootLayout() {
           <Stack.Screen name="assign/[id]" options={{ ...SHEET, title: 'Pick a volunteer' }} />
           <Stack.Screen name="approve/[id]" options={{ ...SHEET, sheetAllowedDetents: [0.6, 1], title: 'Approve' }} />
         </Stack>
+        <FinderPrompt />
         <DemoOverlay />
       </RepoProvider>
     </ThemeProvider>

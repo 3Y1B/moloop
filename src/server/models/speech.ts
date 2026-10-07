@@ -10,16 +10,17 @@ import { SpeechToText, TextToSpeech } from './speech-clients';
  *    still works.
  *  - `speak`: `/v1/audio/speech`. Whole file at once, mp3.
  *
- * On OpenAI by default (gpt-4o-mini-transcribe, gpt-4o-mini-tts). With MODEL_PROVIDER=spark, Qwen3-ASR 1.7B and
- * Qwen3-TTS 1.7B on the Spark first, sharing its queue with chat and decisions, then OpenAI. SPEECH_BASE_URL puts a
- * server of our own first instead, such as mlx-audio on this machine (`mlx_audio.server`) with the same Qwen3 models
- * under their Hugging Face names; it has no rate limit.
+ * Transcription is OpenAI (gpt-4o-mini-transcribe). Text to speech is OpenAI (gpt-4o-mini-tts) by default, and with
+ * MODEL_PROVIDER=spark Qwen3-TTS 1.7B on the Spark first, sharing its queue with chat and decisions, then OpenAI.
+ * SPEECH_BASE_URL puts a server of our own first instead, such as mlx-audio on this machine (`mlx_audio.server`) with
+ * the same Qwen3 models under their Hugging Face names; it has no rate limit. ASR_PROVIDER=qwen sends transcription to
+ * that first server too (Qwen3-ASR 1.7B), and so does having no OpenAI key.
  */
 
 const local = () => !!process.env.SPEECH_BASE_URL;
 
-/** The server tried first, if any: our own, else the Spark when it's the provider. */
-const primary = () => local()
+/** The Qwen server tried first, if any: our own, else the Spark when it's the provider. */
+const qwen = () => local()
   ? {
     base: process.env.SPEECH_BASE_URL!.replace(/\/+$/, ''),
     key: process.env.SPEECH_API_KEY ?? '',
@@ -50,6 +51,11 @@ const primary = () => local()
 
 let localLimiter: Limiter | undefined;
 
+/** Text to speech goes to the Qwen server first, when there is one. */
+const primaryTts = () => qwen();
+/** Transcription stays on OpenAI unless asked for, or unless OpenAI isn't there. */
+const primaryAsr = () => (process.env.ASR_PROVIDER === 'qwen' || !hasOpenAi() ? qwen() : null);
+
 // gpt-4o-mini-tts takes a named voice, and how to say things as instructions.
 const MANNER = 'Calm, clear and unhurried, like a steady festival radio dispatcher.';
 const OPENAI_ASR = 'gpt-4o-mini-transcribe';
@@ -72,8 +78,7 @@ export const briefsEnabled = () => speechAvailable();
 
 /** The models answering first, for the logs. */
 export const speechModels = () => {
-  const p = primary();
-  return p ? { asr: p.asr, tts: p.tts } : { asr: OPENAI_ASR, tts: OPENAI_TTS };
+  return { asr: primaryAsr()?.asr ?? OPENAI_ASR, tts: primaryTts()?.tts ?? OPENAI_TTS };
 };
 
 const auth = (key: string): Record<string, string> => (key ? { authorization: `Bearer ${key}` } : {});
@@ -82,8 +87,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const RETRY = new Set([408, 429, 500, 502, 503, 504]);
 
 /** One call to the first server through its queue, retried on a busy server or a dropped connection. */
-async function call(path: string, init: () => RequestInit, signal: AbortSignal) {
-  const p = primary()!;
+async function call(p: NonNullable<ReturnType<typeof qwen>>, path: string, init: () => RequestInit, signal: AbortSignal) {
   for (let attempt = 0; ; attempt++) {
     try {
       const res = await p.limiter.run(true, () => fetch(`${p.base}${path}`, { ...init(), signal }), signal);
@@ -109,11 +113,11 @@ async function call(path: string, init: () => RequestInit, signal: AbortSignal) 
  */
 export async function transcribe(audio: Blob, filename: string, vocabulary?: string): Promise<{ text: string; latencyMs: number }> {
   const t0 = Date.now();
-  const p = primary();
+  const p = primaryAsr();
   const first: Attempt<{ text: string }> | null = p && {
     id: p.asr,
     call: async (signal) => {
-      const res = await call('/audio/transcriptions', () => {
+      const res = await call(p, '/audio/transcriptions', () => {
         const form = new FormData();
         form.append('file', audio, p.rename ?? filename);
         form.append('model', p.asr);
@@ -137,12 +141,12 @@ export async function transcribe(audio: Blob, filename: string, vocabulary?: str
 /** A spoken message, as mp3. Up to 2,000 characters. */
 export async function speak(text: string): Promise<ArrayBuffer> {
   const input = text.slice(0, 2000);
-  const p = primary();
+  const p = primaryTts();
   const o = openAi();
   return withFallback(
     p && {
       id: p.tts,
-      call: async (signal) => (await call('/audio/speech', () => ({
+      call: async (signal) => (await call(p, '/audio/speech', () => ({
         method: 'POST',
         headers: { ...auth(p.key), 'content-type': 'application/json' },
         body: JSON.stringify({ model: p.tts, voice: p.voice, input, response_format: 'mp3' }),
@@ -161,6 +165,6 @@ export async function warmSpeech() {
   if (!local()) return;
   const t0 = Date.now();
   const audio = await speak('Ready.');
-  await transcribe(new Blob([audio], { type: 'audio/mpeg' }), 'warm.mp3');
+  if (primaryAsr()) await transcribe(new Blob([audio], { type: 'audio/mpeg' }), 'warm.mp3');
   console.log(`[voice] local speech models loaded in ${Date.now() - t0} ms`);
 }

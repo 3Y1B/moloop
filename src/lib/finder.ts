@@ -96,7 +96,7 @@ export type Pointer =
   | { kind: 'sweep'; distance: string }
   | { kind: 'here' };
 
-/** Within this many degrees of straight ahead, you're facing them: "ahead", and the screen goes green. */
+/** Within this many degrees of straight ahead, you're facing them: "ahead", and the screen lights up blue. */
 const FACING_DEG = 15;
 /** Closer than this, in metres, you've found them. */
 const HERE_M = 0.5;
@@ -115,4 +115,23 @@ export function readPeer({ distance, azimuth }: Peer): Pointer | null {
   const angle = Math.round((azimuth * 180) / Math.PI);
   const facing = Math.abs(angle) <= FACING_DEG;
   return { kind: 'arrow', angle, distance: metres(distance), side: facing ? 'ahead' : angle > 0 ? 'right' : 'left', facing };
+}
+
+/*
+ * Before anyone opens the finder: both phones share GPS while help is coming, so each can tell when the other is
+ * close enough for Bluetooth to take over, and say so ("You're close to Priya"). GPS wanders by 5–15 m, so it only
+ * counts as close again once they've been properly apart: one prompt per meeting, not one per wobble.
+ */
+export const CLOSE = {
+  /** Within this, in metres: close. About where two phones start to hear each other in a crowd. */
+  nearM: 30,
+  /** Back past this and the next time they're near counts as a new meeting. */
+  awayM: 60,
+};
+
+/** Whether two people are close, given whether they were last time. Either unknown: no change, so a GPS gap doesn't re-prompt. */
+export function isClose(a: { x: number; y: number } | null, b: { x: number; y: number } | null, was: boolean): boolean {
+  if (!a || !b) return was;
+  const d = Math.hypot(a.x - b.x, a.y - b.y);
+  return d <= (was ? CLOSE.awayM : CLOSE.nearM);
 }

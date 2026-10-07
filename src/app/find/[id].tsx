@@ -21,16 +21,17 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 import { useFinder } from '@/components/finder/use-finder';
 import { Icon } from '@/components/ui/icon';
+import { Brand } from '@/constants/theme';
 import type { Step, Trend } from '@/lib/finder';
 
 /*
  * Apple's Precision Finding screen. Bluetooth (any two phones): a cloud of dots that draws in as the other phone gets
  * closer, the step in big type, warmer/colder under it. UWB (two iPhones): the arrow, the distance and "to your right".
- * Either way the whole screen goes green once you're there, or facing them.
+ * It searches on black, and the whole screen lights up loop blue once you're there, or facing them.
  */
 
-const GREEN = '#30C759';
-const NIGHT = '#0B0B0D';
+/** Mist at an opacity, for everything secondary on the blue. */
+const mist = (alpha: number) => `rgba(201,220,255,${alpha})`;
 
 const LABEL: Record<Step, string> = {
   searching: 'Searching…',
@@ -70,8 +71,8 @@ export default function FindScreen() {
   // UWB saying "here" counts as here, even if Bluetooth hasn't caught up.
   const step: Step = pointer?.kind === 'here' ? 'here' : reading.step;
   const arrow = pointer?.kind === 'arrow' ? pointer : null;
-  // Apple's green: you're there, or you're facing them.
-  const green = step === 'here' || !!arrow?.facing;
+  // Lit up: you're there, or you're facing them.
+  const lit = step === 'here' || !!arrow?.facing;
 
   const spread = useSharedValue(SPREAD.searching);
   const found = useSharedValue(0);
@@ -82,9 +83,9 @@ export default function FindScreen() {
   }, [clock]);
 
   useEffect(() => {
-    found.value = withTiming(green ? 1 : 0, { duration: 350 });
-    if (green && step !== 'here') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [green, step, found]);
+    found.value = withTiming(lit ? 1 : 0, { duration: 350 });
+    if (lit && step !== 'here') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [lit, step, found]);
 
   // Each step change: the cloud springs to its new size, and a tap you can feel, stronger the closer you are.
   const last = useRef<Step>('searching');
@@ -99,7 +100,7 @@ export default function FindScreen() {
     }
   }, [step, spread]);
 
-  const background = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(found.value, [0, 1], [NIGHT, GREEN]) }));
+  const background = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(found.value, [0, 1], [Brand.night, Brand.blue]) }));
   const disc = useAnimatedStyle(() => ({
     opacity: step === 'here' ? found.value : 0,
     transform: [{ scale: interpolate(found.value, [0, 1], [0.3, 1]) }],
@@ -168,8 +169,8 @@ function Arrow({ angle }: { angle: number }) {
   return (
     <View style={styles.arrowBox}>
       <Svg width={ARC_BOX} height={ARC_BOX} style={StyleSheet.absoluteFill}>
-        <Path d={arc} stroke="rgba(255,255,255,0.45)" strokeWidth={10} strokeLinecap="round" fill="none" />
-        <Circle cx={c} cy={c - ARC_R} r={7} fill="rgba(255,255,255,0.6)" />
+        <Path d={arc} stroke={mist(0.45)} strokeWidth={10} strokeLinecap="round" fill="none" />
+        <Circle cx={c} cy={c - ARC_R} r={7} fill={mist(0.6)} />
         <Circle cx={end.x} cy={end.y} r={7} fill="#FFFFFF" />
       </Svg>
       <Animated.View style={rotate}>
@@ -208,17 +209,17 @@ const styles = StyleSheet.create({
   screen: { flex: 1, paddingHorizontal: 24 },
   flex: { flex: 1 },
   top: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  finding: { color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: '600' },
+  finding: { color: mist(0.7), fontSize: 15, fontWeight: '600' },
   name: { color: '#FFFFFF', fontSize: 30, fontWeight: '700', letterSpacing: -0.5 },
   close: {
     width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: mist(0.16),
   },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  dot: { position: 'absolute', backgroundColor: '#FFFFFF' },
+  dot: { position: 'absolute', backgroundColor: Brand.mist },
   disc: { position: 'absolute', width: 132, height: 132, borderRadius: 66, backgroundColor: '#FFFFFF' },
   arrowBox: { width: ARC_BOX, height: ARC_BOX, alignItems: 'center', justifyContent: 'center' },
   bottom: { gap: 6 },
   step: { color: '#FFFFFF', fontSize: 40, fontWeight: '700', letterSpacing: -0.8 },
-  hint: { color: 'rgba(255,255,255,0.7)', fontSize: 19, fontWeight: '500' },
+  hint: { color: mist(0.8), fontSize: 19, fontWeight: '500' },
 });

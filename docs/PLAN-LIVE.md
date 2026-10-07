@@ -181,8 +181,9 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
   - Holding the pill cuts a brief off; it starts again after "Heard". Only the recipient can read their own audio (storage RLS).
   - Briefs are on whenever there's a speech model.
 - **Speech server.**
-  - OpenAI by default (`gpt-4o-mini-transcribe`, `gpt-4o-mini-tts` with voice `marin`). With `MODEL_PROVIDER=spark`, Spark first, sharing its queue, then OpenAI.
-  - `SPEECH_BASE_URL` puts any OpenAI-shaped server first, such as `mlx_audio.server` on a Mac with the same Qwen3-ASR 1.7B and Qwen3-TTS 1.7B weights (`.env.example`), with OpenAI behind it.
+  - Transcription is OpenAI (`gpt-4o-mini-transcribe`). Text to speech is OpenAI by default (`gpt-4o-mini-tts`, voice `marin`); with `MODEL_PROVIDER=spark`, Qwen3-TTS on the Spark first, sharing its queue, then OpenAI.
+  - `SPEECH_BASE_URL` puts any OpenAI-shaped server first for text to speech, such as `mlx_audio.server` on a Mac with the Qwen3-TTS 1.7B weights (`.env.example`), with OpenAI behind it.
+  - `ASR_PROVIDER=qwen` sends transcription to that first server too (Qwen3-ASR 1.7B); with no OpenAI key it goes there anyway.
   - A local server loads the models at boot.
 - **Measured** (M5 Max, local models, warm):
 

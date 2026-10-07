@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { beaconUuid, readPeer, readSignal } from './finder';
+import { beaconUuid, isClose, readPeer, readSignal } from './finder';
 
 const NOW = 1_800_000_000_000;
 
@@ -91,10 +91,29 @@ describe('readPeer: the UWB arrow between two iPhones', () => {
   });
 
   it.each([
-    [0.0873, 'ahead', true], // 5°: facing them, the screen goes green
+    [0.0873, 'ahead', true], // 5°: facing them, the screen lights up
     [-0.2443, 'ahead', true], // −14°: still within the 15° cone
     [-0.5236, 'left', false], // −30°
   ] as const)('azimuth %f rad is %s (facing: %s)', (azimuth, side, facing) => {
     expect(readPeer({ distance: 5, azimuth })).toMatchObject({ side, facing });
+  });
+});
+
+describe('isClose: when both phones get "You’re close"', () => {
+  const at = (x: number) => ({ x, y: 0 });
+
+  it('is close within 30 m, not at 40 m', () => {
+    expect(isClose(at(0), at(25), false)).toBe(true);
+    expect(isClose(at(0), at(40), false)).toBe(false);
+  });
+
+  it('stays close until they are 60 m apart, so GPS wobbling at 30 m doesn’t prompt twice', () => {
+    expect(isClose(at(0), at(45), true)).toBe(true);
+    expect(isClose(at(0), at(65), true)).toBe(false);
+  });
+
+  it('holds whatever it was while either position is unknown', () => {
+    expect(isClose(null, at(5), false)).toBe(false);
+    expect(isClose(at(0), null, true)).toBe(true);
   });
 });
