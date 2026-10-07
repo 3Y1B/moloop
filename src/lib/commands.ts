@@ -29,6 +29,7 @@ import {
   helperIdsOf,
   isHeld,
   isActive,
+  canHelp,
   isBusy,
   isOnTask,
   needsApproval,
@@ -479,11 +480,7 @@ export function assign(
   const selectedHelpers = selectedIds.map((id): HelperAssignment => {
     const helper = b.volunteers[id];
     if (!helper) throw new CommandError("invalid", `No volunteer ${id}`);
-    if (helper.role !== "volunteer" || helper.duty !== "on_duty" ||
-      (helper.shiftEndsAt != null && helper.shiftEndsAt <= b.now) ||
-      helper.teamSlug !== task.teamSlug ||
-      !(task.requiredSkills ?? []).every((skill) => helper.skills.includes(skill)) ||
-      isBusy(b.all().filter((t) => t.id !== taskId), id))
+    if (!canHelp(task, helper, b.all(), b.now))
       throw new CommandError("conflict", "Selected helpers must be free, on duty, qualified and in the required team");
     const retained = task.helpers.find((entry) => entry.volunteerId === id);
     return retained ?? { volunteerId: id, status: "notified", assignedAt: b.now, respondedAt: null };

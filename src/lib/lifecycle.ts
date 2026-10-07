@@ -9,6 +9,7 @@ import type {
   ReplyKind,
   Task,
   TaskStatus,
+  Volunteer,
 } from "@/lib/schema";
 
 /**
@@ -66,6 +67,15 @@ export const isOnTask = (t: Task, volunteerId: string) =>
 /** A helper counts as busy, same as the owner. */
 export const isBusy = (tasks: Task[], volunteerId: string) =>
   tasks.some((t) => isOnTask(t, volunteerId));
+
+/** Who can go along as a helper: on duty and in shift, on the task's team, qualified, and free. assign() enforces it. */
+export const canHelp = (task: Task, v: Volunteer, tasks: Task[], now: number) =>
+  v.role === "volunteer" &&
+  v.duty === "on_duty" &&
+  (v.shiftEndsAt == null || v.shiftEndsAt > now) &&
+  v.teamSlug === task.teamSlug &&
+  (task.requiredSkills ?? []).every((skill) => v.skills.includes(skill)) &&
+  !isBusy(tasks.filter((t) => t.id !== task.id), v.id);
 
 /** Just the ids, for call sites that only need "who's on this task". */
 export const helperIdsOf = (t: Task): string[] => t.helpers.map((h) => h.volunteerId);

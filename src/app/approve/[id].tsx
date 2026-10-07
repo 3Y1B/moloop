@@ -12,7 +12,7 @@ import { Card, Separator } from '@/components/ui/card';
 import { Radius, Type } from '@/constants/theme';
 import { useLookups, useProposal, useRepo, useSnapshot, useTask, useTaskStatus } from '@/data/hooks';
 import { initials } from '@/lib/format';
-import { isBusy, POLICY } from '@/lib/lifecycle';
+import { canHelp, isBusy, POLICY } from '@/lib/lifecycle';
 import { goBack } from '@/lib/navigation';
 import type { Proposal, Task, Volunteer } from '@/lib/schema';
 import { toneColor, useTheme } from '@/hooks/use-theme';
@@ -61,11 +61,7 @@ function Pending({ proposal, task, picked, onPick }: {
   const candidates = proposal.candidates.filter((c) => {
     const volunteer = volunteers[c.volunteerId];
     if (!volunteer || volunteer.role !== 'volunteer' || volunteer.duty !== 'on_duty') return false;
-    if (!task.mobilizationId) return true;
-    return volunteer.teamSlug === task.teamSlug &&
-      (volunteer.shiftEndsAt == null || volunteer.shiftEndsAt > now) &&
-      (task.requiredSkills ?? []).every((skill) => volunteer.skills.includes(skill)) &&
-      !isBusy(all.filter((other) => other.id !== task.id), volunteer.id);
+    return !task.mobilizationId || canHelp(task, volunteer, all, now);
   });
   const top = candidates[0];
 
@@ -93,7 +89,12 @@ function Pending({ proposal, task, picked, onPick }: {
       : selection[0] === top.volunteerId ? `Approve ${first(lead)}`
         : `Send ${first(lead)}`;
 
-  const toggle = (vid: string) => onPick(selection.includes(vid) ? selection.filter((x) => x !== vid) : [...selection, vid]);
+  // Going along needs a free first pick and someone assign() takes as a helper; anyone else goes alone.
+  const others = all.filter((t) => t.id !== task.id);
+  const joins = (vid: string) =>
+    selection.length > 0 && !isBusy(others, selection[0]) && canHelp(task, volunteers[vid], all, now);
+  const toggle = (vid: string) =>
+    onPick(selection.includes(vid) ? selection.filter((x) => x !== vid) : joins(vid) ? [...selection, vid] : [vid]);
 
   // The first ticked takes the task; the rest go with them as helpers.
   const send = async () => {
