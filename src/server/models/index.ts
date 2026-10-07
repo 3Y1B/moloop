@@ -4,7 +4,7 @@ import type { z } from 'zod';
 import type { Answers } from './decisions';
 import { withFallback, type Attempt } from './fallback';
 import { Jev } from './jev';
-import { LunaLlm } from './luna';
+import { LunaLlm, type Tool, type ToolCall } from './luna';
 import { OpenAiDecisions } from './openai-decisions';
 import { hasOpenAi, onSpark, openai, spark, sparkLimiter } from './providers';
 
@@ -13,6 +13,7 @@ import { hasOpenAi, onSpark, openai, spark, sparkLimiter } from './providers';
  *
  *  - `generate`: chat completions with JSON-schema output, validated with zod, one repair round.
  *  - `decide`: typed questions answered with probabilities. Narrow questions, one thing each.
+ *  - `callTool`: one step of a tool-using agent. OpenAI only: the Spark's tool calling is undocumented.
  *
  * If both the Spark and OpenAI fail, the error reaches the caller, which fails closed to a person.
  */
@@ -21,7 +22,7 @@ import { hasOpenAi, onSpark, openai, spark, sparkLimiter } from './providers';
 export type CallOptions = { urgent?: boolean; signal?: AbortSignal };
 
 // How long the Spark gets before OpenAI takes over, and how long the last resort gets.
-const LIMITS = { chat: { primaryMs: 5_000, lastMs: 15_000 }, decide: { primaryMs: 4_000, lastMs: 10_000 } };
+const LIMITS = { chat: { primaryMs: 5_000, lastMs: 15_000 }, decide: { primaryMs: 4_000, lastMs: 10_000 }, tool: { primaryMs: 15_000, lastMs: 15_000 } };
 
 let clients: { sparkChat: LunaLlm; openaiChat: LunaLlm; jev: Jev; decisions: OpenAiDecisions } | undefined;
 const models = () => (clients ??= {
@@ -53,6 +54,14 @@ export function generate<T extends z.ZodType>(
   );
 }
 
+/** The model calls one of `tools` (arguments validated), or replies in plain text. */
+export function callTool(args: { system: string; prompt: string; tools: Tool[] }, o: CallOptions = {}): Promise<ToolCall> {
+  const m = models();
+  return withFallback(null, cloud(m.openaiChat.id, (signal) => m.openaiChat.callTool({ ...args, signal })), { ...LIMITS.tool, signal: o.signal });
+}
+
+export const toolModelId = () => models().openaiChat.id;
+
 /** Questions about some content, answered with probabilities. */
 export function decide<const Q extends Questions>(state: EntryType, questions: Q, o: CallOptions = {}): Promise<Answers<Q>> {
   const m = models();
@@ -64,3 +73,4 @@ export function decide<const Q extends Questions>(state: EntryType, questions: Q
 }
 
 export { choice, noul };
+export type { Tool, ToolCall };

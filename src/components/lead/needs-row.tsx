@@ -24,12 +24,12 @@ export function NeedsRow({ item }: { item: NeedsItem }) {
   const { task, kind } = item;
   const owner = task.assigneeId ? volunteers[task.assigneeId] : undefined;
   const zone = task.zoneSlug ? zones[task.zoneSlug]?.name : null;
-  const waiting = kind === 'approval' || kind === 'unassigned';
+  const waiting = kind === 'approval' || kind === 'unassigned' || kind === 'escalated';
   const sub = [owner?.name.split(' ')[0], zone, waiting ? ago(item.since, now) : null].filter(Boolean).join(' · ');
 
   const open = () => {
     if (kind === 'approval' && item.proposal) router.push({ pathname: '/approve/[id]', params: { id: item.proposal.id } });
-    else if (kind === 'unassigned') router.push({ pathname: '/assign/[id]', params: { id: task.id, mode: 'assign' } });
+    else if (kind === 'unassigned' || kind === 'escalated') router.push({ pathname: '/assign/[id]', params: { id: task.id, mode: 'assign' } });
     else router.push({ pathname: '/respond/[id]', params: { id: task.id } });
   };
 

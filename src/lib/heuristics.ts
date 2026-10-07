@@ -1,4 +1,4 @@
-import type { DetailRead, Triage, Understood } from '@/lib/ai';
+import type { DetailRead, EscalateTo, Triage, Understood } from '@/lib/ai';
 import type { IncidentCategory, Priority, ReplyKind, TeamSlug } from '@/lib/schema';
 
 /**
@@ -30,6 +30,8 @@ const P1 = /(unconscious|unresponsive|not breathing|not moving|isn'?t moving|not
 const MINOR = /(blister|plaster|sunscreen|band-?aid|graze|ice pack)/i;
 /** Does added detail sound worse? */
 const WORSE = /(worse|not breathing|can'?t breathe|unconscious|not responding|collapsed|bleeding|seizure|passed out|chest pain|vomit)/i;
+/** A bare plea ("help", "please help!!"): nothing to read but that someone may be in trouble. */
+const PLEA = /^\s*(please\s+)?(help|help me|sos)(\s+please)?[\s!.]*$/i;
 const QUESTION = /^(where|what|when|how|is|are|can i|do|does|which)\b|\?\s*$/i;
 
 export const TEAM_CATEGORY: Record<TeamSlug, IncidentCategory> = {
@@ -40,10 +42,10 @@ export const TEAM_CATEGORY: Record<TeamSlug, IncidentCategory> = {
 /** Stand-in for the AI's routine answers (answer_info). First matching pattern wins. */
 export const GUEST_ANSWERS: { re: RegExp; answer: string }[] = [
   { re: /toilet|bathroom|loo|restroom/i, answer: 'Nearest toilets to the Oval Stage are Toilets East, by the tennis courts. There are more at Toilets West, next to the Grove.' },
-  { re: /water|refill|drink/i, answer: 'Free water refills at Water Station 1 (west end of Food Alley) and Water Station 2 (east end, near the Oval Stage).' },
-  { re: /lost property|lost my|left my/i, answer: 'Lost property is at the Info Tent, open until 11pm. Bring ID to collect.' },
-  { re: /\b(times?|set|on next|playing|line-?up|schedule)\b/i, answer: 'Next up: Oval Stage at 5:30pm, Track Stage at 6:00pm. Full times are on the board at the Info Tent.' },
-  { re: /\b(map|where is|where's|how do i get)\b/i, answer: 'The Info Tent is just inside Gate B, on the left. Food Alley runs between the oval and the track.' },
+  { re: /water|refill|drink/i, answer: 'Free water refills at Water 1 (west end of Food Alley) and Water 2 (east end, near the Oval Stage).' },
+  { re: /lost property|lost my|left my/i, answer: 'Lost property is at Info, the tent just inside Gate B, open until 11pm. Bring ID to collect.' },
+  { re: /\b(times?|set|on next|playing|line-?up|schedule)\b/i, answer: 'Next up: Oval Stage at 5:30pm, Track Stage at 6:00pm. Full times are on the board at Info.' },
+  { re: /\b(map|where is|where's|how do i get)\b/i, answer: 'Info is the tent just inside Gate B, on the left. Food Alley runs between the oval and the track.' },
 ];
 
 /** Stand-in for triage: keyword → team + priority. */
@@ -91,15 +93,27 @@ const titleFrom = (text: string) => {
 };
 
 /** Is there a reason to doubt a routine reading of this text? A hard stop on AI answers and a floor on priority. */
-export const soundsUrgent = (text: string) => P1.test(text) || WORSE.test(text);
+export const soundsUrgent = (text: string) => P1.test(text) || WORSE.test(text) || PLEA.test(text);
 /** Words that mean someone's life may be at risk: priority P1 whatever a model says. */
 export const soundsCritical = (text: string) => P1.test(text);
+
+// Requests a volunteer mustn't act on alone. Mo: the whole event or outside services. Lead: a judgement call.
+const MO_ONLY = /\b(evacuat\w*|stop (the )?(show|set|music|gig)|(stage|show) hold|hold the (stage|show|set)|ambulance|police|cops|fire brigade|on fire|a fire|triple zero|000|bomb|suspicious (package|bag|item)|unattended (bag|backpack|package|item)|gas leak|announcement|close (the )?(gates?|oval|stage|area|entrance)\w*)\b/i;
+const LEAD = /\b(refund\w*|complain\w*|compensation|press|journalist|media|kick(ed)? (\w+ )?out|eject\w*|ban(ned)?|set times?|swap (their |the )?sets?|manager)\b/i;
+
+/** Who must decide before a volunteer is sent, by keywords. Null: a volunteer can handle it. A floor under the AI's call. */
+export function authorityFor(text: string): EscalateTo | null {
+  const mo = MO_ONLY.exec(text);
+  if (mo) return { level: 'coordinator', reason: `Mentions “${mo[0]}”: needs Mo's call` };
+  const lead = LEAD.exec(text);
+  return lead ? { level: 'lead', reason: `Mentions “${lead[0]}”: needs a lead's call` } : null;
+}
 
 /** Keyword triage as a full Triage: what MockRepo uses, and what the server falls back on when a model is down. */
 export function heuristicTriage(text: string, zoneSlug: string | null = null, locationHint: string | null = null): Triage {
   const { team, priority } = triage(text);
   const category = team === 'welfare' && /child|kid|son|daughter/i.test(text) ? 'lost_child' : TEAM_CATEGORY[team];
-  return { team, priority, category, title: titleFrom(text), summary: text, zoneSlug, locationHint, language: 'en' };
+  return { team, priority, category, title: titleFrom(text), summary: text, zoneSlug, locationHint, language: 'en', escalate: authorityFor(text) };
 }
 
 export function heuristicUnderstanding(text: string, zoneSlug: string | null = null, locationHint: string | null = null): Understood {

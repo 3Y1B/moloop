@@ -1,5 +1,5 @@
 import { VENUE_ZONES } from '@/data/venue';
-import { HANDOVER_NAME, isAboutPerson, isActive, isQuiet, needsResponse, quietSince } from '@/lib/lifecycle';
+import { HANDOVER_NAME, isAboutPerson, isActive, isHeld, isQuiet, needsResponse, quietSince } from '@/lib/lifecycle';
 import { routeBetween } from '@/lib/route';
 import type { GuestRequest, GuestRequestStage, HandoverTarget, Task, Volunteer, Zone } from '@/lib/schema';
 
@@ -63,6 +63,7 @@ export function taskStatusFor(viewerId: string | null, task: Task, { volunteers 
 
   switch (task.status) {
     case 'open':
+      if (isHeld(task) && e) return { label: e.level === 'coordinator' ? 'Needs Mo’s call' : 'Needs a lead’s call', detail: e.reason ?? undefined, tone: 'warning' };
       return { label: 'Unassigned', tone: 'warning' };
     case 'queued':
       return { label: mine ? 'Up next' : `Up next for ${first(owner)}`, tone: 'neutral' };

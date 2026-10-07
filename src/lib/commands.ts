@@ -1,11 +1,11 @@
-import type { DetailRead, Match, Reread, Triage, Understood } from '@/lib/ai';
+import type { DetailRead, EscalateTo, Match, Reread, Triage, Understood } from '@/lib/ai';
 import { AGENT, Batch, CommandError, FESTIVALGOER, SCHEDULER, TRIAGE_AGENT, type Actor } from '@/lib/batch';
 import { rankCandidates } from '@/lib/candidates';
 import { REPLY_LABEL } from '@/lib/format';
 import { heuristicDetail, heuristicPerson, heuristicTriage, heuristicUnderstanding, noteFor, replyIn } from '@/lib/heuristics';
 import {
   applyReply, assignOrQueue, handoverArrived, HANDOVER_NAME, isActive, isBusy, isOnTask, needsApproval, nextQueued,
-  passUp, POLICY, proposalDue, respondToEscalation, tick, type RespondInput,
+  isHeld, passUp, POLICY, proposalDue, respondToEscalation, tick, type RespondInput,
 } from '@/lib/lifecycle';
 import { routeBetween } from '@/lib/route';
 import type { Duty, GuestRequest, Priority, Proposal, ReplyKind, Task, TeamSlug, Volunteer } from '@/lib/schema';
@@ -129,10 +129,17 @@ export function fileReport(b: Batch, reporterId: string, text: string, ai?: Tria
     escalation: null, helperIds: [], resolution: null, requestId: null,
   };
   b.ev(draft.id, 'created', 'Reported by voice', me ? b.actor(me.id) : { kind: 'human' });
+  const teamName = b.teams[team]?.name ?? team;
+  // Escalated: a lead or Mo decides before anyone is sent (a P1 still goes to a teammate meanwhile).
+  const held = t.escalate ? escalateNew(b, draft, t.escalate) : null;
+  if (held?.holding) {
+    const to = held.level === 'lead' ? `the ${teamName} lead` : 'Mo';
+    const body = `Your report “${draft.title}” went to ${to} to decide.`;
+    return { confirmation: 'Report sent', later: me ? { recipientId: me.id, body, taskId: draft.id } : undefined };
+  }
   if (who) place(b, draft, who.id, AGENT, undefined);
   else b.task(draft);
   // Triage + assignment run after Send, so the reporter hears back via Inbox, not inline.
-  const teamName = b.teams[team]?.name ?? team;
   const body = who
     ? `Your report “${draft.title}” went to ${teamName}. ${first(who)} ${free ? 'is on it' : 'has it next'}.`
     : `Your report “${draft.title}” is with ${teamName}. A lead will pick it up.`;
@@ -436,7 +443,29 @@ function createGuestTask(b: Batch, r: GuestRequest, t: Triage) {
   };
   b.ev(task.id, 'created', 'Reported by a festival-goer', TRIAGE_AGENT);
   b.request({ ...r, stage: 'finding', taskId: task.id });
-  dispatch(b, task);
+  if (!t.escalate || !escalateNew(b, task, t.escalate).holding) dispatch(b, task);
+}
+
+/**
+ * The intake agent's `escalate`: a lead (Mo for a whole-event call, or when the team has no lead) decides before
+ * anyone is sent, so the task is held open and the allocator leaves it alone. A P1 isn't held: someone may be in
+ * danger, so the allocator still sends help while they decide. Returns who has it and whether it's held (the caller
+ * then skips the allocator).
+ */
+export function escalateNew(b: Batch, task: Task, e: EscalateTo): { level: 'lead' | 'coordinator'; holding: boolean } {
+  const lead = e.level === 'lead' ? b.leadFor(task.teamSlug) : undefined;
+  const owner = lead ?? b.coordinator();
+  const level = lead ? 'lead' : 'coordinator';
+  const holding = task.priority !== 'P1';
+  b.ev(task.id, 'escalated', `Escalated to ${lead ? first(lead) : 'Mo'}: ${e.reason}`, TRIAGE_AGENT);
+  if (holding) {
+    b.task({
+      ...task, status: 'open', assigneeId: null,
+      escalation: { at: b.now, reason: e.reason, level, ownerId: owner?.id ?? null, bumpedAt: null, response: null, source: 'intake' },
+    });
+  }
+  if (owner) b.send(owner.id, 'escalation', `Needs your call: ${task.title}. ${e.reason}`, { taskId: task.id });
+  return { level, holding };
 }
 
 // ── shared steps ──
@@ -512,11 +541,14 @@ export function schedulerStep(b: Batch) {
         b.send(a.volunteerId, 'system', `Your team lead has been alerted about “${task.title}”. Send an update when you can.`, { taskId: a.taskId });
         const lead = b.leadFor(task.teamSlug) ?? mo;
         if (lead) b.send(lead.id, 'escalation', `${first(v)} went quiet: ${task.title}.`, { taskId: a.taskId });
+      } else if (a.kind === 'remind') {
+        if (mo) b.send(mo.id, 'escalation', a.body, { taskId: a.taskId });
       } else {
         b.ev(a.taskId, 'bumped', a.body, SCHEDULER);
         const lead = b.leadFor(task.teamSlug);
         if (lead) b.send(lead.id, 'escalation', `Passed to Mo: ${task.title}.`, { taskId: a.taskId });
-        if (mo) b.send(mo.id, 'escalation', `${first(v)} asked for help: ${task.title}.`, { taskId: a.taskId });
+        const ask = isHeld(task) ? `Needs your call: ${task.title}. ${task.escalation?.reason ?? ''}`.trim() : `${first(v)} asked for help: ${task.title}.`;
+        if (mo) b.send(mo.id, 'escalation', ask, { taskId: a.taskId });
       }
     }
   }

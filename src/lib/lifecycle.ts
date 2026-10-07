@@ -132,7 +132,12 @@ export function applyReply(
 export type Alert =
   | { kind: 'nudge'; taskId: string; volunteerId: string; body: string }
   | { kind: 'lead_alert'; taskId: string; volunteerId: string; body: string }
-  | { kind: 'bump'; taskId: string; volunteerId: string; body: string };
+  | { kind: 'bump'; taskId: string; volunteerId: string; body: string }
+  /** A held escalation still waiting on Mo. */
+  | { kind: 'remind'; taskId: string; body: string };
+
+/** The intake agent escalated it: open, unassigned, waiting on a lead or Mo. The allocator never assigns it. */
+export const isHeld = (t: Task) => t.status === 'open' && t.escalation?.source === 'intake';
 
 /**
  * Scheduler step for one task. Not an LLM. Silence never closes a task:
@@ -141,6 +146,7 @@ export type Alert =
  */
 export function tick(task: Task, now: number, coordinatorId: string | null = null): { task: Task; alerts: Alert[] } | null {
   if (task.status === 'escalated') return bump(task, now, coordinatorId);
+  if (isHeld(task)) return holdTick(task, now, coordinatorId);
   if (!isActive(task) || !task.assigneeId || task.leadAlertedAt) return null;
 
   const overdue =
@@ -175,10 +181,22 @@ function bump(task: Task, now: number, coordinatorId: string | null): { task: Ta
   };
 }
 
+/** A held escalation never sits silent: a lead's moves up to Mo like "need help"; Mo's is re-sent every nudge gap. */
+function holdTick(task: Task, now: number, coordinatorId: string | null): { task: Task; alerts: Alert[] } | null {
+  const e = task.escalation!;
+  if (e.level === 'lead') return bump(task, now, coordinatorId);
+  const since = Math.max(task.lastNudgeAt ?? 0, e.bumpedAt ?? e.at);
+  if (now - since <= POLICY.nudgeGapMs) return null;
+  return {
+    task: { ...task, nudgeCount: task.nudgeCount + 1, lastNudgeAt: now },
+    alerts: [{ kind: 'remind', taskId: task.id, body: `Still waiting for your call: ${task.title}.` }],
+  };
+}
+
 /** "Pass to Mo" by hand. */
 export function passUp(task: Task, coordinatorId: string | null, now: number): Transition | null {
   const e = task.escalation;
-  if (task.status !== 'escalated' || !e || e.level !== 'lead') return null;
+  if ((task.status !== 'escalated' && !isHeld(task)) || !e || e.level !== 'lead') return null;
   return { task: { ...task, escalation: { ...e, level: 'coordinator', ownerId: coordinatorId, bumpedAt: now } }, text: 'Passed to Mo' };
 }
 

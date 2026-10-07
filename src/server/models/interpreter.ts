@@ -1,18 +1,20 @@
 import { z } from 'zod';
 
-import type { DetailRead, Match, Triage, Understood } from '@/lib/ai';
+import type { DetailRead, EscalateTo, Match, Triage, Understood } from '@/lib/ai';
 import {
   heuristicDetail, heuristicPerson, heuristicTriage, heuristicUnderstanding, soundsCritical, soundsUrgent, TEAM_CATEGORY,
 } from '@/lib/heuristics';
 import { activeTaskOf, interpretHeuristic } from '@/lib/commands';
-import { IncidentCategory, ReplyKind, TEAM_SLUGS, type Priority, type Task } from '@/lib/schema';
+import { ReplyKind, type Priority, type Task, type TeamSlug } from '@/lib/schema';
 import type { Interpretation } from '@/data/repo';
-import { choice, chatModelId, decide, decideModelId, generate, noul, type CallOptions } from '.';
-import { venueFacts, zones, type Zone } from './venue';
+import { callTool, choice, decide, decideModelId, noul, toolModelId, type CallOptions } from '.';
+import { CreateTaskArgs, EscalateArgs, INTAKE_SYSTEM, intakeTools, TEAMS, type AnswerArgs } from './intake-tools';
+import { zones, type Zone } from './venue';
 
 /**
- * Reads what people say and decides what to do with it: answer a routine question, pick a team and priority,
- * tell if added detail is worse, tell a reply from a new report. One interface, so Spark and Luna or plain
+ * Reads what people say and decides what to do with it: answer a routine question, pick a team and priority, create a
+ * task or escalate it to a lead or Mo (the intake agent's tools, intake-tools.ts), tell if added detail is worse, tell
+ * a reply from a new report. One interface, so Spark and Luna or plain
  * keywords can answer.
  * None of these throw on a model failure: they fail closed to a person (priority at least P2, never an AI answer)
  * and say so in `run.error`, which lands in triage_runs.
@@ -33,7 +35,11 @@ export type Run = {
 
 export type Judged<T> = { value: T; run: Run };
 
-type Heard = { text: string; zoneSlug: string | null; locationHint: string | null };
+/** Who sent a message. Staff: their role and team, from the volunteers table. */
+export type Sender = { kind: 'festivalgoer' } | { kind: 'staff'; role: string; teamSlug: TeamSlug | null };
+
+/** A message, where it was sent from (the zone picked, or where the volunteer is) and who sent it. */
+type Heard = { text: string; zoneSlug: string | null; locationHint: string | null; from?: Sender };
 
 export interface Interpreter {
   /** A festival-goer's words: a routine answer, or a task. */
@@ -88,17 +94,6 @@ export class KeywordInterpreter implements Interpreter {
 
 // ── Spark ──
 
-const TEAMS = {
-  'first-aid': 'Someone is hurt, ill, collapsed, bleeding, faint or overheated and needs medical attention',
-  welfare: 'A lost or separated child, someone vulnerable, harassed or feeling unsafe, or lost property',
-  crowd: 'Overcrowding, a crush, long queues, a blocked gate or barrier, evacuation',
-  security: 'A fight, theft, weapon, trespass, or an aggressive or very drunk person',
-  info: 'A question about directions, the schedule, accessibility or general information',
-  artist: 'Anything for artists, bands or performers, or from the backstage or green room area: hospitality, requests, stage management',
-  vendors: 'Food or drink stalls, vendors, gas or cooking, stallholder payments',
-  ops: 'Facilities and logistics: power, lighting, sound, spills, bins, toilets, water, cables',
-} satisfies Record<(typeof TEAM_SLUGS)[number], string>;
-
 const PRIORITIES = {
   P1: 'Life-threatening: unconscious, not breathing, a missing child, a weapon, a crush, severe bleeding',
   P2: 'Urgent: an injury, heat illness, a fight or distress; someone needs help within minutes',
@@ -114,39 +109,45 @@ const REPLIES = {
   new_report: 'Reports something new, or says anything that is not a reply to the task',
 } satisfies Record<ReplyKind | 'new_report', string>;
 
-const Assessment = z.object({
-  language: z.string().describe('ISO 639-1 code of the language the message is written in, e.g. "en", "es"'),
-  title: z.string().describe('English, at most 60 characters. What and where, e.g. "Collapsed person at Food Alley"'),
-  summary: z.string().describe('English, at most two short sentences. Facts from the message only.'),
-  category: IncidentCategory,
-  zone: z.string().nullable().describe('slug of the place named in the message, from the list, else null'),
-  place: z.string().nullable().describe('the location as the person described it, else null'),
-  answer: z.string().nullable().describe('Only for a routine question answerable from the venue facts: the answer, in the language of the message. Otherwise null.'),
-});
-
-const SYSTEM = (zs: Zone[], canAnswer: boolean) => `You read messages sent at a 15,000-person music festival and prepare them for the safety team.
-Write title and summary in English whatever language the message is in. Never invent facts.
-${canAnswer ? `If the message is only a routine question (toilets, water, times, lost-property process, directions) and the venue facts below answer it, give the answer in 1-2 short sentences in the SAME language as the message. Never answer anything involving injury, illness, children, safety, security, crowding, weather or distress: set answer to null. If the facts don't cover it, set answer to null.
-
-Venue facts:
-${venueFacts(zs)}
-` : 'Set answer to null.\n'}
-Places (slug: name):
-${zs.map((z) => `${z.slug}: ${z.name}`).join('\n')}`;
-
 const dropUnknownZone = (slug: string | null, zs: Zone[]) => (slug && zs.some((z) => z.slug === slug) ? slug : null);
 
+/** How the agent is told who sent it: "a volunteer on the first-aid team". */
+function describe(from: Sender): string {
+  if (from.kind === 'festivalgoer') return 'a festival-goer';
+  const team = from.teamSlug ? ` ${from.teamSlug}` : '';
+  if (from.role === 'volunteer') return `a volunteer on the${team} team`;
+  if (from.role === 'team_lead') return `the${team} team lead`;
+  if (from.role === 'coordinator') return 'Mo, the event coordinator';
+  return `a staff member (${from.role.replace('_', ' ')})`;
+}
+
+/** An escalation that would land back on whoever sent it isn't one: they've already decided. */
+function aboveSender(e: EscalateTo | null, from: Sender | undefined, team: TeamSlug): EscalateTo | null {
+  if (!e || from?.kind !== 'staff') return e;
+  if (from.role === 'coordinator') return null;
+  if (from.role === 'team_lead' && e.level === 'lead' && from.teamSlug === team) return null;
+  return e;
+}
+
+const LEVEL = { lead: 1, coordinator: 2 } as const;
+/** The higher of two escalations: the agent's and the keyword rule's. Escalating is never undone. */
+const higher = (a: EscalateTo | null, b: EscalateTo | null) => (!a ? b : !b ? a : LEVEL[b.level] > LEVEL[a.level] ? b : a);
+
 /**
- * Chat model writes the account; typed questions pick team and priority. In parallel: they don't depend on each other.
- * `canAnswer`: the chat model may answer a routine question. `answered`: the AI already answered it and the person
- * asked for a human anyway, so it stays P3 unless a safety rule below raises it.
+ * The intake agent picks a tool (create_task or escalate) and writes the account; typed questions cross-check team,
+ * priority and "is this routine". In parallel: they don't depend on each other. Then code has the last word:
+ * priority is never below the red-flag words, an escalation is never dropped (except one back to its own sender),
+ * and a keyword rule can add one.
+ * `canAnswer`: the agent may answer a routine question instead of calling a tool. `answered`: the AI already answered
+ * it and the person asked for a human anyway, so it stays P3 unless a safety rule raises it.
  */
 async function assess(i: Heard, { canAnswer = false, answered = false }, o: CallOptions) {
   const t0 = Date.now();
   const zs = await zones();
   const where = [zs.find((z) => z.slug === i.zoneSlug)?.name, i.locationHint].filter(Boolean).join(', ');
-  const [written, decided] = await Promise.allSettled([
-    generate({ system: SYSTEM(zs, canAnswer), prompt: where ? `${i.text}\n(Sent from: ${where})` : i.text, schema: Assessment }, o),
+  const about = [i.from && `From: ${describe(i.from)}.`, where && `Sent from: ${where}.`].filter(Boolean).join(' ');
+  const [called, decided] = await Promise.allSettled([
+    callTool({ system: INTAKE_SYSTEM(zs, canAnswer), prompt: about ? `${i.text}\n(${about})` : i.text, tools: intakeTools(canAnswer) }, o),
     decide(where ? { message: i.text, location: where } : i.text, {
       team: choice('Which team should handle this message?', TEAMS),
       priority: choice('How urgent is this message?', PRIORITIES),
@@ -155,66 +156,72 @@ async function assess(i: Heard, { canAnswer = false, answered = false }, o: Call
   ]);
 
   const kw = heuristicTriage(i.text, i.zoneSlug, i.locationHint);
-  const errors = [written, decided].flatMap((r) => (r.status === 'rejected' ? [String(r.reason?.message ?? r.reason)] : []));
-  const w = written.status === 'fulfilled' ? written.value : null;
+  const errors = [called, decided].flatMap((r) => (r.status === 'rejected' ? [String(r.reason?.message ?? r.reason)] : []));
+  const c = called.status === 'fulfilled' ? called.value : null;
   const d = decided.status === 'fulfilled' ? decided.value : null;
+  // create_task's arguments are escalate's without level and reason. answer_question routes nothing.
+  const routed = c?.tool === 'create_task' || c?.tool === 'escalate';
+  const agent = routed ? (c.args as z.infer<typeof CreateTaskArgs> & Partial<z.infer<typeof EscalateArgs>>) : null;
+  const replied = c?.tool === 'answer_question' ? (c.args as z.infer<typeof AnswerArgs>) : null;
 
-  // Priority: the model's reading, a step more urgent if it isn't sure, and never below what the red-flag words say.
-  let priority: Priority = kw.priority;
-  let teamConfidence: number | null = null;
-  let alternates: { team: string; confidence: number }[] = [];
-  let priorityConfidence: number | null = null;
-  if (d) {
-    const ranked = Object.entries(d.priority.probabilities).sort((a, b) => b[1] - a[1]);
-    priority = d.priority.choice as Priority;
-    if (d.priority.confidence < 0.5) priority = moreUrgent(priority, ranked[1][0] as Priority);
-    priorityConfidence = d.priority.confidence;
-    teamConfidence = d.team.confidence;
-    alternates = Object.entries(d.team.probabilities).sort((a, b) => b[1] - a[1]).slice(1, 3).map(([team, confidence]) => ({ team, confidence }));
-  } else {
-    priority = moreUrgent(priority, 'P2');
-  }
+  // Priority: the classifier's calibrated reading (a step up when it's unsure). The agent's counts when it says P1,
+  // or when the classifier failed. Never below the red-flag words. Taking the higher of the two every time inflated
+  // routine reports to P2 (scripts/check-intake.ts).
+  let priority: Priority = d ? modelPriority(d.priority) : moreUrgent(agent?.priority ?? kw.priority, 'P2');
+  if (agent?.priority === 'P1') priority = 'P1';
   if (answered && d && priority !== 'P1') priority = 'P3';
-  if (soundsCritical(i.text)) priority = 'P1';
-  else if (soundsUrgent(i.text)) priority = moreUrgent(priority, 'P2');
+  priority = floor(priority, i.text);
 
-  const team = d ? (d.team.choice as Triage['team']) : kw.team;
+  const team = agent?.team ?? (d ? (d.team.choice as Triage['team']) : kw.team);
+  const asked = c?.tool === 'escalate' && agent?.level && agent.reason?.trim() ? { level: agent.level, reason: agent.reason.trim().slice(0, 140) } : null;
   const triage: Triage = {
     team, priority,
-    category: w?.category ?? TEAM_CATEGORY[team],
-    title: (w?.title ?? kw.title).slice(0, 60),
-    summary: (w?.summary ?? kw.summary).slice(0, 280),
-    zoneSlug: dropUnknownZone(w?.zone ?? null, zs) ?? i.zoneSlug,
-    locationHint: w?.place ?? i.locationHint,
-    language: (w?.language ?? 'en').toLowerCase().slice(0, 2),
+    category: agent?.category ?? TEAM_CATEGORY[team],
+    title: (agent?.title ?? kw.title).slice(0, 60),
+    summary: (agent?.summary ?? kw.summary).slice(0, 280),
+    zoneSlug: dropUnknownZone(agent?.zone ?? null, zs) ?? i.zoneSlug,
+    locationHint: agent?.place ?? i.locationHint,
+    language: (agent?.language ?? replied?.language ?? 'en').toLowerCase().slice(0, 2),
+    escalate: aboveSender(higher(asked, kw.escalate), i.from, team),
   };
 
-  // An AI answer needs two independent yeses, and nothing that sounds like trouble.
-  const answerable = !!w?.answer?.trim() && !!d && d.routine.noul >= 0.5 && priority === 'P3' && !soundsUrgent(i.text);
+  // An AI answer needs two independent yeses, and nothing that sounds like trouble or needs a decision.
+  const answer = canAnswer ? replied?.answer.trim() || c?.text || null : null;
+  const answerable = !!answer && !!d && d.routine.noul >= 0.5 && priority === 'P3' && !soundsUrgent(i.text) && !triage.escalate;
   const log = run({
     route: answerable ? 'ai_resolved' : 'escalated_to_triage',
-    reason: answerable ? 'Routine question' : errors.length ? 'A model failed; sent to a person' : null,
+    reason: answerable ? 'Routine question' : errors.length ? 'A model failed; sent to a person' : triage.escalate?.reason ?? null,
     confidence: d?.routine.noul ?? null,
-    team: d ? { team, confidence: teamConfidence, alternates } : null,
-    priority: d ? { priority, confidence: priorityConfidence, signals: [] } : null,
-    rewrite: w ? { title: triage.title, summary: triage.summary, category: triage.category, zoneSlug: triage.zoneSlug, locationHint: triage.locationHint, language: triage.language } : null,
-    models: { writer: chatModelId(), classifier: decideModelId() },
+    team: {
+      team,
+      confidence: d?.team.confidence ?? null,
+      alternates: d ? Object.entries(d.team.probabilities).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, confidence]) => ({ team: t, confidence })) : [],
+      tool: c?.tool ?? null,
+      escalate: triage.escalate,
+    },
+    priority: d ? { priority, confidence: d.priority.confidence, signals: [] } : null,
+    rewrite: agent ? { title: triage.title, summary: triage.summary, category: triage.category, zoneSlug: triage.zoneSlug, locationHint: triage.locationHint, language: triage.language } : null,
+    models: { agent: toolModelId(), classifier: decideModelId() },
     latencyMs: Date.now() - t0,
     error: errors.length ? errors.join('; ') : null,
   });
-  return { triage, answer: answerable ? w!.answer!.trim() : null, run: log };
+  return { triage, answer: answerable ? answer : null, run: log };
 }
 
 const OPTS: CallOptions = {};
 
-/** The model's priority, a step more urgent if it isn't sure, and never below what the red-flag words say. */
-function safePriority(p: { choice: string; confidence: number; probabilities: Record<string, number> }, text: string): Priority {
+type Choice = { choice: string; confidence: number; probabilities: Record<string, number> };
+
+/** The classifier's priority, a step more urgent if it isn't sure. */
+function modelPriority(p: Choice): Priority {
   const ranked = Object.entries(p.probabilities).sort((a, b) => b[1] - a[1]);
-  let priority = p.choice as Priority;
-  if (p.confidence < 0.5) priority = moreUrgent(priority, ranked[1][0] as Priority);
-  if (soundsCritical(text)) return 'P1';
-  return soundsUrgent(text) ? moreUrgent(priority, 'P2') : priority;
+  return p.confidence < 0.5 ? moreUrgent(p.choice as Priority, ranked[1][0] as Priority) : (p.choice as Priority);
 }
+
+/** Never below what the red-flag words say. */
+const floor = (p: Priority, text: string): Priority => (soundsCritical(text) ? 'P1' : soundsUrgent(text) ? moreUrgent(p, 'P2') : p);
+
+const safePriority = (p: Choice, text: string) => floor(modelPriority(p), text);
 
 export class SparkInterpreter implements Interpreter {
   async understand(i: Heard) {
