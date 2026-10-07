@@ -87,6 +87,18 @@ Two places, both short and factual, so Mo can understand things at a glance:
 
 **Done when:** after a P1 is reported, approved and resolved, the shift summary mentions it within a minute and tapping that point opens the task.
 
+## 6. Reports in English
+
+Titles and summaries are already English (the intake AI writes them that way). What isn't: the reporter's own words (`reports.raw_text`), which the task sheet and task card label "translated from Spanish" while showing the original, and a guest's follow-up detail, which goes into the summary ("Update: …"), the log and the inbox as typed.
+
+- **Translate where the AI already reads the text.** The intake `create_task` tool returns `english` alongside `language`; the follow-up read (`DetailRead`) does the same. No extra model call.
+- **Store it:** an `english_text` column on `reports` (migration), and `english` on `Reporter`. Follow-ups use the English in the summary, the log and the inbox, with the original kept as the event note.
+- **For all staff:** English first, labelled "Translated from Spanish"; tapping the label shows the original ("Original, Spanish"). Names and places that don't translate stay readable.
+- **Fails closed:** the heuristic fallback has no translation, so the original shows with no "translated" label. The label is only ever shown over a real translation.
+- **The fallback's own titles:** `heuristicTriage` uses the raw text as title and summary and always says `language: 'en'`, so a Thai report made while the AI was down reached Mo's Needs action with a Thai title (seen 2026-10-08). It should say the language is unknown rather than English, and the row should show that it's untranslated.
+
+**Done when:** a guest reports in Spanish, and Mo reads the quote in English on the task, can tap to see the Spanish, and a Spanish follow-up shows up in English in the summary and the inbox.
+
 ## Order
 
 1. Shell and Needs action.
@@ -94,6 +106,7 @@ Two places, both short and factual, so Mo can understand things at a glance:
 3. Tasks (the log).
 4. Map tab, and the laptop split.
 5. AI summary (server route, cache, card, task page).
+6. Reports in English (after step 1; for every staff role).
 
 Each step runs lint and typecheck, and is checked in the browser signed in as Mo (`mo@moloop.test`, code from local Mailpit), at phone and laptop widths.
 
