@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import { rankCandidates } from '@/lib/candidates';
 import { crewFor, teamStats, type TeamStat } from '@/lib/crew';
@@ -11,8 +11,9 @@ import { NODES, toPlan, VENUE_ZONES, type Point } from './venue';
 import { getLatest, getPinned, subscribe as onFix } from './location';
 import { guestStage, memberStatus, taskStatusFor, type GuestStatus, type Status } from '@/lib/status';
 import { chosenTeam, onTeamChange } from '@/lib/team-pill';
+import { fallbackSummary, type Summary } from '@/lib/summary';
 import { taskLog, type LogFilter } from '@/lib/task-log';
-import { useSnapshot } from './provider';
+import { useRepo, useSnapshot } from './provider';
 
 export { useRepo, useSnapshot } from './provider';
 
@@ -199,6 +200,32 @@ export function useChosenTeam(): TeamSlug | null {
 export function useTaskLog(filter: LogFilter) {
   const s = useSnapshot();
   return useMemo(() => taskLog(s, filter), [s.tasks, s.events, filter.status, filter.team]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/**
+ * A short summary of the shift (no `taskId`) or one task, from the server. Asked again whenever something new happens
+ * (the newest event changes); the server answers from its cache until then. If the request fails, plain counts from
+ * the snapshot, marked `ai: false`. Null while the first one loads.
+ */
+export function useSummary(taskId?: string): Summary | null {
+  const repo = useRepo();
+  const s = useSnapshot();
+  const newest = useMemo(
+    () => s.events.reduce<string | null>((id, e) => (taskId && e.taskId !== taskId ? id : e.id), null),
+    [s.events, taskId],
+  );
+  const [got, setGot] = useState<{ summary?: Summary; failed?: boolean }>({});
+  useEffect(() => {
+    let live = true;
+    repo.summarize(taskId ? { scope: 'task', taskId } : { scope: 'shift' })
+      .then((summary) => live && setGot({ summary }))
+      .catch(() => live && setGot((g) => ({ ...g, failed: !g.summary })));
+    return () => {
+      live = false;
+    };
+  }, [repo, taskId, newest]);
+  if (got.summary) return got.summary;
+  return got.failed ? { ...fallbackSummary(s, taskId ? { scope: 'task', taskId } : { scope: 'shift' }), ai: false, at: s.now } : null;
 }
 
 /** The whole event, for Mo and the map: every active task, every unassigned one, everyone on duty. */
