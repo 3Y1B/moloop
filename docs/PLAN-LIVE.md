@@ -85,7 +85,9 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - **Server, command routes:** one route per `Repo` command (`reply`, `respond`, `assign`, `approve`, `guestAsk`, …). Each one loads the task, runs the matching `lifecycle.ts` function, and writes the task plus its `task_events` in one transaction.
 - Port `MockRepo`'s behaviour, not its code. It's the spec for what each command does. Anything it does outside `lifecycle.ts` moves into shared functions, so the server and the demo-day simulator both use them.
 - **Server, scheduler:** every 5 s, run `tick()` over active tasks and `proposalDue()` over pending proposals, and write any changes.
-- Make `createRepo()` in `src/data/provider.tsx` pick `SupabaseRepo` when `EXPO_PUBLIC_SUPABASE_URL` is set. The dev panel keeps working against the mock only.
+- Make `createRepo()` in `src/data/provider.tsx` pick `SupabaseRepo` when `EXPO_PUBLIC_REPO=supabase` (explicit: `.env.local` always sets the Supabase URL). The dev panel keeps working against the mock only.
+
+**Status, client side:** done locally. `src/data/supabase-repo.ts` with the row mappers in `src/data/supabase/rows.ts`, sign-in at `src/app/sign-in.tsx` (crew by email code, festival-goers anonymous), and `npm run repo:check` (real sessions, realtime timings, the command contract against a stub server). The `/api/*` command routes are the server's half.
 
 **Done when:** two phones signed in as a volunteer and a lead see the same task change state within a second, and a silent task nudges once, not once per phone.
 
