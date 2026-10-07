@@ -27,6 +27,7 @@
     "gate:eval": "bun scripts/eval-gate.ts",
     "voice:check": "bun scripts/check-voice.ts",
     "presence:check": "bun scripts/check-presence.ts",
+    "simulate": "bun scripts/simulate.ts",
     "test": "vitest run",
     "test:live": "vitest run --config vitest.live.config.mts",
     "mobilization:check": "bun scripts/check-mobilization-planning.ts",
