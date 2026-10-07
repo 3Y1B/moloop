@@ -7,23 +7,14 @@
 
 export type Point = { x: number; y: number };
 
-export type WalkNode = Point & { id: string; /** Spoken landmark, e.g. "the Info Tent". */ name: string };
-
-/** A walkway between two nodes. `via` traces the real path's bends, from `a` to `b`. */
-export type WalkEdge = {
-  a: string;
-  b: string;
-  via?: [number, number][];
-  /** Runs along the service road, which the map draws already. */
-  road?: true;
-};
+export type Landmark = Point & { id: string; /** Spoken name, e.g. "the Info Tent". */ name: string };
 
 type Box = { x: number; y: number; w: number; h: number };
 export type ZoneShape =
   /** `faces` is the side the audience is on. */
   | ({ kind: 'stage'; faces: 'n' | 's' | 'e' | 'w' } & Box)
   | ({ kind: 'tent' } & Box)
-  /** Food trucks parked in a row. */
+  /** Food trucks parked in a row (see truckSpots). */
   | ({ kind: 'trucks' } & Box)
   /** Rows of portable toilets along the top and bottom of the box. */
   | ({ kind: 'toilets'; rows: 1 | 2 } & Box)
@@ -37,7 +28,7 @@ export type ZoneIcon = 'stage' | 'gate' | 'water' | 'firstaid' | 'food' | 'info'
 
 export type VenueZone = {
   slug: string;
-  /** Where on the path network you arrive. */
+  /** The landmark you arrive at. */
   node: string;
   shape: ZoneShape;
   /** Short label drawn on the map. */
@@ -83,35 +74,48 @@ export function toPlan([lng, lat]: readonly [number, number]): Point {
 /**
  * The festival fence, clockwise from Gate B's west post. It breaks for Gate A, where the Tin Alley
  * tunnel comes up beside Nona Lee Sports Centre, and for Gate B, the walkway between Nona Lee and
- * the Beaurepaire Centre. West: the path along Trinity College. North: the Pavilion's back wall,
- * which the fence runs into and out of. East: Newman Drive, taking in the tennis courts. South:
- * the two sports centres.
+ * the Beaurepaire Centre. West: the path along Trinity College. North: round the back of the
+ * Pavilion, along the path below Ormond College and McCaughey Court and past the car park, so all
+ * the ground around the oval is in. East: Newman Drive, taking in the tennis courts. South: the two
+ * sports centres. Inside it you can walk anywhere that isn't built on (see lib/route.ts).
  */
 export const FENCE: [number, number][][] = [
   [
     [141, 281], [116, 281], [80, 281], [40, 279], [27, 280], [22, 268], [21, 241], [19, 216], [18, 197], [17, 184],
-    [17, 166], [18, 156], [19, 148], [25, 120], [28, 101], [30, 88], [35, 71], [43, 57], [52, 49], [66, 44], [76, 38],
-    [80.5, 20],
-  ],
-  [
-    [126, 27.8], [130, 22], [148, 12], [166, 17], [184, 21], [204, 33], [214, 43], [219, 50],
+    [17, 166], [18, 156], [19, 148], [25, 120], [28, 101], [30, 88], [35, 71], [35.5, 52], [31, 45.5], [38, 36],
+    [47, 28], [56, 19], [64, 13.5], [71, 8], [78, 3.5], [84, 7], [91, 9.5], [106, 6.8], [112, 4.6], [125, 2.8],
+    [140, 2.5], [141, 13], [148, 12], [166, 17], [184, 21], [204, 33], [214, 43], [219, 50],
     [225, 61], [231, 78], [238, 100], [246, 130], [247, 160], [247, 190], [246, 225], [243, 243], [239, 262], [237, 281],
   ],
   [[228, 281], [227, 262], [227, 243], [203, 243], [203, 277], [198, 280], [194, 282], [163, 284]],
 ];
 
-// The oval is x 50–208, y 33–171; the track x 27–205, y 184–266. Food Alley runs between them, the
-// service road (Newman Drive) down the east side, the south walk between the track and the sports centres.
-export const NODES: Record<string, WalkNode> = Object.fromEntries(
+/** Trucks in a `trucks` row: 6 m long, 1.6 m apart. A long row leaves its middle spot empty to walk through. */
+export const TRUCK = { len: 6, gap: 1.6 } as const;
+
+/** Where each truck in a row starts, west to east. */
+export function truckSpots(b: Box): number[] {
+  const n = Math.floor((b.w + TRUCK.gap) / (TRUCK.len + TRUCK.gap));
+  const start = b.x + (b.w - (n * (TRUCK.len + TRUCK.gap) - TRUCK.gap)) / 2;
+  const mid = Math.floor(n / 2);
+  return Array.from({ length: n }, (_, i) => i).filter((i) => !(n > 6 && i === mid)).map((i) => start + i * (TRUCK.len + TRUCK.gap));
+}
+
+/**
+ * Named spots: where each zone is reached from, and what a turn is called after when it's near one.
+ * The oval is x 50–208, y 33–171; the track x 27–205, y 184–266. Food Alley runs between them, the
+ * service road (Newman Drive) down the east side, the south walk between the track and the sports centres.
+ */
+export const NODES: Record<string, Landmark> = Object.fromEntries(
   ([
     ['gateA', 214, 231, 'Gate A'],
     ['ramp', 190, 257, 'the ramp by the Sports Centre'],
     ['rampFoot', 163, 274, 'the bottom of the ramp'],
     ['gateB', 150, 286, 'Gate B'],
     ['info', 124, 273, 'the Info Tent'],
-    ['trackS', 108, 272, 'the south gate of the track'],
-    ['fa', 56, 280, 'the First Aid Post'],
-    ['westS', 24, 280, 'the corner by Trinity College'],
+    ['trackS', 108, 272, 'the south side of the track'],
+    ['fa', 57, 276, 'the First Aid Post'],
+    ['westS', 27, 274, 'the corner by Trinity College'],
     ['tw', 25, 170, 'Toilets West'],
     ['w1', 52, 174, 'Water Station 1'],
     ['grove', 39, 134, 'the Grove'],
@@ -119,7 +123,7 @@ export const NODES: Record<string, WalkNode> = Object.fromEntries(
     ['pavilion', 97, 43, 'the Pavilion'],
     ['foodW', 72, 174, 'the west end of Food Alley'],
     ['food', 115, 174, 'Food Alley'],
-    ['trackN', 115, 186, 'the north gate of the track'],
+    ['trackN', 115, 186, 'the north side of the track'],
     ['trackStage', 96, 224, 'the Track Stage'],
     ['foodE', 158, 177, 'the east end of Food Alley'],
     ['w2', 184, 186, 'Water Station 2'],
@@ -131,37 +135,6 @@ export const NODES: Record<string, WalkNode> = Object.fromEntries(
   ] as const).map(([id, x, y, name]) => [id, { id, x, y, name }]),
 );
 
-export const EDGES: WalkEdge[] = [
-  { a: 'gateB', b: 'rampFoot', via: [[157, 278]] },
-  { a: 'gateB', b: 'info', via: [[147, 279], [141, 273]] },
-  { a: 'info', b: 'rampFoot', via: [[141, 273]] },
-  { a: 'rampFoot', b: 'ramp', via: [[173, 274], [181, 269]] },
-  { a: 'ramp', b: 'gateA', via: [[196, 251], [200, 244], [209, 227]] },
-  { a: 'gateA', b: 'te', via: [[208, 225], [208, 216]], road: true },
-  { a: 'te', b: 'back', via: [[207, 190], [203, 183], [202, 172]], road: true },
-  { a: 'te', b: 'w2', via: [[202, 206], [199, 201], [194, 194], [190, 190]] },
-  { a: 'w2', b: 'foodE', via: [[176, 182], [167, 180]] },
-  { a: 'w2', b: 'medic' },
-  { a: 'medic', b: 'oval' },
-  { a: 'foodE', b: 'food' },
-  { a: 'food', b: 'foodW' },
-  { a: 'food', b: 'trackN' },
-  { a: 'trackN', b: 'trackStage' },
-  { a: 'trackS', b: 'trackStage' },
-  { a: 'food', b: 'foh' },
-  { a: 'foh', b: 'oval' },
-  { a: 'stand', b: 'foh' },
-  { a: 'foodW', b: 'w1' },
-  { a: 'w1', b: 'tw' },
-  { a: 'tw', b: 'grove', via: [[33, 150]] },
-  { a: 'grove', b: 'stand', via: [[47, 115]] },
-  { a: 'stand', b: 'pavilion', via: [[55, 97], [58, 82], [62, 70], [68, 58], [77, 49], [87, 44]] },
-  { a: 'pavilion', b: 'foh' },
-  { a: 'tw', b: 'westS', via: [[19, 184], [20, 197], [20, 216], [21, 233], [22, 241], [23, 268]] },
-  { a: 'westS', b: 'fa', via: [[43, 282]] },
-  { a: 'fa', b: 'trackS', via: [[76, 282], [76, 273]] },
-  { a: 'trackS', b: 'info' },
-];
 
 export const VENUE_ZONES: Record<string, VenueZone> = Object.fromEntries(
   ([

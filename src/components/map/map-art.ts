@@ -1,7 +1,7 @@
 import type { ExpressionSpecification, LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
 
-import { EDGES, FENCE, NODES, VENUE_ZONES, toLngLat, type VenueZone, type ZoneIcon } from '@/data/venue';
-import { DECOR, FIELD, GRANDSTAND, OVAL, SERVICE_ROAD, TENNIS, TRACK, TREES, TUNNEL } from '@/data/venue-features';
+import { FENCE, TRUCK, VENUE_ZONES, toLngLat, truckSpots, type VenueZone, type ZoneIcon } from '@/data/venue';
+import { CAR_PARK, DECOR, FIELD, GRANDSTAND, OVAL, PATHS, SERVICE_ROAD, TENNIS, TRACK, TREES, TUNNEL } from '@/data/venue-features';
 import type { MapIconName } from './map-icons';
 
 /*
@@ -180,12 +180,9 @@ function stage(z: VenueZone & { shape: { kind: 'stage' } }, roof: readonly [stri
 /** Food trucks parked in a row, serving hatches facing north, with a gap in the middle to walk through. */
 function trucks(b: Box, k: Pal): Feature[] {
   const out: Feature[] = [];
-  const len = 6, gap = 1.6, n = Math.floor((b.w + gap) / (len + gap));
-  const start = b.x + (b.w - (n * (len + gap) - gap)) / 2;
-  const mid = Math.floor(n / 2);
-  for (let i = 0; i < n; i++) {
-    if (n > 6 && i === mid) continue;
-    const x = start + i * (len + gap), c = TRUCKS[i % TRUCKS.length];
+  const len = TRUCK.len;
+  for (const [i, x] of truckSpots(b).entries()) {
+    const c = TRUCKS[i % TRUCKS.length];
     const body = { x, y: b.y + b.h - 2.8, w: len, h: 2.8 };
     out.push(...standing(rect(body), c, 40, k, 0.7));
     out.push(fill([rect({ x: x + len - 1.5, y: body.y + 0.25, w: 1.25, h: 2.3 })], { l: 'thing', z: 40.1, c: '#000000', o: 0.18 })); // cab
@@ -284,7 +281,8 @@ function ground(k: Pal): Feature[] {
       const lerp = (p: P, q: P): P => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
       return stroke([lerp(b, a), lerp(c, d)], { l: 'thingLine', z: 0, c: k.standRow, w: 0.35, min: 0.6 });
     }),
-    // Service road, and the tunnel it comes up out of.
+    // Service road, the car park it ends in, and the tunnel it comes up out of.
+    fill([CAR_PARK], { l: 'ground', z: 1, c: k.road }),
     stroke(SERVICE_ROAD, { l: 'groundLine', z: -1, c: k.road, w: 6, min: 3 }),
     stroke(TUNNEL, { l: 'tunnel', z: 0, c: k.tunnel, w: 5, min: 2.5 }),
   ];
@@ -326,15 +324,12 @@ function decor(scheme: Scheme, k: Pal): Feature[] {
   return out;
 }
 
-/** Walkways: the routing network itself, traced along the real paths. Road legs are already drawn. */
-function walkways(k: Pal): Feature[] {
-  return EDGES.filter((e) => !e.road).flatMap(({ a, b, via = [] }) => {
-    const pts: P[] = [[NODES[a].x, NODES[a].y], ...via, [NODES[b].x, NODES[b].y]];
-    return [
-      stroke(pts, { l: 'walk', z: 0, c: k.walkEdge, w: 4, min: 2.5 }),
-      stroke(pts, { l: 'walk', z: 1, c: k.walk, w: 3, min: 1.5 }),
-    ];
-  });
+/** The real footpaths: narrow paving over the grass, under the trucks and tents. */
+function footpaths(k: Pal): Feature[] {
+  return PATHS.flatMap((pts) => [
+    stroke(pts, { l: 'walk', z: 0, c: k.walkEdge, w: 2.6, min: 1.2 }),
+    stroke(pts, { l: 'walk', z: 1, c: k.walk, w: 2, min: 0.8 }),
+  ]);
 }
 
 function fence(k: Pal): Feature[] {
@@ -392,7 +387,7 @@ export function siteSources(scheme: Scheme) {
     let stageIndex = 0;
     const zones = Object.values(VENUE_ZONES).flatMap((z) => zoneArt(z, scheme, k, z.shape.kind === 'stage' ? stageIndex++ : 0));
     built[scheme] = {
-      art: { type: 'FeatureCollection', features: [...ground(k), ...zones, ...walkways(k), ...decor(scheme, k), ...fence(k)] },
+      art: { type: 'FeatureCollection', features: [...ground(k), ...footpaths(k), ...zones, ...decor(scheme, k), ...fence(k)] },
       points: points(),
     };
   }
