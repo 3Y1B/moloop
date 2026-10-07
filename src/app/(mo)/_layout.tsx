@@ -8,6 +8,7 @@ import { DutyPanel } from '@/components/duty-header';
 import { MAP_BUTTON } from '@/components/map/map-button';
 import { MoMap } from '@/components/mo/mo-map';
 import { MoDuty, MoTopBar } from '@/components/mo/mo-top-bar';
+import { TeamPills } from '@/components/mo/team-pills';
 import { Icon } from '@/components/ui/icon';
 import { useNeedsMe, useRole, useSnapshot } from '@/data/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -21,6 +22,9 @@ const TABS: { name: MoTab; title: string; sf: string; md: string }[] = [
   { name: 'map', title: 'Map', sf: 'map', md: 'map' },
 ];
 
+/** How much of the laptop map's top the floating pills cover, so the site is framed below them. */
+const PILLS_OVER_MAP = 64;
+
 /** The left column's width on a laptop; the map takes the rest. */
 const COLUMN = 420;
 
@@ -32,7 +36,7 @@ export default function MoLayout() {
   const theme = useTheme();
   const s = useSnapshot();
   const home = homeFor(useRole());
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const { split, tabs } = moLayout(width);
   const insets = useSafeAreaInsets();
   const needs = useNeedsMe();
@@ -73,7 +77,15 @@ export default function MoLayout() {
             ))}
           </Tabs>
         </View>
-        {split && <MoMap style={styles.fill} />}
+        {split && (
+          <View style={styles.fill}>
+            <MoMap style={StyleSheet.absoluteFill} frame={{ top: PILLS_OVER_MAP / height, bottom: 0 }} />
+            {/* The same pills as the column, so the map says which team it's showing. */}
+            <View style={styles.mapPills}>
+              <TeamPills overMap />
+            </View>
+          </View>
+        )}
 
         {open && (
           <>
@@ -93,4 +105,5 @@ const styles = StyleSheet.create({
   column: { width: COLUMN, borderRightWidth: StyleSheet.hairlineWidth },
   label: { fontWeight: '600' },
   duty: { position: 'absolute', left: 16, right: 16 },
+  mapPills: { position: 'absolute', top: 12, left: 0, right: 0, pointerEvents: 'box-none' },
 });
