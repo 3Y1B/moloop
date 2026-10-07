@@ -113,7 +113,7 @@ export default function RespondSheet() {
       {step === 'handover' && (
         <>
           <Card>
-            <ActionRow label="First Aid Post medics" sf="cross.case.fill" md="medical_services" chevron={false} onPress={() => respond('handover', { target: 'medics' })} />
+            <ActionRow label="First Aid medics" sf="cross.case.fill" md="medical_services" chevron={false} onPress={() => respond('handover', { target: 'medics' })} />
             <Separator inset={ACTION_INSET} />
             <ActionRow label="Security" sf="shield.fill" md="shield" chevron={false} onPress={() => respond('handover', { target: 'security' })} />
             <Separator inset={ACTION_INSET} />

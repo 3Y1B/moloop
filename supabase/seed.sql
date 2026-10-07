@@ -19,21 +19,25 @@ insert into skills (slug, name, requires_expiry) values
   ('crowd-control',  'Crowd control cert', true),
   ('multilingual',   'Speaks a language other than English', false);
 
+-- Names are the site plan's labels (src/data/venue.ts); scripts/seed.ts rewrites them from there. The bar may already
+-- exist: migration 20261008090000 adds it.
 insert into zones (slug, name, kind, is_open_air, capacity) values
-  ('gate-a',        'Gate A (Tunnel)',    'gate',      true,  3000),
-  ('gate-b',        'Gate B (Walkway)',   'gate',      true,  2000),
-  ('lawn-stage',    'Oval Stage',         'stage',     true,  8000),
-  ('river-stage',   'Track Stage',        'stage',     true,  3000),
-  ('water-1',       'Water Station 1',    'water',     true,  null),
-  ('water-2',       'Water Station 2',    'water',     true,  null),
-  ('first-aid-hq',  'First Aid Post',     'first_aid', false, null),
-  ('food-alley',    'Food Alley',         'food',      true,  1500),
-  ('info-tent',     'Info Tent',          'area',      false, null),
-  ('backstage',     'Backstage',          'area',      true,  null),
-  ('toilets-west',  'Toilets West',       'area',      true,  null),
-  ('toilets-east',  'Toilets East',       'area',      true,  null),
-  ('the-grove',     'The Grove',          'area',      true,  800),
-  ('pavilion',      'Pavilion (Crew HQ)', 'area',      false, null);
+  ('gate-a',        'Gate A',       'gate',      true,  3000),
+  ('gate-b',        'Gate B',       'gate',      true,  2000),
+  ('lawn-stage',    'Oval Stage',   'stage',     true,  8000),
+  ('river-stage',   'Track Stage',  'stage',     true,  3000),
+  ('water-1',       'Water 1',      'water',     true,  null),
+  ('water-2',       'Water 2',      'water',     true,  null),
+  ('first-aid-hq',  'First Aid',    'first_aid', false, null),
+  ('food-alley',    'Food Alley',   'food',      true,  1500),
+  ('info-tent',     'Info',         'area',      false, null),
+  ('backstage',     'Backstage',    'area',      true,  null),
+  ('toilets-west',  'Toilets West', 'area',      true,  null),
+  ('toilets-east',  'Toilets East', 'area',      true,  null),
+  ('the-grove',     'The Grove',    'area',      true,  800),
+  ('pavilion',      'Pavilion',     'area',      false, null),
+  ('bar',           'Bar',          'food',      true,  600)
+on conflict (slug) do nothing;
 
 insert into playbooks (slug, title, trigger, steps) values
   ('heat-35c', 'Extreme heat (>=35C)', 'BoM forecast or on-site reading >= 35C',

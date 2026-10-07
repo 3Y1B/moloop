@@ -223,7 +223,7 @@ function zoneArt(z: VenueZone, scheme: Scheme, k: Pal, stageIndex: number): Feat
     case 'stage':
       return stage({ ...z, shape: s }, stageIndex === 0 ? roof.stage : roof.stage2, k);
     case 'tent':
-      return tent(s, z.icon === 'firstaid' ? roof.firstaid : roof.info, 50, k, z.icon === 'firstaid');
+      return tent(s, z.icon === 'firstaid' ? roof.firstaid : z.icon === 'bar' ? roof.bar : roof.info, 50, k, z.icon === 'firstaid');
     case 'trucks':
       return trucks(s, k);
     case 'toilets':
@@ -317,7 +317,6 @@ function decor(scheme: Scheme, k: Pal): Feature[] {
   }
   for (const b of DECOR.medics) out.push(...tent(b, roof.firstaid, 50, k, true));
   for (const b of DECOR.foh) out.push(...tent(b, roof.foh, 50, k));
-  out.push(...tent(DECOR.bar, roof.bar, 50, k));
   out.push(...tent(DECOR.security, roof.security, 50, k));
   out.push(...tent(DECOR.booth, roof.security, 50, k));
   for (const line of [...DECOR.lanes, ...DECOR.barriers]) out.push(stroke(line, { l: 'thingLine', z: 1, c: k.barrier, w: 0.35, min: 1 }));
@@ -351,7 +350,7 @@ function iconAt(z: VenueZone): P {
 }
 
 /** Which badges are placed first when they compete for room. */
-const RANK: Record<ZoneIcon, number> = { stage: 0, gate: 1, firstaid: 2, food: 3, info: 4, water: 5, toilets: 6, shade: 7, backstage: 8, pavilion: 9 };
+const RANK: Record<ZoneIcon, number> = { stage: 0, gate: 1, firstaid: 2, food: 3, info: 4, water: 5, toilets: 6, shade: 7, backstage: 8, pavilion: 9, bar: 10 };
 
 type PointProps = { icon: MapIconName; label: string; rank: number; decor: boolean };
 const point = (at: P, p: PointProps): GeoJSON.Feature<GeoJSON.Point, PointProps> => ({ type: 'Feature', properties: p, geometry: { type: 'Point', coordinates: ll(at) } });
@@ -362,7 +361,6 @@ function points(): GeoJSON.FeatureCollection {
     features: [
       ...Object.values(VENUE_ZONES).map((z) => point(iconAt(z), { icon: z.icon, label: z.label, rank: RANK[z.icon], decor: false })),
       ...DECOR.medics.map((b) => point(centre(b), { icon: 'medic', label: '', rank: 20, decor: true })),
-      point(centre(DECOR.bar), { icon: 'bar', label: 'Bar', rank: 21, decor: true }),
     ],
   };
 }

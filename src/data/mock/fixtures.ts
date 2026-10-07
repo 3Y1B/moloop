@@ -5,6 +5,7 @@ import { clockTime } from '@/lib/format';
 import { GUEST_ANSWERS } from '@/lib/heuristics';
 import { POLICY } from '@/lib/lifecycle';
 import type { Snapshot } from '../repo';
+import { VENUE_ZONES } from '../venue';
 
 const MIN = 60_000;
 
@@ -19,22 +20,8 @@ export const TEAMS: Team[] = [
   { slug: 'ops', name: 'Tech & Logistics', color: '#5856D6', sf: 'wrench.and.screwdriver.fill', md: 'build' },
 ];
 
-export const ZONES: Zone[] = [
-  { slug: 'gate-a', name: 'Gate A (Tunnel)' },
-  { slug: 'gate-b', name: 'Gate B (Walkway)' },
-  { slug: 'lawn-stage', name: 'Oval Stage' },
-  { slug: 'river-stage', name: 'Track Stage' },
-  { slug: 'water-1', name: 'Water Station 1' },
-  { slug: 'water-2', name: 'Water Station 2' },
-  { slug: 'first-aid-hq', name: 'First Aid Post' },
-  { slug: 'food-alley', name: 'Food Alley' },
-  { slug: 'info-tent', name: 'Info Tent' },
-  { slug: 'backstage', name: 'Backstage' },
-  { slug: 'toilets-west', name: 'Toilets West' },
-  { slug: 'toilets-east', name: 'Toilets East' },
-  { slug: 'the-grove', name: 'The Grove' },
-  { slug: 'pavilion', name: 'Pavilion (Crew HQ)' },
-];
+/** The site plan's zones, by the name the map shows. */
+export const ZONES: Zone[] = Object.values(VENUE_ZONES).map((z) => ({ slug: z.slug, name: z.label }));
 
 const vol = (
   id: string, name: string, teamSlug: TeamSlug | null, zoneSlug: string,
@@ -85,7 +72,7 @@ function tasks(now: number): Task[] {
   return [
     task({
       id: 't-heat', priority: 'P2', category: 'heat', teamSlug: 'first-aid', zoneSlug: 'water-2',
-      title: 'Dizzy man at Water Station 2',
+      title: 'Dizzy man at Water 2',
       summary: 'Man in his 60s, flushed and dizzy, sitting in the shade by the refill taps. Conscious and talking.',
       locationHint: 'Shade sail behind the refill taps',
       reporter: { kind: 'festivalgoer', quote: 'Có một ông chú bị chóng mặt, mặt đỏ lắm, đang ngồi ở trạm nước số 2', language: 'vi' },
@@ -179,7 +166,7 @@ function events(now: number): TaskEvent[] {
     ev('e2', 't-heat', now - 40_000, 'assigned', 'Assigned to Priya: nearest first aider, free, 180 m away', triage),
     ev('e3', 't-kit', now - 6 * MIN, 'created', 'Reported by Tom Becker', triage),
     ev('e4', 't-kit', now - 6 * MIN, 'queued', 'Queued for Priya (busy with another task)', triage),
-    ev('e5', 't-knee', now - 58 * MIN, 'created', 'Reported at Info Tent', triage),
+    ev('e5', 't-knee', now - 58 * MIN, 'created', 'Reported at Info', triage),
     ev('e6', 't-knee', now - 57 * MIN, 'assigned', 'Assigned to Priya', triage),
     { ...ev('e7', 't-knee', now - 56 * MIN, 'reply', 'Accepted', priya), reply: 'accept' },
     { ...ev('e8', 't-knee', now - 49 * MIN, 'resolved', 'Done', priya), reply: 'done' },
@@ -208,11 +195,11 @@ function messages(now: number): Message[] {
   return [
     {
       id: 'm1', recipientId: ME_ID, at: now - 40_000, kind: 'task', fromName: 'Moloop', taskId: 't-heat', delivery: 'spoken', read: false,
-      body: 'New task: dizzy man at Water Station 2, in the shade by the refill taps. Conscious and talking.',
+      body: 'New task: dizzy man at Water 2, in the shade by the refill taps. Conscious and talking.',
     },
     {
       id: 'm2', recipientId: ME_ID, at: now - 11 * MIN, kind: 'direct', fromName: 'Jordan Lee', read: false,
-      body: 'When you get a sec, grab a fresh bag from the First Aid Post. Oval kit is running low.',
+      body: 'When you get a sec, grab a fresh bag from First Aid. Oval kit is running low.',
     },
     {
       id: 'm3', recipientId: ME_ID, at: now - 34 * MIN, kind: 'broadcast', fromName: 'Mo', read: true,
@@ -316,8 +303,8 @@ export const INCOMING: Record<Priority, TaskDraft[]> = {
   }],
   P3: [{
     priority: 'P3', category: 'medical', teamSlug: 'first-aid', zoneSlug: 'info-tent', handledBy: 'human',
-    title: 'Blister plasters needed at Info Tent',
-    summary: 'Two people at the Info Tent asking for blister plasters and sunscreen.',
+    title: 'Blister plasters needed at Info',
+    summary: 'Two people at Info asking for blister plasters and sunscreen.',
     locationHint: null,
     reporter: { kind: 'staff', name: 'Noah Kim', quote: 'Couple of people here need blister plasters', language: 'en' },
   }],

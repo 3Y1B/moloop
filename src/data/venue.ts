@@ -1,3 +1,5 @@
+import { DECOR } from './venue-features';
+
 /**
  * Site plan for the festival grounds. Units are metres on a flat plan, y pointing down
  * (same as screen space), so routing distances are real and the map can frame things in plan space.
@@ -7,7 +9,7 @@
 
 export type Point = { x: number; y: number };
 
-export type Landmark = Point & { id: string; /** Spoken name, e.g. "the Info Tent". */ name: string };
+export type Landmark = Point & { id: string; /** Spoken name, e.g. "the Bar". */ name: string };
 
 type Box = { x: number; y: number; w: number; h: number };
 export type ZoneShape =
@@ -24,14 +26,17 @@ export type ZoneShape =
   | { kind: 'water'; x: number; y: number }
   | { kind: 'gate'; x: number; y: number };
 
-export type ZoneIcon = 'stage' | 'gate' | 'water' | 'firstaid' | 'food' | 'info' | 'backstage' | 'toilets' | 'shade' | 'pavilion';
+export type ZoneIcon = 'stage' | 'gate' | 'water' | 'firstaid' | 'food' | 'info' | 'backstage' | 'toilets' | 'shade' | 'pavilion' | 'bar';
 
 export type VenueZone = {
   slug: string;
   /** The landmark you arrive at. */
   node: string;
   shape: ZoneShape;
-  /** Short label drawn on the map. */
+  /**
+   * The zone's one name: on the map, in the zone picker, on task cards, and in the database (scripts/seed.ts writes
+   * it to zones.name) and the AI's list of places.
+   */
   label: string;
   icon: ZoneIcon;
 };
@@ -112,12 +117,12 @@ export const NODES: Record<string, Landmark> = Object.fromEntries(
     ['ramp', 190, 257, 'the ramp by the Sports Centre'],
     ['rampFoot', 163, 274, 'the bottom of the ramp'],
     ['gateB', 150, 286, 'Gate B'],
-    ['info', 124, 273, 'the Info Tent'],
+    ['info', 124, 273, 'Info'],
     ['trackS', 108, 272, 'the south side of the track'],
-    ['fa', 57, 276, 'the First Aid Post'],
+    ['fa', 57, 276, 'First Aid'],
     ['westS', 27, 274, 'the corner by Trinity College'],
     ['tw', 25, 170, 'Toilets West'],
-    ['w1', 52, 174, 'Water Station 1'],
+    ['w1', 52, 174, 'Water 1'],
     ['grove', 39, 134, 'the Grove'],
     ['stand', 48, 108, 'the grandstand'],
     ['pavilion', 97, 43, 'the Pavilion'],
@@ -126,12 +131,13 @@ export const NODES: Record<string, Landmark> = Object.fromEntries(
     ['trackN', 115, 186, 'the north side of the track'],
     ['trackStage', 96, 224, 'the Track Stage'],
     ['foodE', 158, 177, 'the east end of Food Alley'],
-    ['w2', 184, 186, 'Water Station 2'],
+    ['w2', 184, 186, 'Water 2'],
     ['foh', 130, 110, 'the sound desk'],
     ['oval', 170, 102, 'the Oval Stage'],
     ['medic', 184, 142, 'the medic tent'],
     ['te', 207, 208, 'Toilets East'],
     ['back', 202, 162, 'the Backstage gate'],
+    ['bar', 213, 170, 'the Bar'],
   ] as const).map(([id, x, y, name]) => [id, { id, x, y, name }]),
 );
 
@@ -165,5 +171,7 @@ export const VENUE_ZONES: Record<string, VenueZone> = Object.fromEntries(
         ],
       },
     },
+    // The bar by the tennis courts: a zone, so "fight by the bar" lands on the map. Routes still walk round it.
+    { slug: 'bar', node: 'bar', label: 'Bar', icon: 'bar', shape: { kind: 'tent', ...DECOR.bar } },
   ] satisfies VenueZone[]).map((z) => [z.slug, z]),
 );
