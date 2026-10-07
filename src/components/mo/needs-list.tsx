@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { NeedsRow } from '@/components/lead/needs-row';
 import { TeamRow, TeamSection } from '@/components/lead/team-list';
+import { PrioritySignal } from '@/components/task/badges';
 import { StatusLine } from '@/components/ui/status-line';
 import { Spacing, Type } from '@/constants/theme';
 import { useCrew, useMyWork, useNeedsMe, useTaskStatus } from '@/data/hooks';
@@ -42,6 +43,9 @@ function YourRow({ task }: { task: Task }) {
   const status = useTaskStatus(task);
   return (
     <TeamRow label={task.title} onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}>
+      <View style={styles.signal}>
+        <PrioritySignal priority={task.priority} size={12} />
+      </View>
       <View style={styles.body}>
         <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{task.title}</Text>
         {status && <StatusLine status={status} />}
@@ -63,6 +67,7 @@ function AllClear() {
 }
 
 const styles = StyleSheet.create({
+  signal: { alignSelf: 'flex-start', paddingTop: 4 },
   body: { flex: 1, gap: 2 },
   title: { fontSize: Type.body, fontWeight: '500' },
   clear: { marginTop: Spacing.four, gap: Spacing.one },

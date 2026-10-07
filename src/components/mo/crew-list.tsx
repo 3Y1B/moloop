@@ -138,7 +138,7 @@ function TeamHead({ team, stat }: { team: Team; stat: TeamStat }) {
  */
 function TeamBlock({ team, stat, members, first, open, onToggle }: {
   team: Team;
-  /** Keeps its full gap under the pills even when folded. */
+  /** Sits a full gap under the pills. */
   first: boolean;
   stat: TeamStat;
   members: TeamMember[];
@@ -149,17 +149,15 @@ function TeamBlock({ team, stat, members, first, open, onToggle }: {
   const urgent = members.some((m) => m.status.tone === 'danger');
   const chevron = useAnimatedStyle(() => ({ transform: [{ rotate: withTiming(open ? '0deg' : '-90deg', { duration: 160 }) }] }));
   return (
-    <View style={[styles.block, !open && !first && styles.blockFolded]}>
+    // The head never moves when it folds: the gap to the next team comes after the open rows, and a folded team's
+    // hairline sits exactly where its first row's would.
+    <View style={first ? styles.blockFirst : styles.block}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         accessibilityLabel={`${team.name}${!open && urgent ? ', someone asked for help' : ''}`}
         onPress={onToggle}
-        style={({ pressed }) => [
-          styles.blockHead,
-          !open && [styles.headFolded, { borderBottomColor: theme.separator }],
-          { opacity: pressed ? 0.6 : 1 },
-        ]}>
+        style={({ pressed }) => [styles.blockHead, { opacity: pressed ? 0.6 : 1 }]}>
         <Animated.View style={chevron}>
           <Icon sf="chevron.down" md="expand_more" size={11} color={theme.textTertiary} weight="semibold" />
         </Animated.View>
@@ -168,10 +166,12 @@ function TeamBlock({ team, stat, members, first, open, onToggle }: {
         {!open && urgent && <View style={[styles.urgent, { backgroundColor: theme.danger }]} />}
         <Counts stat={stat} compact />
       </Pressable>
-      {open && (
-        <Animated.View entering={FadeIn.duration(160)}>
+      {open ? (
+        <Animated.View entering={FadeIn.duration(160)} style={styles.blockRows}>
           {members.map((m) => <CrewRow key={m.volunteer.id} member={m} />)}
         </Animated.View>
+      ) : (
+        <View style={[styles.hairline, { backgroundColor: theme.separator }]} />
       )}
     </View>
   );
@@ -266,13 +266,13 @@ const styles = StyleSheet.create({
   compact: { marginLeft: 'auto', gap: 10 },
   count: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   countText: { fontWeight: '600', fontVariant: ['tabular-nums'] },
-  block: { marginTop: Spacing.four },
-  blockHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing.one, minHeight: 28 },
+  blockFirst: { marginTop: Spacing.three },
+  block: { marginTop: Spacing.one },
+  blockHead: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36 },
+  blockRows: { paddingBottom: Spacing.three },
+  hairline: { height: StyleSheet.hairlineWidth },
   blockTitle: { flexShrink: 1, fontSize: Type.footnote, fontWeight: '600' },
   urgent: { width: 7, height: 7, borderRadius: 3.5 },
-  // Folded, a team is one line in a list of lines: closer together, with a hairline under each.
-  blockFolded: { marginTop: Spacing.two },
-  headFolded: { marginBottom: 0, paddingBottom: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth },
   headMeta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   shrink: { flex: 1 },
   person: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
