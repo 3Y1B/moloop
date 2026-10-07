@@ -230,6 +230,19 @@ The mock's `guestAddDetail` is the single-request version of this. It generalise
 
 **Done when:** a second, independent report about the same person upgrades the existing task instead of creating a duplicate, and the volunteer already on the way hears the update.
 
+**Status:** done locally, with live models. Checked by `npm run commands:check` (section 7) against both a keyword and a `USE_LIVE_MODELS=1` server.
+
+- **Candidates.** `nearbyOpenTasks` (`src/lib/nearby.ts`): open tasks from the last 20 minutes, in the same zone or within 100 m on foot (neighbouring zones on the oval are 25 to 100 m apart), nearest first, at most 5.
+- **One typed call.** `Interpreter.match` asks which candidate the report is about (or none), how urgent the two read together are, and whether it says it's sorted. It needs 0.6 confidence to join a task; below that, or if the model fails, it's a new incident. Red-flag words still force P1, and an unsure priority rounds up. Keywords never merge: a duplicate is safer than a wrong merge.
+- **Both ways in.** A volunteer's report (`commit`) and a festival-goer's request (`understand`) ask before making a task. The command checks the task is still open once it holds the lock. A festival-goer's request joins the task, so they see who's coming.
+- **What an update does** (`updateTask` in `src/lib/commands.ts`): a note on the task. Worse: the priority goes up, everyone on it hears "Update: …", and the lead is asked "Send backup?" (Mo too at P1). Better or sorted: the lead is asked to downgrade or close; nothing changes on its own.
+- **Logged.** The match's run goes on the joined task's report in `triage_runs`.
+- **Not done:**
+  - A lead can only close an escalated task, so "Close it?" isn't one tap yet; the volunteer on it can still mark it done.
+  - Voice clips of a report that joined a task aren't kept (they hang off new reports).
+  - Only priority is re-read, not team: moving an assigned task to another team is left to the lead.
+  - Backup goes through the lead's alert, not a proposal of its own.
+
 ### 7. Getting it onto the phones
 
 - **iOS:**

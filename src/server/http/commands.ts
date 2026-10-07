@@ -6,6 +6,7 @@ import { CommandError, type Batch } from '@/lib/batch';
 import * as C from '@/lib/commands';
 import { ReplyKind, TeamSlug, type Task } from '@/lib/schema';
 import { interpreter } from '../models/interpreter';
+import { matchOpen } from '../retriage';
 import { understandLater } from '../understand';
 import { ownClip } from '../voice';
 import { read, sql, transact, type Loaded } from '../world';
@@ -106,13 +107,17 @@ route('commit', 'crew', z.object({ interpretation: Interpretation }), async ({ i
   // A new report is triaged before the lock is taken: the model takes seconds. A volunteer's report goes ahead of
   // festival-goers' requests in the model queue.
   const judged = i.intent.kind === 'report' ? await interpreter.triage({ text: i.heard, zoneSlug: null, locationHint: null, urgent: true }) : undefined;
-  return transact({ taskIds }, (b) => {
+  // Then: is it about something already open where it's happening (else where the reporter is)?
+  const matched = judged && await read({}, ({ world }) => world).then((w) => matchOpen(Object.values(w.tasks), {
+    text: i.heard, zoneSlug: judged.value.zoneSlug ?? w.volunteers[caller.id]?.zoneSlug ?? null, locationHint: judged.value.locationHint, urgent: true,
+  }));
+  return transact({ taskIds: matched?.value ? [...taskIds, matched.value.taskId] : taskIds }, (b) => {
     if (i.intent.kind === 'reply') mustBeOn(taskOf(b, i.intent.taskId), caller);
-    const { confirmation, later } = C.commit(b, caller.id, i, judged?.value);
+    const { confirmation, later } = C.commit(b, caller.id, i, judged?.value, matched?.value);
     // The mock waits to mimic triage; here it has already run.
     if (later) b.send(later.recipientId, 'system', later.body, { taskId: later.taskId });
     return { confirmation };
-  }, { reporterId: caller.id, clips, run: judged?.run });
+  }, { reporterId: caller.id, clips, run: matched?.value ? { ...matched.run, taskId: matched.value.taskId } : judged?.run });
 });
 
 route('markRead', 'any', z.object({ messageIds: z.array(Id).max(500) }), async (a, caller) => {
