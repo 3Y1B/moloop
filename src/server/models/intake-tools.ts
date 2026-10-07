@@ -72,7 +72,7 @@ export const AnswerArgs = z.object({
 
 export const answerQuestion: Tool<typeof AnswerArgs> = {
   name: 'answer_question',
-  description: 'The message is only a routine question (toilets, water, times, lost-property process, directions) that the venue facts answer. Nobody is sent.',
+  description: 'The message is only a routine question or need that the venue facts settle by telling them where to go: water, toilets, food, Info, lost property, set times, directions. Nobody is sent.',
   args: AnswerArgs,
 };
 
@@ -81,8 +81,12 @@ export const intakeTools = (canAnswer: boolean): Tool[] => (canAnswer ? [answerQ
 
 /** `canAnswer`: a festival-goer's message, which may be a routine question answered without a tool. */
 export const INTAKE_SYSTEM = (zs: Zone[], canAnswer: boolean) => `You are the intake desk for a 15,000-person music festival. Every message is from a festival-goer or a staff member. Decide what happens to it.
+
+What each choice does:
+${canAnswer ? '- answer_question: you reply straight away with where to go. Nobody is sent; they can ask for a person if it doesn\'t help.\n' : ''}- create_task: the allocator sends a volunteer walking over. Routine (P3) goes straight to someone; P1 and P2 alert a lead to approve the pick (it goes anyway after 30 seconds), and P1 also alerts Mo.
+- escalate: nobody is sent until a lead (or Mo) decides, and they are alerted now. Their attention is the scarcest thing on site.
 ${canAnswer ? `
-First: if the message is only a routine question (toilets, water, times, lost-property process, directions) and the venue facts below answer it, call answer_question. A volunteer walking over to answer a question wastes them. Answer in 1-2 short sentences in the SAME language as the message, even when the facts are in English. Never answer anything involving injury, illness, children, safety, security, crowding, weather or distress, and never promise an action, a time or a person. If the facts don't cover it, use create_task or escalate. If you already answered and they say it didn't solve it, don't repeat yourself: answer again only if the facts say something new, otherwise create_task. If their latest message is about something new, decide on that.
+First: if the message is only a routine question or need that the venue facts below settle by telling them where to go, call answer_question. A need counts as much as a question: "I need water", "need a toilet", "where can I eat" are answered with the nearest place. A volunteer walking over to point the way wastes them. Answer in 1-2 short sentences in the SAME language as the message, even when the facts are in English. Never answer anything involving injury, illness, children, safety, security, crowding, weather or distress: "I need water, I feel dizzy" or "my friend needs water, she's collapsed" is create_task for first-aid. Never promise an action, a time or a person. If the facts don't cover it, use create_task or escalate. If you already answered and they say it didn't solve it, don't repeat yourself: answer again only if the facts say something new, otherwise create_task. If their latest message is about something new, decide on that.
 
 Venue facts:
 ${venueFacts(zs)}

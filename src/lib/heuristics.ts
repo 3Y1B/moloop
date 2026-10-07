@@ -33,7 +33,8 @@ const MINOR = /(blister|plaster|sunscreen|band-?aid|graze|ice pack)/i;
 const WORSE = /(worse|not breathing|can'?t breathe|unconscious|not responding|collapsed|bleeding|seizure|passed out|chest pain|vomit)/i;
 /** A bare plea ("help", "please help!!"): nothing to read but that someone may be in trouble. */
 const PLEA = /^\s*(please\s+)?(help|help me|sos)(\s+please)?[\s!.]*$/i;
-const QUESTION = /^(where|what|when|how|is|are|can i|do|does|which)\b|\?\s*$/i;
+// A need they can walk to ("I need water") reads like a question: the answer is where to go.
+const QUESTION = /^(where|what|when|how|is|are|can i|do|does|which|(i|we) (really )?need)\b|\?\s*$/i;
 
 export const TEAM_CATEGORY: Record<TeamSlug, IncidentCategory> = {
   'first-aid': 'medical', welfare: 'other', crowd: 'crowding', security: 'security',

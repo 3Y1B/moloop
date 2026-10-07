@@ -1,6 +1,7 @@
 [
   { "email": "mo@moloop.test", "name": "Mo", "role": "coordinator", "team": null, "zone": "info-tent" },
   { "email": "jordan@moloop.test", "name": "Jordan Lee", "role": "team_lead", "team": "first-aid", "zone": "first-aid-hq", "skills": ["first-aid-cert"] },
+  { "email": "sam@moloop.test", "name": "Sam Okafor", "role": "team_lead", "team": "ops", "zone": "supplies", "skills": ["radio-trained"] },
   { "email": "priya@moloop.test", "name": "Priya Shah", "role": "volunteer", "team": "first-aid", "zone": "lawn-stage", "skills": ["first-aid-cert", "radio-trained"], "languages": ["en", "hi"] },
   { "email": "tom@moloop.test", "name": "Tom Becker", "role": "volunteer", "team": "first-aid", "zone": "river-stage", "skills": ["first-aid-cert"] },
   { "email": "linh@moloop.test", "name": "Linh Tran", "role": "volunteer", "team": "welfare", "zone": "food-alley", "skills": ["wwcc", "multilingual"], "languages": ["en", "vi"] },

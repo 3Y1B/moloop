@@ -27,10 +27,10 @@ const said = (content: string): FakeReply => ({ json: { choices: [{ message: { r
 
 /** The classifier's cross-check, in OpenAI's /v1/decisions shape. */
 const probs = (p: Record<string, number>) => Object.entries(p).map(([value, probability]) => ({ value, probability }));
-const decided = (team: string, priority: 'P1' | 'P2' | 'P3', routine: number): FakeReply => ({
+const decided = (team: string, priority: 'P1' | 'P2' | 'P3', routine: number, sure: Record<string, number> | null = null): FakeReply => ({
   json: { answers: [
     { type: 'choice', name: 'team', choice: team, probabilities: probs({ [team]: 0.9 }), confidence: 0.9 },
-    { type: 'choice', name: 'priority', choice: priority, probabilities: probs({ [priority]: 0.9, P2: 0.05, P1: 0.05 }), confidence: 0.9 },
+    { type: 'choice', name: 'priority', choice: priority, probabilities: probs(sure ?? { [priority]: 0.9, P2: 0.05, P1: 0.05 }), confidence: sure ? 0.3 : 0.9 },
     { type: 'choice', name: 'routine', choice: routine >= 0.5 ? 'yes' : 'no', probabilities: probs({ yes: routine, no: 1 - routine }), confidence: 0.9 },
   ] },
 });
@@ -152,6 +152,18 @@ describe('intake: the agent picks create_task or escalate, code has the last wor
     const { value } = await ai.understand(heard('can you make an announcement for my lost friend?'));
 
     expect(value).toMatchObject({ kind: 'task', escalate: { level: 'coordinator' } });
+  });
+
+  it('keeps an answer when the classifier leans P3 but isn’t sure: no step up to P2', async () => {
+    const unsure = () => decided('ops', 'P3', 0.8, { P3: 0.53, P2: 0.29, P1: 0.18 });
+    queue.chat.push(answers('Free refills at Water 1, in the Grove.', 'en'), called('create_task'));
+    queue.decisions.push(unsure(), unsure());
+
+    const water = await ai.understand(heard('I need water'));
+    const report = await ai.triage(heard('the water station tap is leaking'));
+
+    expect(water.value).toMatchObject({ kind: 'answer', answer: 'Free refills at Water 1, in the Grove.' });
+    expect(report.value.priority).toBe('P2');
   });
 
   it('sends it to a person when the agent answers but the classifier says it isn’t routine', async () => {
