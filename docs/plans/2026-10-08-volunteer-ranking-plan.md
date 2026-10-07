@@ -21,7 +21,7 @@ What we measured (`scripts/bench-pick.ts`, 300-person generated crew, 167 on dut
 ## The algorithm
 
 ```
-report ──► intake agent ──► task + speaker_needed
+report ──► intake agent ──► task + speaker_needed + first_aid_needed
                                    │
              free, on-duty volunteers (busy ones only if nobody's free)
                     │                                  │
@@ -30,12 +30,13 @@ report ──► intake agent ──► task + speaker_needed
    → top 6
                     └───────────────┬──────────────────┘
                      taken in turn, nobody twice (≤ 12)
-                     + the nearest speaker if neither lane has one
+                     + the nearest speaker / first aider if neither lane has one
                                     │
               Final pick: "who's best" + "how many" (OpenAI, side by side)
                                     │
-              Speaker slot: if nobody being sent speaks the language,
-              the best-placed speaker goes too (or replaces the last one)
+              Speaker and first-aid slots: if nobody being sent speaks the
+              language / holds first aid, the best-placed one goes too
+              (or replaces the last one nobody else depends on)
                                     │
                               lead / Mo approves
 ```
@@ -44,16 +45,22 @@ report ──► intake agent ──► task + speaker_needed
    isn't English, or one it names ("his wife only speaks Mandarin" → `zh`, "a lost Japanese tourist" → `ja`).
    Null for "the Korean BBQ stall". Stored on `reports.speaker_needed`, read as `Reporter.speakerNeeded`.
    `language` stays "written in", for replies and "translated from".
+   **First-aid floor**, the same way: `first_aid_needed` (true for hurt, collapsed, very drunk, spiked, chest pain,
+   bleeding, heat, seizure), on `reports.first_aid_needed`, read as `Reporter.firstAidNeeded`. Null or missing (no
+   model said, older rows) falls back to the category: medical and heat want first aid.
 2. **Qualified lane.** A `choice` over every free person, described as team, certificates held (in date),
    languages and bio. No distance, so the model judges fit, not position. Asked 3 times at once in shuffled order,
    probabilities averaged (step 5). Top 6. This replaces the category→certificate table, the bio scoring and the
    points for the shortlist.
 3. **Nearest lane.** The 6 shortest walks (live GPS, else zone). No model.
 4. **Merge.** One from each lane in turn, nobody twice. If the task needs a language and nobody listed speaks it,
-   the nearest free speaker gets a seat of their own.
+   the nearest free speaker gets a seat of their own; the same for a first aider. Missing both, the nearest person
+   with both takes one seat.
 5. **Final pick.** Unchanged: "who's best" over the shortlist (which does see distance) and "how many" asked apart.
-6. **Speaker slot.** If nobody in the crew speaks the needed language, the first speaker in the model's order
-   joins as one more person while the priority allows (P2 2, P1 3), otherwise in place of the last.
+6. **Speaker and first-aid slots** (`withNeeded`). If nobody in the crew speaks the needed language, or nobody holds
+   first aid when it's needed, the first in the model's order who does joins as one more person while the priority
+   allows (P2 2, P1 3), otherwise in place of the last one who isn't the only speaker or first aider. One person who
+   meets both is preferred.
 
 Model calls per incident: intake (already ran) + 3 qualified (parallel) + 2 final = **5 new**, down from 41–43.
 
@@ -67,6 +74,7 @@ approves either way.
 | --- | --- |
 | Intake `speaker_needed`, `reports.speaker_needed` migration, `Reporter.speakerNeeded` | Done; column on local DB only |
 | Speaker seat in the shortlist, speaker slot in the crew (`withSpeaker`) | Done |
+| First-aid floor: intake `first_aid_needed`, `reports.first_aid_needed` migration, seat + crew slot (`withNeeded`) | Done; migration not applied anywhere |
 | Picker on OpenAI only (`decide(…, { cloud: true })`) | Done |
 | `rankQualified` (3 shuffled calls averaged), `laneCandidates({ qualified })` | Done |
 | Remove bio scoring and points | Done |
@@ -111,19 +119,29 @@ the average of 3 shuffled calls instead (3 calls, still under a second on OpenAI
 
 ### 6. Deploy
 
-Apply `supabase/migrations/20261008140000_speaker_needed.sql` on the Spark Supabase before the new server runs:
-`world.ts` reads the column.
+Apply on the Spark Supabase before the new server runs (`world.ts` reads both columns):
+
+- `supabase/migrations/20261008140000_speaker_needed.sql`
+- `supabase/migrations/20261008150000_first_aid_needed.sql` (not applied yet, local DB included)
 
 ## Results (cases, two runs each)
 
-| | Old (bio scores + points) | Bench B, one call (before) | Rules only (A, now) | Shipped (B, now: 3 averaged) |
-| --- | --- | --- | --- | --- |
-| Everything wanted was sent, of 12 | 12, 12 | 12, 12 | 12, 12 | 11, 10 |
-| Calls per incident | 43 | 3 | 2 | 5 |
-| Picker time | 0.5–2.5 s | 0.3–1.2 s | 0.3–0.8 s | 0.6–1.2 s |
-| Intake read the speaker right, of 12 | 11, 11 | same | 11, 11 | same |
+| | Old (bio scores + points) | Bench B, one call (before) | Rules only (A) | B, 3 averaged | A + first-aid floor | B + first-aid floor |
+| --- | --- | --- | --- | --- | --- | --- |
+| Everything wanted was sent, of 12 | 12, 12 | 12, 12 | 12, 12 | 11, 10 | 12, 12 | 12, 12 |
+| Calls per incident | 43 | 3 | 2 | 5 | 2 | 5 |
+| Picker time | 0.5–2.5 s | 0.3–1.2 s | 0.3–0.8 s | 0.6–1.2 s | 0.3–0.5 s | 0.6–2.7 s |
+| Intake read the speaker right, of 12 | 11, 11 | same | 11, 11 | same | 11, 11 | same |
+| Intake read first aid right, of 12 | | | | | 11, 11 | same |
 
-B's misses: "drunk at the bar" both runs (sent two security licence holders, no first aider: it reads the bar
+**First-aid floor.** "Drunk at the bar" now sends a first aider both runs: once the crew slot swapped one in for a
+second security licence holder, once the pick chose two itself. With the field's first wording intake read "this guy
+is absolutely gone" as no first aid (the security team's "very drunk person who is not hurt") and B still missed it,
+11 and 11; "very drunk or high, even if not hurt" fixed it. Intake's one first-aid miss: the panic attack ("she cant
+breathe properly") reads as yes both runs, even with "a panic attack alone" listed as false. Costs a first aider beside
+the mental health first aider at worst.
+
+Before the floor, B's misses: "drunk at the bar" both runs (sent two security licence holders, no first aider: it reads the bar
 serving him as a security job), "vietnamese collapse" once. "Korean BBQ gas" got three refusals once and fell back
 to the rules. Italian mate still reads as needing Italian.
 

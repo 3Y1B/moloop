@@ -83,6 +83,11 @@ export type Reporter = {
    * ("his wife only speaks Mandarin"). Null when English will do; missing on reports from before intake said.
    */
   speakerNeeded?: string | null;
+  /**
+   * Someone there may need hands-on first aid (intake's read). Null when no model said; missing on reports from
+   * before intake said. Either way the picker goes by the category.
+   */
+  firstAidNeeded?: boolean | null;
   /** `quote` in English, when the AI read it. Shown first to staff (see lib/quote). */
   english?: string;
 };

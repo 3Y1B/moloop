@@ -23,6 +23,8 @@ export type Triage = {
   language: string;
   /** ISO 639-1 of a language someone there needs a volunteer to speak, else null (Reporter.speakerNeeded). */
   speakerNeeded: string | null;
+  /** Someone there may need hands-on first aid; null when no model said (Reporter.firstAidNeeded). */
+  firstAidNeeded: boolean | null;
   /** What the reporter wrote, in English, when the AI read it. Absent from the keyword fallback. */
   english?: string;
   /** Set when the intake agent escalated instead of creating a task for the allocator. */
@@ -78,5 +80,5 @@ export const UNKNOWN_LANGUAGE = 'und';
 
 export const unread = (text: string, zoneSlug: string | null = null, locationHint: string | null = null): Triage => ({
   team: 'info', priority: 'P2', category: TEAM_CATEGORY.info, title: titleFrom(text), summary: text, zoneSlug, locationHint,
-  language: UNKNOWN_LANGUAGE, speakerNeeded: null, escalate: { level: 'lead', reason: 'No model read it: needs a lead' },
+  language: UNKNOWN_LANGUAGE, speakerNeeded: null, firstAidNeeded: null, escalate: { level: 'lead', reason: 'No model read it: needs a lead' },
 });

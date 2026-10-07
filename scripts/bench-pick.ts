@@ -222,39 +222,40 @@ if (mode === 'bios') {
 }
 
 // ── cases: reports a one-certificate-per-category table gets wrong, and language traps ──
-// cases: each report goes through the real intake agent for speaker_needed (needs the local database for zones), then:
+// cases: each report goes through the real intake agent for speaker_needed and first_aid_needed (needs the local database
+// for zones), then:
 //   A  rules only: the qualified lane is rankCandidates' order (what runs when the qualified call fails); the nearest lane
 //   B  what server/pick.ts does: rankQualified (one choice over everyone free, no distance), then the nearest lane
-// Both: a seat for a speaker, then the same final pick, which sends a speaker too if nobody it picked speaks it.
+// Both: a seat for a speaker and a first aider, then the same final pick, which sends one too if nobody it picked is one.
 // stability: rankQualified three times per case over the free crew in a fresh shuffle; how many of the top 6 hold.
 if (mode === 'cases' || mode === 'stability') {
   const { interpreter } = await import('../src/server/models/interpreter');
   const { SKILL_LABEL, certsFor } = await import('../src/lib/candidates');
-  type Case = { id: string; task: Task; want: string[]; speaker: string | null };
+  type Case = { id: string; task: Task; want: string[]; speaker: string | null; aid: boolean };
   const at = (zoneSlug: string, teamSlug: Task['teamSlug'], category: IncidentCategory, priority: Priority, title: string, summary: string, quote: string, language = 'en') =>
     task({ zoneSlug, teamSlug, category, priority, title, summary, reporter: { kind: 'festivalgoer', quote, language } });
   const CASES: Case[] = [
-    { id: 'panic attack', want: ['mental-health-first-aid'], speaker: null, task: at('the-grove', 'welfare', 'other', 'P2', 'Panic attack at the Grove',
+    { id: 'panic attack', want: ['mental-health-first-aid'], speaker: null, aid: false, task: at('the-grove', 'welfare', 'other', 'P2', 'Panic attack at the Grove',
       'Young woman hyperventilating and crying by the Grove toilets; her friends can\'t calm her down.', 'my friend is having a really bad panic attack she cant breathe properly') },
-    { id: 'drunk at the bar', want: ['first-aid-cert'], speaker: null, task: at('bar', 'first-aid', 'medical', 'P2', 'Very drunk man at the bar',
+    { id: 'drunk at the bar', want: ['first-aid-cert'], speaker: null, aid: true, task: at('bar', 'first-aid', 'medical', 'P2', 'Very drunk man at the bar',
       'Man can barely stand at the bar, mates keep buying him shots and the bar is still serving him.', 'this guy is absolutely gone and they keep serving him') },
-    { id: 'lost and hurt', want: ['first-aid-cert'], speaker: null, task: at('river-stage', 'welfare', 'lost_child', 'P1', 'Lost boy with a cut knee',
+    { id: 'lost and hurt', want: ['first-aid-cert'], speaker: null, aid: true, task: at('river-stage', 'welfare', 'lost_child', 'P1', 'Lost boy with a cut knee',
       'Boy about 6 found alone and crying at the River Stage; he has cut his knee badly and it is bleeding through his sock.', 'found a little boy on his own, his knee is bleeding a lot') },
-    { id: 'lost child', want: ['wwcc'], speaker: null, task: TASKS.lost_child },
-    { id: 'spiked drink', want: ['first-aid-cert', 'mental-health-first-aid'], speaker: null, task: at('lawn-stage', 'first-aid', 'medical', 'P1', 'Woman thinks her drink was spiked',
+    { id: 'lost child', want: ['wwcc'], speaker: null, aid: false, task: TASKS.lost_child },
+    { id: 'spiked drink', want: ['first-aid-cert', 'mental-health-first-aid'], speaker: null, aid: true, task: at('lawn-stage', 'first-aid', 'medical', 'P1', 'Woman thinks her drink was spiked',
       'Woman at the Lawn Stage says her drink was spiked; she is dizzy, confused and very frightened.', 'i think someone put something in my drink i feel so weird and scared') },
-    { id: 'mandarin chest pain', want: ['first-aid-cert', 'zh'], speaker: 'zh', task: at('gate-b', 'first-aid', 'medical', 'P1', 'Older man with chest pain at Gate B',
+    { id: 'mandarin chest pain', want: ['first-aid-cert', 'zh'], speaker: 'zh', aid: true, task: at('gate-b', 'first-aid', 'medical', 'P1', 'Older man with chest pain at Gate B',
       'Older man clutching his chest at Gate B; his wife only speaks Mandarin and is panicking.', 'old man chest pain at gate b, his wife only speaks mandarin') },
-    { id: 'korean fall', want: ['first-aid-cert', 'ko'], speaker: 'ko', task: TASKS.korean },
-    { id: 'vietnamese collapse', want: ['first-aid-cert', 'vi'], speaker: 'vi', task: TASKS.medical },
-    { id: 'lost japanese tourist', want: ['ja'], speaker: 'ja', task: at('info-tent', 'info', 'other', 'P2', 'Lost tourist at the Info Tent',
+    { id: 'korean fall', want: ['first-aid-cert', 'ko'], speaker: 'ko', aid: true, task: TASKS.korean },
+    { id: 'vietnamese collapse', want: ['first-aid-cert', 'vi'], speaker: 'vi', aid: true, task: TASKS.medical },
+    { id: 'lost japanese tourist', want: ['ja'], speaker: 'ja', aid: false, task: at('info-tent', 'info', 'other', 'P2', 'Lost tourist at the Info Tent',
       'A Japanese tourist has lost her group and seems very confused near the Info Tent.', 'there is a japanese tourist here who lost her tour group, she seems really confused') },
     // Traps: a language or nationality named, nobody needing a speaker.
-    { id: 'trap: korean bbq gas', want: [], speaker: null, task: at('food-alley', 'vendors', 'vendor', 'P1', 'Gas smell at the Korean BBQ stall',
+    { id: 'trap: korean bbq gas', want: [], speaker: null, aid: false, task: at('food-alley', 'vendors', 'vendor', 'P1', 'Gas smell at the Korean BBQ stall',
       'Strong smell of gas at the Korean BBQ stall in Food Alley.', 'theres a really strong gas smell at the korean bbq stall') },
-    { id: 'trap: italian mate', want: ['first-aid-cert'], speaker: null, task: at('lawn-stage', 'first-aid', 'medical', 'P2', 'Deep cut on a hand at the Lawn Stage',
+    { id: 'trap: italian mate', want: ['first-aid-cert'], speaker: null, aid: true, task: at('lawn-stage', 'first-aid', 'medical', 'P2', 'Deep cut on a hand at the Lawn Stage',
       'Man cut his hand on a broken bottle at the Lawn Stage.', 'my italian mate cut his hand open on a bottle, he\'s ok just bleeding heaps') },
-    { id: 'trap: spanish band', want: [], speaker: null, task: at('river-stage', 'artist', 'artist', 'P2', 'Spanish band missing at River Stage',
+    { id: 'trap: spanish band', want: [], speaker: null, aid: false, task: at('river-stage', 'artist', 'artist', 'P2', 'Spanish band missing at River Stage',
       'The Spanish band due on at River Stage hasn\'t arrived for soundcheck.', 'the spanish band on next at river stage still havent turned up for soundcheck') },
   ];
   const CERTS = Object.keys(SKILL_LABEL).filter((c) => c !== 'multilingual' && c !== 'radio-trained');
@@ -281,7 +282,7 @@ if (mode === 'cases' || mode === 'stability') {
     process.exit(0);
   }
 
-  const tally = { A: 0, B: 0, misses: { A: [] as string[], B: [] as string[] }, read: 0 };
+  const tally = { A: 0, B: 0, misses: { A: [] as string[], B: [] as string[] }, read: 0, aid: 0 };
   const show = async (name: 'A' | 'B', caseId: string, tk: Task, want: string[], shortlist: { volunteerId: string }[], ms: number, calls: number) => {
     const t0 = Date.now();
     const { value, run } = await pickCrew(tk, shortlist.map((c) => ({ candidate: c as never, volunteer: byId.get(c.volunteerId)! })), teams);
@@ -293,16 +294,20 @@ if (mode === 'cases' || mode === 'stability') {
     else tally.misses[name].push(`${caseId} (${missed.map(label).join(', ')})`);
     const inList = want.map((w) => `${label(w)} ${people.filter((v) => has(v, w)).length}`).join(', ') || '-';
     const covered = want.map((w) => (missed.includes(w) ? `✗ ${label(w)}` : `✓ ${label(w)}`)).join('  ');
-    console.log(`  ${name}  ${(total / 1000).toFixed(1)} s, ${calls + 2} calls · in the ${people.length}: ${inList} · ${sent.length} sent: ${covered || '-'}${run.reason?.includes('speaker') ? ' · speaker added' : ''}${run.error ? ` · ${run.error}` : ''}`);
+    console.log(`  ${name}  ${(total / 1000).toFixed(1)} s, ${calls + 2} calls · in the ${people.length}: ${inList} · ${sent.length} sent: ${covered || '-'}${run.reason?.includes('speaker') ? ' · speaker added' : ''}${run.reason?.includes('first aider') ? ' · first aider added' : ''}${run.error ? ` · ${run.error}` : ''}`);
     for (const v of sent) console.log(`       ${v.name.padEnd(19)} ${String(v.teamSlug).padEnd(10)} ${v.skills.filter((c) => CERTS.includes(c)).map(label).join(', ') || '-'} · ${v.languages.join('/')} · ${v.bio}`);
   };
 
-  for (const { id, task: base, want, speaker } of chosen) {
+  for (const { id, task: base, want, speaker, aid } of chosen) {
     const read = await interpreter.triage({ text: base.reporter.quote, zoneSlug: base.zoneSlug, locationHint: null, from: { kind: 'festivalgoer' } });
     const got = read.value.speakerNeeded;
+    const firstAid = read.value.firstAidNeeded;
     if (got === speaker) tally.read++;
-    const tk: Task = { ...base, reporter: { ...base.reporter, language: read.value.language, speakerNeeded: got } };
+    if (firstAid === aid) tally.aid++;
+    const tk: Task = { ...base, reporter: { ...base.reporter, language: read.value.language, speakerNeeded: got, firstAidNeeded: firstAid } };
+    const yn = (b: boolean | null) => (b == null ? 'unsaid' : b ? 'yes' : 'no');
     console.log(`── ${id}: ${tk.category} · intake says speaker ${got ? languageName(got) : 'none'} ${got === speaker ? '✓' : `✗ (wanted ${speaker ? languageName(speaker) : 'none'})`}`
+      + ` · first aid ${yn(firstAid)} ${firstAid === aid ? '✓' : `✗ (wanted ${yn(aid)})`}`
       + ` · table wants ${certsFor(tk.category).map(label).join(', ') || 'nothing'}`);
     if (tk.priority === 'P3') { console.log(); continue; }
 
@@ -314,7 +319,7 @@ if (mode === 'cases' || mode === 'stability') {
     await show('B', id, tk, want, laneCandidates(tk, volunteers, others, { qualified: qualified.value, size: 6 }), Date.now() - tB, 3); // three shuffled rounds
     console.log();
   }
-  console.log(`intake read the speaker right in ${tally.read} of ${chosen.length}`);
+  console.log(`intake read the speaker right in ${tally.read} of ${chosen.length}, first aid in ${tally.aid} of ${chosen.length}`);
   console.log(`everything wanted was sent: A ${tally.A}, B ${tally.B} of ${chosen.length}`);
   for (const k of ['A', 'B'] as const) if (tally.misses[k].length) console.log(`  ${k} missed: ${tally.misses[k].join('; ')}`);
   process.exit(0);

@@ -483,6 +483,7 @@ export type Database = {
         Row: {
           channel: Database["public"]["Enums"]["report_channel"]
           detected_language: string | null
+          first_aid_needed: boolean | null
           id: string
           lat: number | null
           lng: number | null
@@ -501,6 +502,7 @@ export type Database = {
         Insert: {
           channel: Database["public"]["Enums"]["report_channel"]
           detected_language?: string | null
+          first_aid_needed?: boolean | null
           id?: string
           lat?: number | null
           lng?: number | null
@@ -519,6 +521,7 @@ export type Database = {
         Update: {
           channel?: Database["public"]["Enums"]["report_channel"]
           detected_language?: string | null
+          first_aid_needed?: boolean | null
           id?: string
           lat?: number | null
           lng?: number | null

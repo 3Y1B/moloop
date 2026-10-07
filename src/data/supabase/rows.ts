@@ -113,6 +113,8 @@ export type ReportJoin = {
   detected_language: string | null;
   /** Server-side only (server/world.ts): the app's embed leaves it out, and the picker that reads it is on the server. */
   speaker_needed?: string | null;
+  /** Server-side only, like `speaker_needed`. */
+  first_aid_needed?: boolean | null;
   /** `raw_text` in English, when the AI read it. */
   text_en?: string | null;
   reporter: { full_name: string } | null;
@@ -132,6 +134,7 @@ export function toReporter(report: ReportJoin | undefined): Reporter {
     quote: report.raw_text ?? '',
     language: report.detected_language ?? 'en',
     ...(report.speaker_needed !== undefined ? { speakerNeeded: report.speaker_needed } : {}),
+    ...(report.first_aid_needed !== undefined ? { firstAidNeeded: report.first_aid_needed } : {}),
     ...(report.text_en ? { english: report.text_en } : {}),
   };
 }

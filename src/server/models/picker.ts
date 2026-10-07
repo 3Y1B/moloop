@@ -1,4 +1,4 @@
-import { SKILL_LABEL, speakerNeeded, withSpeaker } from '@/lib/candidates';
+import { firstAidNeeded, SKILL_LABEL, speakerNeeded, withNeeded } from '@/lib/candidates';
 import { clockTime, languageName } from '@/lib/format';
 import type { Priority, ProposalCandidate, Task, Volunteer } from '@/lib/schema';
 import { choice, decide, decideModelId } from '.';
@@ -10,12 +10,14 @@ import type { Judged, Run } from './interpreter';
  *
  *  1. `rankQualified`: one choice over every free person's profile (team, certificates, languages, background; no
  *     distance), so it judges fit, not position. Asked three times in shuffled order and averaged, for a steady top 6.
- *  2. That order, and the language intake said someone there needs (Reporter.speakerNeeded), feed the two lanes in
- *     lib/candidates.ts (most qualified, nearest) that make the shortlist.
+ *  2. That order, the language intake said someone there needs (Reporter.speakerNeeded) and whether they may need
+ *     first aid (Reporter.firstAidNeeded), feed the two lanes in lib/candidates.ts (most qualified, nearest) that make
+ *     the shortlist.
  *  3. `pickCrew`: one typed call over the shortlist. The model reads each person as a whole (team, certificates,
  *     languages, free or busy, how far, and their description) and gives every one a probability, which ranks them.
  *     Asked about each person alone, it said yes to anyone good enough (scripts/bench-pick.ts); side by side, it can
- *     tell the best. If the task needs a language and nobody it sends speaks it, a speaker goes too (withSpeaker).
+ *     tell the best. If the task needs a language and nobody it sends speaks it, a speaker goes too; the same for a
+ *     first aider (withNeeded).
  *
  * Fails to null: the rules' order stands and one person goes. A lead or Mo approves either way.
  */
@@ -123,6 +125,7 @@ export async function pickCrew(task: Task, shortlist: Shortlisted[], teams: Reco
   const labels = Object.fromEntries(shortlist.map((s, n) => [`person_${n + 1}`, describe(s, teams)]));
   const most = MOST_PEOPLE[task.priority];
   const lang = speakerNeeded(task);
+  const aid = firstAidNeeded(task);
   const about = { task: `${task.title}. ${task.summary}`, urgency: URGENCY[task.priority] };
   const o = { urgent: task.priority === 'P1', ...CLOUD };
   try {
@@ -132,6 +135,7 @@ export async function pickCrew(task: Task, shortlist: Shortlisted[], teams: Reco
       decide({
         ...about,
         ...(lang ? { needs_someone_who_speaks: languageName(lang) } : {}),
+        ...(aid ? { needs_first_aid: 'Someone there may need hands-on first aid' } : {}),
         volunteers: labels,
       }, { best: choice('Who is best suited to go to this task?', labels) }, o),
       most > 1
@@ -147,15 +151,19 @@ export async function pickCrew(task: Task, shortlist: Shortlisted[], teams: Reco
       .sort((a, b) => b.p - a.p || a.n - b.n)
       .map((x) => x.id);
     const sized = size ? Math.min(most, COUNT[size.people.choice] ?? 1) : 1;
-    const speaks = (id: string) => !!lang && !!shortlist.find((s) => s.candidate.volunteerId === id)?.volunteer.languages.includes(lang);
-    const { order, people } = withSpeaker(ranked, sized, speaks, most);
-    const top = shortlist.find((s) => s.candidate.volunteerId === order[0])!.volunteer;
-    const added = order.slice(0, people).join() !== ranked.slice(0, sized).join();
+    const who = (id: string) => shortlist.find((s) => s.candidate.volunteerId === id)!.volunteer;
+    const needs = [
+      ...(lang ? [{ meets: (id: string) => who(id).languages.includes(lang), as: `a ${languageName(lang)} speaker` }] : []),
+      ...(aid ? [{ meets: (id: string) => who(id).skills.includes('first-aid-cert'), as: 'a first aider' }] : []),
+    ];
+    const { order, people } = withNeeded(ranked, sized, needs.map((n) => n.meets), most);
+    const before = ranked.slice(0, sized);
+    const added = needs.filter((n) => !before.some(n.meets) && order.slice(0, people).some(n.meets)).map((n) => n.as);
     return {
       value: { order, people },
       run: log({
         confidence: d.best.confidence,
-        reason: `${top.name} first of ${shortlist.length}; ${people} needed${added ? `, with a ${languageName(lang!)} speaker` : ''}`,
+        reason: `${who(order[0]).name} first of ${shortlist.length}; ${people} needed${added.length ? `, with ${added.join(' and ')}` : ''}`,
       }),
     };
   } catch (e) {

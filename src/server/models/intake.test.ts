@@ -14,7 +14,7 @@ const called = (name: 'create_task' | 'escalate', over: Record<string, unknown> 
     name,
     arguments: JSON.stringify({
       title: 'Asks to stop the set at the Oval', summary: 'Wants the set stopped.', team: 'ops', priority: 'P3', category: 'facilities',
-      zone: 'oval-stage', place: null, language: 'en', speaker_needed: null, english: 'Stop the set at the Oval', ...(name === 'escalate' ? { level: 'lead', reason: 'Needs a decision' } : {}), ...over,
+      zone: 'oval-stage', place: null, language: 'en', speaker_needed: null, first_aid_needed: false, english: 'Stop the set at the Oval', ...(name === 'escalate' ? { level: 'lead', reason: 'Needs a decision' } : {}), ...over,
     }),
   } }] } }] },
 });
@@ -110,6 +110,19 @@ describe('intake: the agent picks create_task or escalate, code has the last wor
     // Written in Vietnamese: a speaker of it is needed whatever the agent said.
     expect(vietnamese.value).toMatchObject({ language: 'vi', speakerNeeded: 'vi' });
     expect(english.value.speakerNeeded).toBeNull();
+  });
+
+  it('keeps whether someone there may need first aid, null when the agent didn’t say', async () => {
+    queue.chat.push(called('create_task', { first_aid_needed: true }), called('create_task'), { status: 500 });
+    queue.decisions.push(decided('first-aid', 'P2', 0.1), decided('security', 'P2', 0.1), decided('first-aid', 'P2', 0.1));
+
+    const drunk = await ai.triage(heard('this guy is absolutely gone, can barely stand at the bar'));
+    const noise = await ai.triage(heard('the speakers by the bar are crackling'));
+    const failed = await ai.triage(heard('a man fainted near the bar'));
+
+    expect(drunk.value.firstAidNeeded).toBe(true);
+    expect(noise.value.firstAidNeeded).toBe(false);
+    expect(failed.value.firstAidNeeded).toBeNull();
   });
 
   it('sends it to a lead when the agent fails, with the classifier’s team and priority', async () => {

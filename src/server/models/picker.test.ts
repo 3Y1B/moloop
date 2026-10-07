@@ -21,6 +21,8 @@ const person = (id: string, over: Partial<Volunteer> = {}): Shortlisted => ({
     zoneSlug: 'food-alley', duty: 'on_duty', shiftEndsAt: null, phone: null, ...over,
   },
 });
+/** Intake said nobody there needs first aid: the crew stays as the model picked it. */
+const unhurt = { reporter: { kind: 'festivalgoer' as const, quote: 'a man collapsed by the food stalls', language: 'en', firstAidNeeded: false } };
 const shortlist = [person('tom'), person('priya', { skills: ['first-aid-cert'], bio: 'ED nurse.' }), person('kai')];
 const teams = { 'first-aid': { name: 'First Aid & Heat' } };
 
@@ -94,7 +96,7 @@ describe('pickCrew', () => {
     replies.best = [decided('best', { person_1: 0.6, person_2: 0.3, person_3: 0.1 })];
     replies.people = [{ status: 500 }, { status: 500 }];
 
-    const { value } = await pickCrew(task(), shortlist, teams);
+    const { value } = await pickCrew(task(unhurt), shortlist, teams);
 
     expect(value).toEqual({ order: ['tom', 'priya', 'kai'], people: 1 });
   });
@@ -112,13 +114,55 @@ describe('pickCrew', () => {
     replies.best = [decided('best', { person_1: 0.5, person_2: 0.3, person_3: 0.2 })];
     replies.people = [decided('people', { one: 0.7, two: 0.2, three: 0.1 })];
     const withKai = [shortlist[0], shortlist[1], person('kai', { languages: ['en', 'zh'] })];
-    const t = task({ reporter: { kind: 'festivalgoer', quote: 'his wife only speaks mandarin', language: 'en', speakerNeeded: 'zh' } });
+    const t = task({ reporter: { kind: 'festivalgoer', quote: 'his wife only speaks mandarin', language: 'en', speakerNeeded: 'zh', firstAidNeeded: false } });
 
     const { value, run } = await pickCrew(t, withKai, teams);
 
     expect(value).toEqual({ order: ['tom', 'kai', 'priya'], people: 2 });
     expect(run.reason).toBe('Tom Smith first of 3; 2 needed, with a Chinese speaker');
     expect(sent.find((b) => b.includes('Who is best'))).toContain('Chinese');
+  });
+
+  it('sends a first aider too when someone may need first aid and nobody it picked holds it', async () => {
+    replies.best = [decided('best', { person_1: 0.6, person_2: 0.1, person_3: 0.3 })];
+    replies.people = [decided('people', { one: 0.7, two: 0.2, three: 0.1 })];
+
+    const { value, run } = await pickCrew(task(), shortlist, teams);
+
+    expect(value).toEqual({ order: ['tom', 'priya', 'kai'], people: 2 });
+    expect(run.reason).toBe('Tom Smith first of 3; 2 needed, with a first aider');
+    expect(sent.find((b) => b.includes('Who is best'))).toContain('needs_first_aid');
+  });
+
+  it('puts the first aider in place of the last one when the crew is as big as the priority allows', async () => {
+    replies.best = [decided('best', { person_1: 0.6, person_2: 0.1, person_3: 0.3 })];
+    replies.people = [decided('people', { one: 0.2, two: 0.8 })];
+
+    const { value } = await pickCrew(task({ priority: 'P2' }), shortlist, teams);
+
+    expect(value).toEqual({ order: ['tom', 'priya', 'kai'], people: 2 });
+  });
+
+  it('keeps both the speaker and the first aider', async () => {
+    replies.best = [decided('best', { person_1: 0.6, person_2: 0.1, person_3: 0.3 })];
+    replies.people = [decided('people', { one: 0.7, two: 0.3 })];
+    const withKai = [shortlist[0], shortlist[1], person('kai', { languages: ['en', 'zh'] })];
+    const t = task({ priority: 'P2', reporter: { kind: 'festivalgoer', quote: 'old man chest pain, his wife only speaks mandarin', language: 'en', speakerNeeded: 'zh' } });
+
+    const { value, run } = await pickCrew(t, withKai, teams);
+
+    expect(value).toEqual({ order: ['kai', 'priya', 'tom'], people: 2 });
+    expect(run.reason).toBe('Kai Smith first of 3; 2 needed, with a Chinese speaker and a first aider');
+  });
+
+  it('adds no first aider when intake said nobody needs one', async () => {
+    replies.best = [decided('best', { person_1: 0.6, person_2: 0.1, person_3: 0.3 })];
+    replies.people = [decided('people', { one: 0.7, two: 0.2, three: 0.1 })];
+
+    const { value } = await pickCrew(task(unhurt), shortlist, teams);
+
+    expect(value).toEqual({ order: ['tom', 'kai', 'priya'], people: 1 });
+    expect(sent.find((b) => b.includes('Who is best'))).not.toContain('needs_first_aid');
   });
 
   it('asks OpenAI even when the Spark is on', async () => {

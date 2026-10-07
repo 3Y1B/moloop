@@ -33,14 +33,22 @@ export const SKILL_LABEL: Record<string, string> = {
   multilingual: 'multilingual',
 };
 
-type Assessed = { v: Volunteer; candidate: ProposalCandidate; free: boolean; sameTeam: boolean; held: string[]; speaks: boolean };
+const FIRST_AID = 'first-aid-cert';
+
+type Assessed = { v: Volunteer; candidate: ProposalCandidate; free: boolean; sameTeam: boolean; held: string[]; speaks: boolean; aid: boolean };
 
 /** The language someone at a task needs a volunteer to speak (intake's read), else the report's own if not English. */
 export const speakerNeeded = (task: Task) =>
   task.reporter.speakerNeeded !== undefined ? task.reporter.speakerNeeded : task.reporter.language !== 'en' ? task.reporter.language : null;
 
+/** Someone at a task may need hands-on first aid (intake's read), else by the category (medical, heat) when it didn't say. */
+export const firstAidNeeded = (task: Task) => task.reporter.firstAidNeeded ?? certsFor(task.category).includes(FIRST_AID);
+
 /** The certificates a task wants by its category alone: one at most. */
 export const certsFor = (category: IncidentCategory) => (SKILL_FOR[category] ? [SKILL_FOR[category]] : []);
+
+/** The category's certificate, and first aid when someone may need it. */
+const wanted = (task: Task) => [...new Set([...certsFor(task.category), ...(firstAidNeeded(task) ? [FIRST_AID] : [])])];
 
 /** One person against one task: free or busy, the walk, which of the wanted certificates they hold, the language it needs. */
 function assess(task: Task, v: Volunteer, tasks: Task[], certs: string[], lang: string | null, positions: Record<string, Position> | undefined, now: number): Assessed {
@@ -55,7 +63,10 @@ function assess(task: Task, v: Volunteer, tasks: Task[], certs: string[], lang: 
     ...held.map((c) => SKILL_LABEL[c] ?? c),
     speaks ? `speaks ${languageName(lang)}` : null,
   ].filter(Boolean);
-  return { v, candidate: { volunteerId: v.id, rationale: why.join(' · '), distanceM }, free, sameTeam: v.teamSlug === task.teamSlug, held, speaks };
+  return {
+    v, candidate: { volunteerId: v.id, rationale: why.join(' · '), distanceM }, free, sameTeam: v.teamSlug === task.teamSlug, held, speaks,
+    aid: v.skills.includes(FIRST_AID),
+  };
 }
 
 /** Volunteers on duty and not already on this task. */
@@ -71,7 +82,7 @@ export function rankCandidates(
   const lang = speakerNeeded(task);
   return eligible(task, volunteers, exclude)
     .map((v) => {
-      const a = assess(task, v, tasks, certsFor(task.category), lang, positions, now);
+      const a = assess(task, v, tasks, wanted(task), lang, positions, now);
       return { candidate: a.candidate, score: [a.sameTeam ? 0 : 1, a.free ? 0 : 1, a.held.length || a.speaks ? 0 : 1, a.candidate.distanceM ?? 9_999] };
     })
     .sort((a, b) => a.score.reduce((d, x, i) => d || x - b.score[i], 0))
@@ -83,7 +94,8 @@ export function rankCandidates(
  * The picker's shortlist for a P1/P2 (server/pick.ts): two lanes of `size`, taken in turn, nobody twice.
  *  - Most qualified: `qualified`, the model's order best first (picker.ts), or `rankCandidates`' when it couldn't be asked.
  *  - Nearest: the shortest walk, nothing else.
- * When it needs a language and neither lane has a speaker, the nearest one gets a seat of their own.
+ * When it needs a language and neither lane has a speaker, the nearest one gets a seat of their own; the same for
+ * first aid. Missing both, the nearest who has both takes one seat, if anyone does.
  * Free people only, unless nobody's free.
  */
 export function laneCandidates(
@@ -91,7 +103,8 @@ export function laneCandidates(
   { qualified, size = 6, positions, now = Date.now() }:
     { qualified: string[] | null; size?: number; positions?: Record<string, Position>; now?: number },
 ): ProposalCandidate[] {
-  const all = eligible(task, volunteers).map((v) => assess(task, v, tasks, certsFor(task.category), speakerNeeded(task), positions, now));
+  const lang = speakerNeeded(task);
+  const all = eligible(task, volunteers).map((v) => assess(task, v, tasks, wanted(task), lang, positions, now));
   const pool = new Map((all.some((a) => a.free) ? all.filter((a) => a.free) : all).map((a) => [a.v.id, a]));
   const far = (a: Assessed) => a.candidate.distanceM ?? 9_999;
 
@@ -101,20 +114,25 @@ export function laneCandidates(
   const seen = new Set<string>();
   const picked = Array.from({ length: size }, (_, i) => [best[i], nearest[i]]).flat()
     .filter((a) => a && !seen.has(a.v.id) && seen.add(a.v.id));
-  const speaker = !picked.some((a) => a.speaks) && nearest.find((a) => a.speaks);
-  return [...picked, ...(speaker ? [speaker] : [])].map((a) => a.candidate);
+  const noSpeaker = !!lang && !picked.some((a) => a.speaks);
+  const noAid = firstAidNeeded(task) && !picked.some((a) => a.aid);
+  const both = noSpeaker && noAid && nearest.find((a) => a.speaks && a.aid);
+  const seats = both ? [both] : [noSpeaker && nearest.find((a) => a.speaks), noAid && nearest.find((a) => a.aid)];
+  return [...picked, ...seats.filter((a): a is Assessed => !!a)].map((a) => a.candidate);
 }
 
 /**
- * Who goes, with a speaker among them: when a task needs a language and none of the first `people` in `order`
- * speaks it, the first who does goes too, as one more person while `most` allows, else in place of the last.
+ * Who goes, with everything the task needs among them (`needs`: a language, first aid). For any need none of the first
+ * `people` in `order` meets, the first who meets the most still missing goes too: as one more person while `most`
+ * allows, else in place of the last one going who isn't the only one meeting another need.
  */
-export function withSpeaker(order: string[], people: number, speaks: (id: string) => boolean, most: number) {
+export function withNeeded(order: string[], people: number, needs: ((id: string) => boolean)[], most: number): { order: string[]; people: number } {
   const going = order.slice(0, people);
-  const speaker = !going.some(speaks) && order.find(speaks);
-  if (!speaker) return { order, people };
-  const rest = order.filter((id) => id !== speaker);
-  return people < most
-    ? { order: [...going, speaker, ...rest.slice(people)], people: people + 1 }
-    : { order: [...going.slice(0, -1), speaker, ...rest.slice(people - 1)], people };
+  const missing = needs.filter((n) => !going.some(n));
+  const meets = (id: string) => missing.filter((n) => n(id)).length;
+  const extra = order.reduce<string | null>((best, id) => (meets(id) > (best ? meets(best) : 0) ? id : best), null);
+  const out = people < most ? -1 : going.findLastIndex((id) => !needs.some((n) => n(id) && going.filter(n).length === 1));
+  if (!extra || (people >= most && out < 0)) return { order, people };
+  const crew = [...going.filter((_, i) => i !== out), extra];
+  return withNeeded([...crew, ...order.filter((id) => !crew.includes(id))], crew.length, needs, most);
 }

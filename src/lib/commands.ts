@@ -125,7 +125,7 @@ export function fileReport(b: Batch, reporterId: string, text: string, ai?: Tria
     id: b.id('task'), title: t.title, summary: t.summary, category: t.category, priority, teamSlug: team,
     // Where they said it's happening, else where they are.
     zoneSlug: t.zoneSlug ?? me?.zoneSlug ?? null, locationHint: t.locationHint, status: 'open', assigneeId: null, handledBy: 'human',
-    reporter: { kind: 'volunteer', name: me?.name, quote: text, language: t.language, speakerNeeded: t.speakerNeeded, ...(t.english ? { english: t.english } : {}) },
+    reporter: { kind: 'volunteer', name: me?.name, quote: text, language: t.language, speakerNeeded: t.speakerNeeded, firstAidNeeded: t.firstAidNeeded, ...(t.english ? { english: t.english } : {}) },
     createdAt: b.now, assignedAt: null, etaAt: null, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null,
     escalation: null, helperIds: [], resolution: null, requestId: null,
   };
@@ -481,7 +481,7 @@ function createGuestTask(b: Batch, r: GuestRequest, t: Triage) {
   const task: Task = {
     id: b.id('task'), title: t.title, summary: t.summary, priority: t.priority, teamSlug: t.team, category: t.category,
     zoneSlug: r.zoneSlug ?? t.zoneSlug, locationHint: r.locationHint ?? t.locationHint, status: 'open', assigneeId: null, handledBy: 'ai',
-    reporter: { kind: 'festivalgoer', quote: r.heard, language: t.language, speakerNeeded: t.speakerNeeded, ...(t.english ? { english: t.english } : {}) },
+    reporter: { kind: 'festivalgoer', quote: r.heard, language: t.language, speakerNeeded: t.speakerNeeded, firstAidNeeded: t.firstAidNeeded, ...(t.english ? { english: t.english } : {}) },
     createdAt: b.now, assignedAt: null, etaAt: null, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null,
     resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: r.id,
   };

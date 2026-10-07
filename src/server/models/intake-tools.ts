@@ -47,6 +47,10 @@ const Incident = {
     + 'that they speak little English ("his wife only speaks Mandarin" is "zh"), or a visitor\'s nationality when they '
     + 'may not speak English ("a lost Japanese tourist" is "ja"). Null for a place or stall named after a country '
     + '("the Korean BBQ stall"), or someone who speaks English too'),
+  first_aid_needed: z.boolean().describe('True when someone there may need hands-on medical care: injured, collapsed, '
+    + 'unconscious, can\'t stand, heavily intoxicated (very drunk or high, even if not hurt), overdosed or spiked, '
+    + 'trouble breathing or chest pain, bleeding, heat illness, a seizure. False when nobody is hurt or ill: a panic '
+    + 'attack alone, a lost child who is unhurt, crowding, a stall, security alone, noise, facilities'),
 };
 
 export const CreateTaskArgs = z.object(Incident);

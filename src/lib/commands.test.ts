@@ -129,7 +129,7 @@ describe('updateTask: a new report about an incident already open', () => {
 describe('the intake agent escalates a new report', () => {
   const triaged = (over: Partial<Triage> = {}): Triage => ({
     team: 'first-aid', priority: 'P3', category: 'medical', title: 'Wants the set stopped at the Oval', summary: 'Asks to stop the set.',
-    zoneSlug: 'food-alley', locationHint: null, language: 'en', speakerNeeded: null, escalate: { level: 'lead', reason: 'Asks to stop a performance' }, ...over,
+    zoneSlug: 'food-alley', locationHint: null, language: 'en', speakerNeeded: null, firstAidNeeded: false, escalate: { level: 'lead', reason: 'Asks to stop a performance' }, ...over,
   });
   const fromGuest = (t: Triage) => {
     const b = festival([], [asked]);
