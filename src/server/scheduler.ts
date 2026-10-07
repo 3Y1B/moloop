@@ -1,5 +1,5 @@
 import { schedulerStep } from '@/lib/commands';
-import { live } from './ai';
+import { live } from './models/interpreter';
 import { sweepUnderstanding } from './understand';
 import { transact } from './world';
 

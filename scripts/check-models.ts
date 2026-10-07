@@ -9,12 +9,12 @@
  */
 process.env.USE_LIVE_MODELS = '1';
 
-const { SparkBrain } = await import('../src/server/ai/brain');
-const { chatModelId } = await import('../src/server/ai/spark');
+const { SparkInterpreter } = await import('../src/server/models/interpreter');
+const { chatModelId } = await import('../src/server/models/spark');
 const { sql } = await import('../src/server/world');
 import type { Task } from '../src/lib/schema';
 
-const brain = new SparkBrain();
+const interpreter = new SparkInterpreter();
 const none = { zoneSlug: null, locationHint: null };
 let failures = 0;
 const lat: number[] = [];
@@ -34,7 +34,7 @@ console.log(`chat model: ${chatModelId()}\n`);
 
 // ── festival-goers ──
 
-const asks: [string, (u: Awaited<ReturnType<typeof brain.understand>>['value']) => boolean][] = [
+const asks: [string, (u: Awaited<ReturnType<typeof interpreter.understand>>['value']) => boolean][] = [
   ['where are the toilets?', (u) => u.kind === 'answer'],
   ['¿Dónde puedo conseguir agua gratis?', (u) => u.kind === 'answer' && u.language === 'es'],
   ["there's a guy collapsed by the food stalls and he isn't moving", (u) => u.kind === 'task' && u.team === 'first-aid' && u.priority === 'P1'],
@@ -48,18 +48,18 @@ const asks: [string, (u: Awaited<ReturnType<typeof brain.understand>>['value']) 
 // Sent from the Backstage picker: "water" there is the band's, not a water station.
 const zoned: Record<string, string> = { 'the band in the green room needs more water': 'backstage' };
 for (const [text, ok] of asks) {
-  const [{ value, run }, ms] = await timed(() => brain.understand({ text, zoneSlug: zoned[text.toLowerCase()] ?? null, locationHint: null }));
+  const [{ value, run }, ms] = await timed(() => interpreter.understand({ text, zoneSlug: zoned[text.toLowerCase()] ?? null, locationHint: null }));
   const shown = value.kind === 'answer' ? `answer(${value.language}) ${value.answer}` : `${value.team} ${value.priority} ${value.language} "${value.title}"`;
   expect(`ask "${text}" -> ${shown} [${ms} ms]`, ok(value) && !run.error, { value, error: run.error });
 }
 
 // ── volunteers ──
 
-const [report] = await timed(() => brain.triage({ text: 'someone spilled a drink by Toilets West, floor is slippery', ...none }));
+const [report] = await timed(() => interpreter.triage({ text: 'someone spilled a drink by Toilets West, floor is slippery', ...none }));
 expect(`report -> ${report.value.team} ${report.value.priority} zone=${report.value.zoneSlug} "${report.value.title}"`, report.value.team === 'ops' && report.value.priority === 'P3', report.value);
 
 for (const [update, worse] of [["he's stopped responding", true], ['his friend brought him water and he is fine now', false]] as const) {
-  const [d, ms] = await timed(() => brain.detail({ text: update, before: 'Man feeling faint near Food Alley', open: true, ...none }));
+  const [d, ms] = await timed(() => interpreter.detail({ text: update, before: 'Man feeling faint near Food Alley', open: true, ...none }));
   expect(`detail "${update}" -> worse=${d.value.worse} [${ms} ms]`, d.value.worse === worse, d.run);
 }
 
@@ -75,7 +75,7 @@ const says: [string, string][] = [
   ['there is a spilled drink by the bins, somebody should clean it up', 'report'],
 ];
 for (const [text, want] of says) {
-  const [r, ms] = await timed(() => brain.interpret({ tasks: [task], meId: 'me', text }));
+  const [r, ms] = await timed(() => interpreter.interpret({ tasks: [task], meId: 'me', text }));
   const got = r.intent.kind === 'reply' ? r.intent.reply : 'report';
   expect(`interpret "${text}" -> ${got} [${ms} ms]`, got === want);
 }

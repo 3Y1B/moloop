@@ -11,7 +11,9 @@ import { choice, chatModelId, decide, decideModelId, generate, noul, type CallOp
 import { venueFacts, zones, type Zone } from './venue';
 
 /**
- * The decisions the app needs from a model, behind one interface so Spark, Luna or keywords can answer them.
+ * Reads what people say and decides what to do with it: answer a routine question, pick a team and priority,
+ * tell if added detail is worse, tell a reply from a new report. One interface, so Spark and Luna or plain
+ * keywords can answer.
  * None of these throw on a model failure: they fail closed to a person (priority at least P2, never an AI answer)
  * and say so in `run.error`, which lands in triage_runs.
  */
@@ -31,7 +33,7 @@ export type Run = {
 
 export type Judged<T> = { value: T; run: Run };
 
-export interface Brain {
+export interface Interpreter {
   /** A festival-goer's words: a routine answer, or a task. */
   understand(i: { text: string; zoneSlug: string | null; locationHint: string | null }): Promise<Judged<Understood>>;
   /** Where a report goes and how urgent it is. */
@@ -49,10 +51,10 @@ const moreUrgent = (a: Priority, b: Priority) => (URGENCY.indexOf(a) <= URGENCY.
 
 const run = (over: Partial<Run> = {}): Run => ({
   route: 'escalated_to_triage', reason: null, confidence: null, team: null, priority: null, rewrite: null,
-  models: { brain: 'keywords' }, latencyMs: 0, error: null, ...over,
+  models: { interpreter: 'keywords' }, latencyMs: 0, error: null, ...over,
 });
 
-export class KeywordBrain implements Brain {
+export class KeywordInterpreter implements Interpreter {
   async understand(i: { text: string; zoneSlug: string | null; locationHint: string | null }) {
     const value = heuristicUnderstanding(i.text, i.zoneSlug, i.locationHint);
     return { value, run: run({ route: value.kind === 'answer' ? 'ai_resolved' : 'escalated_to_triage' }) };
@@ -189,7 +191,7 @@ async function assess(i: Heard, canAnswer: boolean, o: CallOptions) {
 
 const OPTS: CallOptions = { timeoutMs: 12_000 };
 
-export class SparkBrain implements Brain {
+export class SparkInterpreter implements Interpreter {
   async understand(i: Heard) {
     const { triage, answer, run } = await assess(i, true, OPTS);
     const value: Understood = answer ? { kind: 'answer', answer, language: triage.language } : { kind: 'task', ...triage };
@@ -270,3 +272,10 @@ async function interpretWith(
   if (!parsed.success || !short || (helping && parsed.data !== 'done')) return { heard, intent: report };
   return { heard, intent: { kind: 'reply', taskId: active.id, reply: parsed.data } };
 }
+
+/**
+ * USE_LIVE_MODELS=1 puts the models behind every decision (needs TYPESAFE_BASE_URL and TYPESAFE_API_KEY).
+ * Anything else keeps the keyword stand-ins, so the server runs with no keys.
+ */
+export const live = process.env.USE_LIVE_MODELS === '1';
+export const interpreter: Interpreter = live ? new SparkInterpreter() : new KeywordInterpreter();

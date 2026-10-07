@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { CommandError, type Batch } from '@/lib/batch';
 import * as C from '@/lib/commands';
 import { ReplyKind, TeamSlug, type Task } from '@/lib/schema';
-import { brain } from '../ai';
+import { interpreter } from '../models/interpreter';
 import { understandLater } from '../understand';
 import { read, sql, transact, type Loaded } from '../world';
 import type { AuthEnv, Caller } from './auth';
@@ -89,12 +89,12 @@ route('setDuty', 'crew', z.object({ duty: Duty }), async (a, caller) => {
 });
 
 route('interpret', 'crew', z.object({ text: Text }), async (a, caller) =>
-  brain.interpret({ tasks: Object.values((await read({}, ({ world }) => world)).tasks), meId: caller.id, text: a.text }));
+  interpreter.interpret({ tasks: Object.values((await read({}, ({ world }) => world)).tasks), meId: caller.id, text: a.text }));
 
 route('commit', 'crew', z.object({ interpretation: Interpretation }), async ({ interpretation: i }, caller) => {
   const taskIds = i.intent.kind === 'reply' ? [i.intent.taskId] : [];
   // A new report is triaged before the lock is taken: the model takes seconds.
-  const judged = i.intent.kind === 'report' ? await brain.triage({ text: i.heard, zoneSlug: null, locationHint: null }) : undefined;
+  const judged = i.intent.kind === 'report' ? await interpreter.triage({ text: i.heard, zoneSlug: null, locationHint: null }) : undefined;
   return transact({ taskIds }, (b) => {
     if (i.intent.kind === 'reply') mustBeOn(taskOf(b, i.intent.taskId), caller);
     const { confirmation, later } = C.commit(b, caller.id, i, judged?.value);
@@ -174,7 +174,7 @@ async function ownRequest(requestId: string, caller: Caller) {
 
 route('guestRequestHuman', 'any', RequestArgs, async (a, caller) => {
   const { request } = await ownRequest(a.requestId, caller);
-  const judged = request.taskId ? undefined : await brain.triage({ text: request.heard, zoneSlug: request.zoneSlug, locationHint: request.locationHint });
+  const judged = request.taskId ? undefined : await interpreter.triage({ text: request.heard, zoneSlug: request.zoneSlug, locationHint: request.locationHint });
   await transact({ requestIds: [a.requestId] }, (b, w) => {
     mustOwn(w, a.requestId, caller);
     C.guestRequestHuman(b, a.requestId, judged?.value);
@@ -184,7 +184,7 @@ route('guestRequestHuman', 'any', RequestArgs, async (a, caller) => {
 route('guestAddDetail', 'any', z.object({ requestId: Id, text: Text }), async (a, caller) => {
   const { request, task } = await ownRequest(a.requestId, caller);
   const open = !!task && !['resolved', 'cancelled'].includes(task.status);
-  const judged = await brain.detail({
+  const judged = await interpreter.detail({
     text: a.text, before: task?.summary ?? request.heard, open, zoneSlug: request.zoneSlug, locationHint: request.locationHint,
   });
   return transact({ requestIds: [a.requestId] }, (b, w) => {

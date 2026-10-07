@@ -5,7 +5,7 @@ import {
   type ProfileRow, type ProposalActionRow, type ProposalCandidateRow, type Row,
 } from '@/data/supabase/rows';
 import { Batch, type World } from '@/lib/batch';
-import type { Run } from './ai';
+import type { Run } from './models/interpreter';
 import type { Database } from '@/lib/database.types';
 import {
   assignmentStatus, deliveryRow, eventRow, idsFrom, messageRow, peopleOn, proposalRow, reportRow, requestRow, statusFromDuty, taskRow,

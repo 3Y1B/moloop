@@ -109,7 +109,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
   - Everyone placed on a task keeps a `task_assignments` row that follows them (notified, accepted, done), and it turns `reassigned` when the task moves off them. That row is how their phone still sees the change.
 - **Timings:** `POLICY_SCALE`, `POLICY_*_MS` and `SCHEDULER_MS` in env shorten them for rehearsals and tests (`.env.example`).
 - **Check:** `npm run commands:check`, against a server started with `POLICY_SCALE=0.05 POLICY_AUTO_ASSIGN_MS=3000 SCHEDULER_MS=500`. It brings its own throwaway crew and drives every flow over HTTP as real sessions, including a silent task raced by commands and a second scheduler: one nudge, one lead alert. Without the lock it gets six of each.
-- **Not yet:** nothing. `/api/reports` and the old pipeline are gone: phase 3 folded their prompts into `src/server/ai`.
+- **Not yet:** nothing. `/api/reports` and the old pipeline are gone: phase 3 folded their prompts into `src/server/models`.
 
 ### 3. Real models on Spark
 
@@ -127,7 +127,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 
 **Status:** done locally, on typed text. `USE_LIVE_MODELS=1` turns it on; keys are in the server's env only (`.env.example`).
 
-- **Two models, one seam.** `src/server/ai/brain.ts` is the only thing the server asks. `SparkBrain` and `KeywordBrain` both implement it, so the server runs with no keys and the same commands run either way.
+- **Two models, one seam.** `src/server/models/interpreter.ts` is the only thing the server asks. `SparkInterpreter` and `KeywordInterpreter` both implement it, so the server runs with no keys and the same commands run either way.
   - **Typed decisions** (Spark `/v1/systemone` through `@typesafe-ai/sdk`): team, priority, "is this only a routine question", "did the detail make it worse", and "is this utterance a reply to my task". About 0.2 s each.
   - **Chat** (JSON-schema output, validated with zod, one repair retry): the English title and summary, category, zone, language, and the answer to a routine question in the asker's language, from the venue facts only. GPT-6 Luna on OpenRouter when `OPENROUTER_API_KEY` is set (`openai/gpt-6-luna`, reasoning off), else `qwen3.5:4b` on Spark. About 1 to 1.5 s.
   - Chat and typed decisions run in parallel, and a model call never happens inside the world lock: the server asks first, then hands the answer to the pure command (`src/lib/ai.ts` is the shape).

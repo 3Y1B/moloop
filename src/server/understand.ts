@@ -1,5 +1,5 @@
 import * as C from '@/lib/commands';
-import { brain } from './ai';
+import { interpreter } from './models/interpreter';
 import { read, sql, transact } from './world';
 
 /**
@@ -15,7 +15,7 @@ export async function understandRequest(requestId: string) {
   try {
     const r = await read({ requestIds: [requestId] }, ({ world }) => world.requests[requestId]);
     if (!r || r.stage !== 'understanding') return;
-    const { value, run } = await brain.understand({ text: r.heard, zoneSlug: r.zoneSlug, locationHint: r.locationHint });
+    const { value, run } = await interpreter.understand({ text: r.heard, zoneSlug: r.zoneSlug, locationHint: r.locationHint });
     await transact({ requestIds: [requestId] }, (b) => C.understand(b, requestId, value), { run: { ...run, requestId } });
   } finally {
     inFlight.delete(requestId);
