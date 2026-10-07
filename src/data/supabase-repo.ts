@@ -276,7 +276,6 @@ export class SupabaseRepo implements Repo {
     const uid = this.userId;
     if (!uid) return;
     this.hydrating = true;
-    let joined = false;
     const pg = <T extends keyof Database['public']['Tables']>(table: T, handle: (p: Change<T>) => void, filter?: string) =>
       (channel: RealtimeChannel) =>
         channel.on<Row<T>>(
@@ -297,24 +296,34 @@ export class SupabaseRepo implements Repo {
       pg('guest_requests', (p) => this.onRequest(p)),
       pg('profiles', (p) => this.onProfile(p)),
     ]) channel = add(channel);
+    // The join reply only says the channel is open. The server confirms the Postgres side separately
+    // ("Subscribed to PostgreSQL"), on every join and rejoin. Changes before that are lost, so that's
+    // when to (re)read everything: nothing falls between the read and the first change.
+    let live = false;
+    channel = channel.on('system', {}, (p: { extension?: string; status?: string; message?: string }) => {
+      if (gen !== this.gen || channel !== this.channel || p.extension !== 'postgres_changes') return;
+      if (p.status === 'ok') {
+        live = true;
+        this.retryMs = 1_000;
+        void this.hydrate(gen);
+      } else {
+        console.warn('[SupabaseRepo] realtime postgres_changes', p.message);
+        this.scheduleReconnect(gen);
+      }
+    });
     this.channel = channel;
 
-    // Hydrate once realtime is listening, so nothing falls between the read and the first change.
     // If realtime is slow or down, hydrate anyway after a moment: the app works, just not live.
     this.joinTimer = setTimeout(() => {
-      if (!joined && gen === this.gen) void this.hydrate(gen);
+      if (!live && gen === this.gen) void this.hydrate(gen);
     }, this.subscribeTimeoutMs);
 
     channel.subscribe((status, err) => {
       if (gen !== this.gen || channel !== this.channel) return;
-      if (status === 'SUBSCRIBED') {
-        // First join, or a rejoin after the socket dropped: either way, re-read what we might have missed.
-        joined = true;
-        this.retryMs = 1_000;
-        void this.hydrate(gen);
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        live = false;
         if (err) console.warn(`[SupabaseRepo] realtime ${status}`, err);
-        // realtime-js retries errored joins on its own; a closed channel we rebuild ourselves.
+        // realtime-js rejoins errored channels itself; a closed one we rebuild.
         if (status === 'CLOSED') this.scheduleReconnect(gen);
       }
     });
