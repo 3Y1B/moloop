@@ -951,7 +951,8 @@ export type Database = {
           latency_ms: number | null
           models: Json | null
           priority_result: Json | null
-          report_id: string
+          report_id: string | null
+          request_id: string | null
           rewrite_result: Json | null
           route: Database["public"]["Enums"]["route_decision"]
           route_reason: string | null
@@ -966,7 +967,8 @@ export type Database = {
           latency_ms?: number | null
           models?: Json | null
           priority_result?: Json | null
-          report_id: string
+          report_id?: string | null
+          request_id?: string | null
           rewrite_result?: Json | null
           route: Database["public"]["Enums"]["route_decision"]
           route_reason?: string | null
@@ -981,7 +983,8 @@ export type Database = {
           latency_ms?: number | null
           models?: Json | null
           priority_result?: Json | null
-          report_id?: string
+          report_id?: string | null
+          request_id?: string | null
           rewrite_result?: Json | null
           route?: Database["public"]["Enums"]["route_decision"]
           route_reason?: string | null
@@ -994,6 +997,13 @@ export type Database = {
             columns: ["report_id"]
             isOneToOne: false
             referencedRelation: "reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "triage_runs_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "guest_requests"
             referencedColumns: ["id"]
           },
         ]

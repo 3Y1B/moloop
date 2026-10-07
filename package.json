@@ -6,6 +6,7 @@
     "@expo/ui": "~57.0.21",
     "@maplibre/maplibre-react-native": "^11.5.0",
     "@supabase/supabase-js": "^2.117.2",
+    "@typesafe-ai/sdk": "^0.6.0",
     "expo": "~57.0.26",
     "expo-asset": "~57.0.19",
     "expo-constants": "~57.0.20",
@@ -60,6 +61,7 @@
     "db:check": "bun scripts/check-rls.ts",
     "repo:check": "bun scripts/check-repo.ts",
     "commands:check": "bun scripts/check-commands.ts",
+    "models:check": "bun scripts/check-models.ts",
     "db:types": "supabase gen types typescript --local > src/lib/database.types.ts"
   },
   "private": true

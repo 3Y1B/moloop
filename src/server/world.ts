@@ -5,6 +5,7 @@ import {
   type ProfileRow, type ProposalActionRow, type ProposalCandidateRow, type Row,
 } from '@/data/supabase/rows';
 import { Batch, type World } from '@/lib/batch';
+import type { Run } from './ai';
 import type { Database } from '@/lib/database.types';
 import {
   assignmentStatus, deliveryRow, eventRow, idsFrom, messageRow, peopleOn, proposalRow, reportRow, requestRow, statusFromDuty, taskRow,
@@ -54,8 +55,11 @@ export type Loaded = {
   requestOwner: Record<string, string>;
 };
 
-/** Who new rows belong to: the festival-goer behind a new request, the volunteer behind a new report. */
-export type Owners = { guestId?: string; reporterId?: string };
+/**
+ * Where new rows come from: the festival-goer behind a new request, the volunteer behind a new report, and the
+ * model run that decided it (a triage_runs row, tied to the new task's report, or to the request if no task came of it).
+ */
+export type Owners = { guestId?: string; reporterId?: string; run?: Run & { requestId?: string } };
 
 type Q = Sql | TransactionSql;
 type Enums = Database['public']['Enums'];
@@ -155,6 +159,7 @@ async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch, owners
     })}`;
   }
 
+  let runWritten = false;
   for (const id of d.tasks) {
     const t = b.tasks[id];
     const row = { ...taskRow(t, ids), escalation: json(t.escalation) };
@@ -164,9 +169,14 @@ async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch, owners
     }
     const report = reportRow(t, ids, t.reporter.kind === 'festivalgoer' ? null : owners.reporterId ?? null);
     await tx`insert into reports ${tx(report)}`;
-    await tx`insert into tasks ${tx({ id, report_id: report.id, created_at: new Date(t.createdAt), ...row })}`;
+    const triageRunId = owners.run && !runWritten ? await insertRun(tx, owners.run, report.id) : null;
+    runWritten ||= !!owners.run;
+    await tx`insert into tasks ${tx({ id, report_id: report.id, triage_run_id: triageRunId, created_at: new Date(t.createdAt), ...row })}`;
     if (t.requestId) await tx`update guest_requests set report_id = coalesce(report_id, ${report.id}) where id = ${t.requestId}`;
   }
+
+  // A run that made no task (the AI answered) hangs off the request.
+  if (owners.run?.requestId && !runWritten) await insertRun(tx, owners.run, null);
 
   for (const id of d.requests) {
     const r = b.requests[id];
@@ -222,6 +232,17 @@ async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch, owners
     await tx`insert into messages ${tx(b.messages.map((m, i) => ({ ...messageRow(m, b.senders[m.id] ?? null), created_at: inOrder(m.at, i) })))}`;
     await tx`insert into message_deliveries ${tx(b.messages.map(deliveryRow))}`;
   }
+}
+
+async function insertRun(tx: TransactionSql, run: NonNullable<Owners['run']>, reportId: string | null) {
+  const j = (v: unknown) => (v == null ? null : tx.json(v as Parameters<typeof tx.json>[0]));
+  const [row] = await tx<{ id: string }[]>`
+    insert into triage_runs ${tx({
+      report_id: reportId, request_id: run.requestId ?? null, route: run.route, route_reason: run.reason, router_conf: run.confidence,
+      team_result: j(run.team), priority_result: j(run.priority), rewrite_result: j(run.rewrite), models: j(run.models),
+      latency_ms: run.latencyMs, error: run.error,
+    })} returning id`;
+  return row.id;
 }
 
 /**

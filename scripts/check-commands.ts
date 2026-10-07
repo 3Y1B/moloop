@@ -242,6 +242,9 @@ try {
 
     const answered = await ask(sam, 'Where are the toilets?', 'lawn-stage');
     expect('a routine question is answered, no task', answered.stage === 'answered' && !answered.task_id && /Toilets/.test(answered.ai_answer), answered);
+    // Every decision leaves a triage_runs row: on the task's report, or on the request when the AI answered.
+    const runs = await sql`select request_id, report_id, models, latency_ms from triage_runs where request_id = ${answered.id} or report_id = ${t.report_id}`;
+    expect('the answer and the task each logged a model run', runs.length === 2 && runs.every((r) => r.models && r.latency_ms != null) && runs.some((r) => r.request_id === answered.id && !r.report_id), runs);
 
     const detail = await alex.call('guestAddDetail', { requestId: req.id, text: 'they want sparkling' });
     expect('a detail is a note, not an escalation', detail.status === 200 && detail.body.escalated === false, detail);

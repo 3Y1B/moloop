@@ -1,4 +1,6 @@
 import { schedulerStep } from '@/lib/commands';
+import { live } from './ai';
+import { sweepUnderstanding } from './understand';
 import { transact } from './world';
 
 /**
@@ -15,6 +17,8 @@ export function startScheduler(everyMs: number) {
     running = true;
     try {
       await schedulerPass();
+      // Requests whose AI step never finished (a restart, a dead model call).
+      await sweepUnderstanding(live ? 30_000 : 5_000);
     } catch (e) {
       console.error('scheduler pass failed', e);
     } finally {

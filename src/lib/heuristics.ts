@@ -1,3 +1,4 @@
+import type { DetailRead, Triage, Understood } from '@/lib/ai';
 import type { IncidentCategory, Priority, ReplyKind, TeamSlug } from '@/lib/schema';
 
 /**
@@ -24,7 +25,7 @@ const TRIAGE: { team: TeamSlug; re: RegExp }[] = [
   { team: 'vendors', re: /(vendor|stall|food|gas|bbq)/i },
   { team: 'ops', re: /(spill|bin|power|light|toilet|cable|water station|leak)/i },
 ];
-const P1 = /(unconscious|not breathing|not responding|isn'?t responding|collapsed|lost (child|kid)|weapon|crush)/i;
+const P1 = /(unconscious|unresponsive|not breathing|not moving|isn'?t moving|not responding|isn'?t responding|collapsed|lost (child|kid)|weapon|crush)/i;
 /** First aid that can wait: P3 rather than P2. */
 const MINOR = /(blister|plaster|sunscreen|band-?aid|graze|ice pack)/i;
 /** Does added detail sound worse? */
@@ -81,3 +82,29 @@ export function noteFor(reply: ReplyKind, heard: string): string | undefined {
   if (reply !== 'need_help') return heard;
   return heard.replace(REPLY_PATTERNS[0][1], '').replace(/^[\s,.;:-]+/, '').trim() || undefined;
 }
+
+// ── the same decisions, in the shape the models give them ──
+
+const titleFrom = (text: string) => {
+  const t = text.length > 55 ? `${text.slice(0, 52).trim()}…` : text;
+  return t[0].toUpperCase() + t.slice(1);
+};
+
+/** Is there a reason to doubt a routine reading of this text? A hard stop on AI answers and a floor on priority. */
+export const soundsUrgent = (text: string) => P1.test(text) || WORSE.test(text);
+/** Words that mean someone's life may be at risk: priority P1 whatever a model says. */
+export const soundsCritical = (text: string) => P1.test(text);
+
+/** Keyword triage as a full Triage: what MockRepo uses, and what the server falls back on when a model is down. */
+export function heuristicTriage(text: string, zoneSlug: string | null = null, locationHint: string | null = null): Triage {
+  const { team, priority } = triage(text);
+  const category = team === 'welfare' && /child|kid|son|daughter/i.test(text) ? 'lost_child' : TEAM_CATEGORY[team];
+  return { team, priority, category, title: titleFrom(text), summary: text, zoneSlug, locationHint, language: 'en' };
+}
+
+export function heuristicUnderstanding(text: string, zoneSlug: string | null = null, locationHint: string | null = null): Understood {
+  const answer = routineAnswer(text);
+  return answer ? { kind: 'answer', answer, language: 'en' } : { kind: 'task', ...heuristicTriage(text, zoneSlug, locationHint) };
+}
+
+export const heuristicDetail = (text: string): DetailRead => ({ worse: soundsWorse(text) });

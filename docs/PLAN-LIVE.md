@@ -11,7 +11,7 @@ Everything below is the gap between today and that video. The site plan is alrea
 | State | `MockRepo`: each phone keeps its own in-memory world and runs its own scheduler | One shared world in Supabase, pushed to every phone over realtime |
 | Lifecycle | Pure functions in `src/lib/lifecycle.ts`, driven by `MockRepo` | The same functions, driven by one server |
 | Pipeline | `src/server/pipeline`: route → triage → assign, each report handled once | The same pipeline plus re-triage of follow-ups, writing to Supabase |
-| Models | `MockClassifier` / `MockLlm` keyword heuristics; `JevClassifier` and `LunaLlm` are stubs | Spark: `qwen3.5:4b` for chat and typed decisions, `qwen3-asr` for speech-to-text, `qwen3-tts` for text-to-speech |
+| Models | Keyword stand-ins by default; with `USE_LIVE_MODELS=1`, Spark (typed decisions) and GPT-6 Luna (chat) decide everything the server decides | Add Spark `qwen3-asr` for speech-to-text and `qwen3-tts` for text-to-speech (phase 4) |
 | Voice | `useSimulatedTranscript` plays a script | Mic → Spark ASR → "Heard: …" → interpret |
 | Location | Volunteers sit at their zone's node | GPS stream → presence → map, routes and assignment distance |
 | Alerts | In-app messages only | Push notification when the phone is locked; spoken brief when the app is open |
@@ -109,7 +109,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
   - Everyone placed on a task keeps a `task_assignments` row that follows them (notified, accepted, done), and it turns `reassigned` when the task moves off them. That row is how their phone still sees the change.
 - **Timings:** `POLICY_SCALE`, `POLICY_*_MS` and `SCHEDULER_MS` in env shorten them for rehearsals and tests (`.env.example`).
 - **Check:** `npm run commands:check`, against a server started with `POLICY_SCALE=0.05 POLICY_AUTO_ASSIGN_MS=3000 SCHEDULER_MS=500`. It brings its own throwaway crew and drives every flow over HTTP as real sessions, including a silent task raced by commands and a second scheduler: one nudge, one lead alert. Without the lock it gets six of each.
-- **Not yet:** `/api/reports` (the old pipeline) still writes through supabase-js outside the lock, and doesn't use the shared commands. That gets folded in with phase 3.
+- **Not yet:** nothing. `/api/reports` and the old pipeline are gone: phase 3 folded their prompts into `src/server/ai`.
 
 ### 3. Real models on Spark
 
@@ -124,6 +124,24 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - Set a latency budget and measure it on the oval over 4G: from letting go of the pill to "Heard" in under 1.5 s, and from send to the task on the lead's screen in under 4 s.
 
 **Done when:** typed reports go through the live models end to end, and `triage_runs` shows the model ids and latencies.
+
+**Status:** done locally, on typed text. `USE_LIVE_MODELS=1` turns it on; keys are in the server's env only (`.env.example`).
+
+- **Two models, one seam.** `src/server/ai/brain.ts` is the only thing the server asks. `SparkBrain` and `KeywordBrain` both implement it, so the server runs with no keys and the same commands run either way.
+  - **Typed decisions** (Spark `/v1/systemone` through `@typesafe-ai/sdk`): team, priority, "is this only a routine question", "did the detail make it worse", and "is this utterance a reply to my task". About 0.2 s each.
+  - **Chat** (JSON-schema output, validated with zod, one repair retry): the English title and summary, category, zone, language, and the answer to a routine question in the asker's language, from the venue facts only. GPT-6 Luna on OpenRouter when `OPENROUTER_API_KEY` is set (`openai/gpt-6-luna`, reasoning off), else `qwen3.5:4b` on Spark. About 1 to 1.5 s.
+  - Chat and typed decisions run in parallel, and a model call never happens inside the world lock: the server asks first, then hands the answer to the pure command (`src/lib/ai.ts` is the shape).
+- **Safety rules in code, not prompts.**
+  - The AI answers only when the chat model and the classifier both say routine, the priority reads P3, and no red-flag word is in the text.
+  - Words like "collapsed", "not breathing", "not moving" force P1 whatever a model says. A model that isn't sure of the priority rounds up.
+  - If a model is down or fails twice, the request becomes a task for a person at P2 or above. It is never answered by the AI.
+- **`Repo.interpret` is server-side.** "Heard: on my way" becomes `accept` on the current task when the classifier is at least 0.6 sure, the utterance is 12 words or fewer, and a helper only ever gets `done`. Typically 0.2 to 0.25 s; if it takes over `AI_INTERPRET_MS` (1.5 s) keywords answer instead.
+- **Localised.** The answer comes back in the language written; `reporter.language` is what the model detected, so assignment can prefer a volunteer who speaks it.
+- **Logged.** Every decision writes a `triage_runs` row (model ids, team and priority with confidences, the rewrite, latency, error) on the task's report, or on the request when the AI answered. Migration `…_triage_runs_for_requests.sql`.
+- **Rate limits.** Spark allows 4 calls at once and 30 a minute per key. One queue in front of it (`SPARK_CONCURRENCY`, `SPARK_RPM`) lets a volunteer's utterance jump ahead of a festival-goer's request. A typed report costs two calls, so about 14 a minute is the ceiling on Spark. Luna on OpenRouter has no such cap.
+- **Stuck requests.** The scheduler picks up any request left at "Understanding" (a restart, a dead call).
+- **Checks.** `npm run models:check` runs 18 real utterances against the live models and prints latencies. `npm run commands:check` passes against both the keyword server and a `USE_LIVE_MODELS=1` server.
+- **Not done:** the latency budget over 4G on the oval. It needs phones and the Spark box, and the speech leg (phase 4) comes before "Heard".
 
 ### 4. Voice in and out
 

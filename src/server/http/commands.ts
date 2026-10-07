@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { CommandError, type Batch } from '@/lib/batch';
 import * as C from '@/lib/commands';
 import { ReplyKind, TeamSlug, type Task } from '@/lib/schema';
-import { interpret } from '../interpret';
+import { brain } from '../ai';
+import { understandLater } from '../understand';
 import { read, sql, transact, type Loaded } from '../world';
 import type { AuthEnv, Caller } from './auth';
 
@@ -87,18 +88,20 @@ route('setDuty', 'crew', z.object({ duty: Duty }), async (a, caller) => {
   await transact({}, (b) => C.setDuty(b, caller.id, a.duty));
 });
 
-route('interpret', 'crew', z.object({ text: Text }), (a, caller) =>
-  read({}, ({ world }) => interpret(Object.values(world.tasks), caller.id, a.text)));
+route('interpret', 'crew', z.object({ text: Text }), async (a, caller) =>
+  brain.interpret({ tasks: Object.values((await read({}, ({ world }) => world)).tasks), meId: caller.id, text: a.text }));
 
 route('commit', 'crew', z.object({ interpretation: Interpretation }), async ({ interpretation: i }, caller) => {
   const taskIds = i.intent.kind === 'reply' ? [i.intent.taskId] : [];
+  // A new report is triaged before the lock is taken: the model takes seconds.
+  const judged = i.intent.kind === 'report' ? await brain.triage({ text: i.heard, zoneSlug: null, locationHint: null }) : undefined;
   return transact({ taskIds }, (b) => {
     if (i.intent.kind === 'reply') mustBeOn(taskOf(b, i.intent.taskId), caller);
-    const { confirmation, later } = C.commit(b, caller.id, i);
+    const { confirmation, later } = C.commit(b, caller.id, i, judged?.value);
     // The mock waits to mimic triage; here it has already run.
     if (later) b.send(later.recipientId, 'system', later.body, { taskId: later.taskId });
     return { confirmation };
-  }, { reporterId: caller.id });
+  }, { reporterId: caller.id, run: judged?.run });
 });
 
 route('markRead', 'any', z.object({ messageIds: z.array(Id).max(500) }), async (a, caller) => {
@@ -149,14 +152,6 @@ route('sendDirect', 'lead', z.object({ volunteerId: Id, body: Text }), async (a,
 
 // ── festival-goers ──
 
-/** The AI step runs after the reply, in its own transaction: the phone shows "Understanding" meanwhile. */
-function understandLater(requestId: string) {
-  setTimeout(() => {
-    transact({ requestIds: [requestId] }, (b) => C.understand(b, requestId))
-      .catch((e) => console.error(`understand ${requestId} failed`, e));
-  }, 0);
-}
-
 route('guestAsk', 'any', z.object({ text: Text, zoneSlug: z.string().nullable(), locationHint: z.string().trim().max(200).nullish() }), async (a, caller) => {
   const requestId = await transact({}, (b, w) => {
     if (a.zoneSlug && !w.ids.zones.has(a.zoneSlug)) throw new CommandError('invalid', `No zone ${a.zoneSlug}`);
@@ -168,18 +163,35 @@ route('guestAsk', 'any', z.object({ text: Text, zoneSlug: z.string().nullable(),
 
 const RequestArgs = z.object({ requestId: Id });
 
+/** The request and its task, read before the model is asked, and only for the festival-goer it belongs to. */
+async function ownRequest(requestId: string, caller: Caller) {
+  return read({ requestIds: [requestId] }, (w) => {
+    mustOwn(w, requestId, caller);
+    const request = w.world.requests[requestId];
+    return { request, task: request.taskId ? w.world.tasks[request.taskId] : undefined };
+  });
+}
+
 route('guestRequestHuman', 'any', RequestArgs, async (a, caller) => {
+  const { request } = await ownRequest(a.requestId, caller);
+  const judged = request.taskId ? undefined : await brain.triage({ text: request.heard, zoneSlug: request.zoneSlug, locationHint: request.locationHint });
   await transact({ requestIds: [a.requestId] }, (b, w) => {
     mustOwn(w, a.requestId, caller);
-    C.guestRequestHuman(b, a.requestId);
-  });
+    C.guestRequestHuman(b, a.requestId, judged?.value);
+  }, { run: judged && { ...judged.run, requestId: a.requestId } });
 });
 
-route('guestAddDetail', 'any', z.object({ requestId: Id, text: Text }), (a, caller) =>
-  transact({ requestIds: [a.requestId] }, (b, w) => {
+route('guestAddDetail', 'any', z.object({ requestId: Id, text: Text }), async (a, caller) => {
+  const { request, task } = await ownRequest(a.requestId, caller);
+  const open = !!task && !['resolved', 'cancelled'].includes(task.status);
+  const judged = await brain.detail({
+    text: a.text, before: task?.summary ?? request.heard, open, zoneSlug: request.zoneSlug, locationHint: request.locationHint,
+  });
+  return transact({ requestIds: [a.requestId] }, (b, w) => {
     mustOwn(w, a.requestId, caller);
-    return C.guestAddDetail(b, a.requestId, a.text);
-  }));
+    return C.guestAddDetail(b, a.requestId, a.text, judged.value);
+  }, { run: { ...judged.run, requestId: a.requestId } });
+});
 
 route('guestCancel', 'any', RequestArgs, async (a, caller) => {
   await transact({ requestIds: [a.requestId] }, (b, w) => {

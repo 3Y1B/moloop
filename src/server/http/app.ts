@@ -2,8 +2,6 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
 import { POLICY } from '@/lib/lifecycle';
-import { ReportInput } from '@/lib/schema';
-import { handleReport } from '../pipeline';
 import { requireCaller, type AuthEnv } from './auth';
 import { commands } from './commands';
 
@@ -20,25 +18,6 @@ app.use('/api/*', cors({ origin: (origin) => origin, allowHeaders: ['authorizati
 app.get('/health', (c) => c.json({ ok: true, policy: POLICY }));
 
 app.use('/api/*', requireCaller);
-
-app.post('/api/reports', async (c) => {
-  const parsed = ReportInput.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
-
-  // Who reported comes from the session, not the body.
-  const caller = c.get('caller');
-  const input: ReportInput = caller.kind === 'crew'
-    ? { ...parsed.data, reporterId: caller.id, reporterKind: caller.role === 'volunteer' ? 'volunteer' : 'staff' }
-    : { ...parsed.data, reporterId: undefined, reporterKind: 'festivalgoer' };
-
-  try {
-    return c.json(await handleReport(input));
-  } catch (e) {
-    console.error('pipeline failed', e);
-    // Never leave a reporter hanging: fail closed to a human.
-    return c.json({ error: 'pipeline_failed' }, 502);
-  }
-});
 
 // One route per Repo command (./commands.ts).
 app.route('/api', commands);

@@ -1,7 +1,8 @@
+import type { DetailRead, Triage, Understood } from '@/lib/ai';
 import { AGENT, Batch, CommandError, FESTIVALGOER, SCHEDULER, TRIAGE_AGENT, type Actor } from '@/lib/batch';
 import { rankCandidates } from '@/lib/candidates';
 import { REPLY_LABEL } from '@/lib/format';
-import { noteFor, replyIn, routineAnswer, soundsWorse, TEAM_CATEGORY, teamForPerson, triage } from '@/lib/heuristics';
+import { heuristicDetail, heuristicTriage, heuristicUnderstanding, noteFor, replyIn, TEAM_CATEGORY, teamForPerson } from '@/lib/heuristics';
 import {
   applyReply, assignOrQueue, handoverArrived, HANDOVER_NAME, isActive, isBusy, isOnTask, needsApproval, nextQueued,
   passUp, POLICY, proposalDue, respondToEscalation, tick, type RespondInput,
@@ -29,10 +30,6 @@ const first = (v: Volunteer | undefined) => v?.name.split(' ')[0] ?? 'Someone';
 const shortName = (v: Volunteer) => {
   const [f, l] = v.name.split(' ');
   return l ? `${f} ${l[0]}.` : f;
-};
-const titleFrom = (text: string) => {
-  const t = text.length > 55 ? `${text.slice(0, 52).trim()}…` : text;
-  return t[0].toUpperCase() + t.slice(1);
 };
 
 // ── volunteers ──
@@ -87,19 +84,20 @@ export function interpretHeuristic(tasks: Task[], meId: string | null, text: str
 /** A message to send once triage has had time to run. The mock delays it; the server sends it straight away. */
 export type Later = { recipientId: string; body: string; taskId: string };
 
-/** Commit what the volunteer confirmed: a reply to their task, or a new report. */
-export function commit(b: Batch, actorId: string, i: { heard: string; intent: Intent }): { confirmation: string; later?: Later } {
+/** Commit what the volunteer confirmed: a reply to their task, or a new report (triaged by `ai`, or by keywords). */
+export function commit(b: Batch, actorId: string, i: { heard: string; intent: Intent }, ai?: Triage): { confirmation: string; later?: Later } {
   if (i.intent.kind === 'reply') {
     reply(b, actorId, i.intent.taskId, i.intent.reply, noteFor(i.intent.reply, i.heard));
     return { confirmation: `Sent “${REPLY_LABEL[i.intent.reply]}”` };
   }
-  return fileReport(b, actorId, i.heard);
+  return fileReport(b, actorId, i.heard, ai);
 }
 
 /** A volunteer's own report: triage, then straight to a teammate (or queued behind their current task). */
-export function fileReport(b: Batch, reporterId: string, text: string): { confirmation: string; later?: Later } {
+export function fileReport(b: Batch, reporterId: string, text: string, ai?: Triage): { confirmation: string; later?: Later } {
   const me = b.volunteers[reporterId];
-  const { team, priority } = triage(text);
+  const t = ai ?? heuristicTriage(text);
+  const { team, priority } = t;
   const tasks = b.all();
   const candidates = Object.values(b.volunteers).filter(
     (v) => v.teamSlug === team && v.role === 'volunteer' && v.duty === 'on_duty' && v.id !== me?.id,
@@ -107,9 +105,10 @@ export function fileReport(b: Batch, reporterId: string, text: string): { confir
   const free = candidates.find((v) => !isBusy(tasks, v.id));
   const who = free ?? candidates[0];
   const draft: Task = {
-    id: b.id('task'), title: titleFrom(text), summary: text, category: 'other', priority, teamSlug: team,
-    zoneSlug: me?.zoneSlug ?? null, locationHint: null, status: 'open', assigneeId: null, handledBy: 'human',
-    reporter: { kind: 'volunteer', name: me?.name, quote: text, language: 'en' },
+    id: b.id('task'), title: t.title, summary: t.summary, category: t.category, priority, teamSlug: team,
+    // Where they said it's happening, else where they are.
+    zoneSlug: t.zoneSlug ?? me?.zoneSlug ?? null, locationHint: t.locationHint, status: 'open', assigneeId: null, handledBy: 'human',
+    reporter: { kind: 'volunteer', name: me?.name, quote: text, language: t.language },
     createdAt: b.now, assignedAt: null, etaAt: null, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null,
     escalation: null, helperIds: [], resolution: null, requestId: null,
   };
@@ -295,24 +294,26 @@ export function guestAsk(b: Batch, text: string, zoneSlug: string | null, locati
   return request;
 }
 
-/** Stand-in AI: a routine question gets an answer; anything else becomes a task. */
-export function understand(b: Batch, requestId: string) {
+/** A routine question gets an answer; anything else becomes a task. `ai` is the model's call, else keywords decide. */
+export function understand(b: Batch, requestId: string, ai?: Understood) {
   const r = b.requests[requestId];
   if (!r || r.stage !== 'understanding') return;
-  const answer = routineAnswer(r.heard);
-  if (answer) b.request({ ...r, stage: 'answered', aiAnswer: answer, thread: [...r.thread, { from: 'ai', text: answer, at: b.now }] });
-  else createGuestTask(b, r, triage(r.heard));
+  const u = ai ?? heuristicUnderstanding(r.heard, r.zoneSlug, r.locationHint);
+  if (u.kind === 'answer') b.request({ ...r, stage: 'answered', aiAnswer: u.answer, thread: [...r.thread, { from: 'ai', text: u.answer, at: b.now }] });
+  else createGuestTask(b, r, u);
 }
 
 /** "Talk to a person" on an AI answer: a P3 task for the team that fits (Info if nothing does). */
-export function guestRequestHuman(b: Batch, requestId: string) {
+export function guestRequestHuman(b: Batch, requestId: string, ai?: Triage) {
   const r = b.requests[requestId];
   if (!r || r.taskId) return;
-  createGuestTask(b, r, { team: teamForPerson(r.heard), priority: 'P3' });
+  const team = ai?.team ?? teamForPerson(r.heard);
+  const t = ai ?? heuristicTriage(r.heard, r.zoneSlug, r.locationHint);
+  createGuestTask(b, r, { ...t, team, category: ai ? t.category : TEAM_CATEGORY[team], priority: 'P3' });
 }
 
 /** "What's changed?" A note for the volunteer, or a priority bump that alerts the lead. */
-export function guestAddDetail(b: Batch, requestId: string, text: string): { escalated: boolean } {
+export function guestAddDetail(b: Batch, requestId: string, text: string, ai?: DetailRead & { triage?: Triage }): { escalated: boolean } {
   const r = b.requests[requestId];
   if (!r) throw new CommandError('not_found', `No request ${requestId}`);
   const task = r.taskId ? b.tasks[r.taskId] : undefined;
@@ -321,12 +322,12 @@ export function guestAddDetail(b: Batch, requestId: string, text: string): { esc
   if (!task || (!isActive(task) && task.status !== 'open' && task.status !== 'queued')) {
     // Nothing open to add to: treat it as asking for a person, with the detail as the report.
     const withDetail = { ...r, heard: `${r.heard}. ${text}`, thread, taskId: null };
-    const { team, priority } = triage(withDetail.heard);
-    createGuestTask(b, withDetail, { team, priority });
-    return { escalated: priority !== 'P3' };
+    const t = ai?.triage ?? heuristicTriage(withDetail.heard, r.zoneSlug, r.locationHint);
+    createGuestTask(b, withDetail, t);
+    return { escalated: t.priority !== 'P3' };
   }
 
-  const worse = soundsWorse(text);
+  const worse = (ai ?? heuristicDetail(text)).worse;
   const updated: Task = worse ? { ...task, priority: BUMP[task.priority] } : task;
   b.task({ ...updated, summary: `${task.summary} Update: ${text}` });
   b.ev(task.id, 'note', worse ? `Festival-goer says it’s worse. Now ${updated.priority}` : 'Detail from the festival-goer', TRIAGE_AGENT, { note: text });
@@ -374,12 +375,11 @@ export function guestReopen(b: Batch, requestId: string) {
   else dispatch(b, fresh);
 }
 
-function createGuestTask(b: Batch, r: GuestRequest, { team, priority }: { team: TeamSlug; priority: Priority }) {
+function createGuestTask(b: Batch, r: GuestRequest, t: Triage) {
   const task: Task = {
-    id: b.id('task'), title: titleFrom(r.heard), summary: r.heard, priority, teamSlug: team,
-    category: team === 'welfare' && /child|kid|son|daughter/i.test(r.heard) ? 'lost_child' : TEAM_CATEGORY[team],
-    zoneSlug: r.zoneSlug, locationHint: r.locationHint, status: 'open', assigneeId: null, handledBy: 'ai',
-    reporter: { kind: 'festivalgoer', quote: r.heard, language: 'en' },
+    id: b.id('task'), title: t.title, summary: t.summary, priority: t.priority, teamSlug: t.team, category: t.category,
+    zoneSlug: r.zoneSlug ?? t.zoneSlug, locationHint: r.locationHint ?? t.locationHint, status: 'open', assigneeId: null, handledBy: 'ai',
+    reporter: { kind: 'festivalgoer', quote: r.heard, language: t.language },
     createdAt: b.now, assignedAt: null, etaAt: null, lastActivityAt: b.now, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null,
     resolvedAt: null, escalation: null, helperIds: [], resolution: null, requestId: r.id,
   };
