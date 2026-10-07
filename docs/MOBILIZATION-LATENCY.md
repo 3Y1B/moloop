@@ -30,6 +30,31 @@ are quality checks of these samples, not a guarantee of arbitrary future outputs
 Unverified corridors, treatment readiness and resource availability remain explicit
 gaps; the proposed work is not a claim that a full emergency response is executable.
 
+## Integrated browser smoke test
+
+After merging upstream main, manually selected Heat + water shortage and pressed
+Analyse situation exactly once. The actual server run completed with zero validation
+errors in **23.682 seconds** from audit creation, or **24.002 seconds** from snapshot
+capture through atomic proposal commit. Both raw provider envelopes confirmed Sol /
+low / actual Fast, with zero cached input tokens.
+
+It saved two pending Mobilizations containing seven proposed tasks and nine demanded
+crew slots; no formal task was created or dispatched. Independent review of the actual
+output passed: three fetched SOPs, 24 mandatory actions accounted for as two fully
+planned actions and 22 explicit unmet actions; both stage/backstage scopes and exact
+deadlines preserved. Only one immediately available volunteer met the needed skills,
+so the plan has at least eight staffing gaps, not nine ready responders.
+
+The browser displayed shared observation/SOP/staffing gaps before approval, kept
+Approve disabled without acknowledgement, and opened the exact published SOP version
+with Create revision available to Mo. No approval, rejection, revision or publication
+was performed during this live smoke test. Browser rendering latency was not separately
+instrumented; the times above are server-side completion, not a future latency SLA.
+
+Final integrated checks: 718 offline tests, typecheck, lint, local fake-provider API
+integration and web export passed. No real dispatched crew was used by the fake-provider
+approval checks: those writes were rolled back and owned temporary fixtures cleaned up.
+
 ## Exploratory comparisons
 
 83 completed read-only experiments covered eight model identities and eleven
