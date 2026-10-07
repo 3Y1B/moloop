@@ -277,7 +277,7 @@ export type DeliveryRow = Pick<Row<'message_deliveries'>, 'message_id' | 'recipi
   message: (Pick<Row<'messages'>, 'id' | 'kind' | 'body' | 'task_id' | 'created_at'> & { sender: { full_name: string } | null }) | null;
 };
 
-/** A message as one recipient sees it: their delivery decides `read` and `delivery`. No sender reads as Moloop. */
+/** A message as one recipient sees it: their delivery decides `read` and `delivery`. No sender reads as the festival-goer for their replies, Moloop otherwise. */
 export function toMessage(delivery: DeliveryRow): Message | null {
   const m = delivery.message;
   if (!m) return null;
@@ -286,7 +286,7 @@ export function toMessage(delivery: DeliveryRow): Message | null {
     recipientId: delivery.recipient_id,
     at: toMs(m.created_at),
     kind: m.kind as Message['kind'],
-    fromName: m.sender?.full_name ?? 'Moloop',
+    fromName: m.sender?.full_name ?? (m.kind === 'guest_reply' ? 'Festival-goer' : 'Moloop'),
     body: delivery.body_local ?? m.body,
     ...(m.task_id ? { taskId: m.task_id } : {}),
     ...(delivery.delivery === 'spoken' || delivery.delivery === 'ping' ? { delivery: delivery.delivery } : {}),
