@@ -1,6 +1,6 @@
 import { rankCandidates } from "@/lib/candidates";
 import { TEAM_CATEGORY } from "@/lib/ai";
-import { isBusy } from "@/lib/lifecycle";
+import { isFree } from "@/lib/lifecycle";
 import { missingRequiredInputs } from "@/lib/mobilization-inputs";
 import { ObservationSchema, observationReferenceErrors } from "@/lib/mobilization-observations";
 import type {
@@ -189,13 +189,8 @@ export function groundMobilizationPlans(
     plan.tasks.map((action) => {
       const eligible = volunteers.filter(
         (person) =>
-          person.role === "volunteer" &&
-          person.teamSlug === action.teamSlug &&
-          person.duty === "on_duty" &&
-          (person.shiftEndsAt == null || person.shiftEndsAt > at) &&
-          action.requiredSkills.every((skill) => person.skills.includes(skill)) &&
-          !claimed.has(person.id) &&
-          !isBusy(tasks, person.id),
+          person.teamSlug === action.teamSlug && !claimed.has(person.id) &&
+          isFree(person, action.requiredSkills, tasks, at),
       );
       const candidates = rankCandidates(
         {

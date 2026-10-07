@@ -1,5 +1,5 @@
 import { ago } from '@/lib/format';
-import { isBusy } from '@/lib/lifecycle';
+import { freeForSteps, isFree } from '@/lib/lifecycle';
 import { observationDefinition } from '@/lib/mobilization-observations';
 import type { Mobilization, MobilizationCause, ReadingValue, Task, Volunteer } from '@/lib/schema';
 
@@ -72,30 +72,13 @@ export function causeLines(causes: readonly MobilizationCause[], now: number, pl
   });
 }
 
-const free = (volunteer: Volunteer, teamSlug: string, skills: readonly string[], tasks: Task[], now: number) =>
-  volunteer.role === 'volunteer' &&
-  volunteer.teamSlug === teamSlug &&
-  volunteer.duty === 'on_duty' &&
-  (volunteer.shiftEndsAt == null || volunteer.shiftEndsAt > now) &&
-  skills.every((skill) => volunteer.skills.includes(skill)) &&
-  !isBusy(tasks, volunteer.id);
-
 /**
  * People a proposed plan can't fill right now: per step, its team's free people on shift with the skills it needs,
  * each counted once. Approval staffs what it can and keeps trying for the rest.
  */
 export function shortfall(mobilization: Mobilization, volunteers: Record<string, Volunteer>, tasks: Task[], now: number) {
-  const claimed = new Set<string>();
-  let short = 0;
-  for (const step of mobilization.steps) {
-    const pool = Object.values(volunteers).filter(
-      (volunteer) => !claimed.has(volunteer.id) && free(volunteer, step.teamSlug, step.requiredSkills ?? [], tasks, now),
-    );
-    const taken = pool.slice(0, step.peopleNeeded);
-    for (const volunteer of taken) claimed.add(volunteer.id);
-    short += step.peopleNeeded - taken.length;
-  }
-  return short;
+  const got = freeForSteps(mobilization.steps, Object.values(volunteers), tasks, now);
+  return mobilization.steps.reduce((short, step, i) => short + step.peopleNeeded - got[i], 0);
 }
 
 /** Where a proposed step's people would come from: the places of its suggested crew who are still free. */
@@ -111,7 +94,8 @@ export function fromPlaces(
   for (const candidate of step.candidates) {
     if (taken >= step.peopleNeeded) break;
     const volunteer = volunteers[candidate.volunteerId];
-    if (!volunteer || !free(volunteer, step.teamSlug, step.requiredSkills ?? [], tasks, now)) continue;
+    if (!volunteer || volunteer.teamSlug !== step.teamSlug || !isFree(volunteer, step.requiredSkills ?? [], tasks, now))
+      continue;
     taken += 1;
     const name = place(volunteer.zoneSlug);
     if (name && !names.includes(name)) names.push(name);

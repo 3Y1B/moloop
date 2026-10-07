@@ -1,6 +1,6 @@
 import { CommandError, type Batch } from "@/lib/batch";
 import * as C from "@/lib/commands";
-import { isBusy } from "@/lib/lifecycle";
+import { freeForSteps, isFree } from "@/lib/lifecycle";
 import type {
   ManagedPlaybook,
   MobilizationOutput,
@@ -56,7 +56,7 @@ export const READING_WINDOW_MS = 30 * 60_000;
  * One playbook, OpenAI: about 14 s.
  */
 const TRIGGERED_MODEL_MS = 20_000;
-/** Most people one step asks for (audit S4). Also never more than the team has on duty. */
+/** Most people one step asks for (audit S4). Also never more than the team has free (capSteps). */
 const MOST_PER_STEP = 10;
 
 async function contextFrom(query: Query): Promise<SimulationContext> {
@@ -166,7 +166,7 @@ async function captureSnapshot(playbook: PlaybookSlug, requestId: string) {
       const roster = volunteers.filter((person) => person.role === "volunteer" && person.teamSlug === team.slug);
       const onDuty = roster.filter((person) => person.duty === "on_duty" &&
         (person.shiftEndsAt == null || person.shiftEndsAt > at));
-      const free = onDuty.filter((person) => !isBusy(tasks, person.id));
+      const free = roster.filter((person) => isFree(person, [], tasks, at));
       evidence.push({
         ref: `roster-${team.slug}`, kind: "roster", zoneSlug: null,
         observedAt: evaluatedAt, source: "database", value: {
@@ -189,8 +189,7 @@ async function captureSnapshot(playbook: PlaybookSlug, requestId: string) {
       roster: volunteers.map((person) => ({
         id: person.id, name: person.name, teamSlug: person.teamSlug, zoneSlug: person.zoneSlug,
         duty: person.duty, skills: [...person.skills], shiftEndsAt: person.shiftEndsAt,
-        free: person.role === "volunteer" && person.duty === "on_duty" &&
-          (person.shiftEndsAt == null || person.shiftEndsAt > at) && !isBusy(tasks, person.id),
+        free: isFree(person, [], tasks, at),
       })),
       existingResponses: tasks.map((task) => ({
         id: task.id, title: task.title, status: task.status, teamSlug: task.teamSlug,
@@ -368,13 +367,15 @@ export function completeRequiredActions(output: MobilizationOutput, playbook: Pl
   };
 }
 
-/** No step asks for more than its team has on duty, nor more than ten (audit S4). */
-export function capSteps(steps: MobilizationStep[], b: Pick<Batch, "volunteers" | "now">): MobilizationStep[] {
-  return steps.map((step) => {
-    const onDuty = Object.values(b.volunteers).filter((v) => v.role === "volunteer" && v.teamSlug === step.teamSlug &&
-      v.duty === "on_duty" && (v.shiftEndsAt == null || v.shiftEndsAt > b.now)).length;
-    return { ...step, peopleNeeded: Math.max(1, Math.min(step.peopleNeeded, onDuty, MOST_PER_STEP)) };
-  });
+/**
+ * No step asks for more people than its team has free right now (on shift, with the step's skills, not on another
+ * task; each person counted once across the plan's steps, as Mo's review counts the shortfall), nor more than ten
+ * (audit S4). A step with nobody free still asks for one: the review shows it as short and approval keeps trying.
+ */
+export function capSteps(steps: MobilizationStep[], b: Pick<Batch, "volunteers" | "now" | "all">): MobilizationStep[] {
+  const asked = steps.map((step) => ({ ...step, peopleNeeded: Math.min(step.peopleNeeded, MOST_PER_STEP) }));
+  const free = freeForSteps(asked, Object.values(b.volunteers), b.all(), b.now);
+  return asked.map((step, i) => ({ ...step, peopleNeeded: Math.max(1, free[i]) }));
 }
 
 /** "Severe storm, Oval Stage". */

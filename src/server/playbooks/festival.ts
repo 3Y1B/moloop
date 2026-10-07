@@ -74,7 +74,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "crowd",
         title: "Stop new entry to the main-stage audience zone",
         instructions: "Freeze inflow, preserve emergency lanes, and meter all outward movement using approved crowd routes.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Entry stopped, emergency lanes clear"
       },
       {
         id: "stage-safe-state",
@@ -82,7 +83,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "ops",
         title: "Put the main stage and exposed infrastructure into a safe state",
         instructions: "Follow approved stage, electrical, rigging, and temporary-structure weather procedures.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Stage, rigging and power made safe"
       },
       {
         id: "performer-comms",
@@ -90,7 +92,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "artist",
         title: "Notify performers and backstage teams",
         instructions: "Communicate the MO-approved show status, backstage movement restrictions, and restart conditions.",
-        peopleNeeded: 2
+        peopleNeeded: 2,
+        completionCriteria: "Performers and backstage told the show status"
       },
       {
         id: "medical-readiness",
@@ -98,7 +101,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "first-aid",
         title: "Pre-position medical resources around the main-stage zone",
         instructions: "Prepare for slips, trauma, panic reactions, lightning exposure, and weather-related illness.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "First aid posted around the stage"
       },
       {
         id: "shelter-guidance",
@@ -106,7 +110,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "info",
         title: "Direct patrons to confirmed safe locations",
         instructions: "Communicate only approved shelters, overflow areas, route status, and verified capacity information.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Patrons heading to confirmed shelter"
       },
       {
         id: "vulnerable-patron-support",
@@ -114,7 +119,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "welfare",
         title: "Assist children, disabled patrons, and other vulnerable attendees",
         instructions: "Prioritize safe movement, reunification support, and continuity of care during relocation.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Vulnerable patrons sheltered with support"
       },
       {
         id: "route-security",
@@ -122,7 +128,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "security",
         title: "Secure evacuation and emergency-service routes",
         instructions: "Keep approved routes clear, prevent entry into unsafe zones, and coordinate with external emergency services.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Evacuation and emergency routes clear and held"
       },
       {
         id: "vendor-weather-shutdown",
@@ -130,7 +137,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "vendors",
         title: "Secure vendor operations exposed to severe weather",
         instructions: "Follow approved procedures for gas, electrical equipment, awnings, loose objects, and temporary structures.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Vendor gas, power and awnings secured"
       }
     ],
     triggers: [
@@ -198,7 +206,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "crowd",
         title: "Freeze inflow and reduce local crowd pressure",
         instructions: "Stop new entry, open approved pressure-release paths, and create space around fallen or distressed patrons.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Barrier front clear, entry stopped"
       },
       {
         id: "secure-extraction-corridor",
@@ -206,7 +215,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "security",
         title: "Establish a protected medical extraction corridor",
         instructions: "Keep the route clear, control crossing traffic, and support emergency-service access.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Extraction corridor clear and held"
       },
       {
         id: "triage-and-extract",
@@ -214,7 +224,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "first-aid",
         title: "Begin rapid triage and casualty extraction",
         instructions: "Prioritize airway compromise, crush injury, unconscious patients, and those unable to self-evacuate.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Casualties triaged and out of the crowd"
       },
       {
         id: "stage-crowd-message",
@@ -222,7 +233,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "artist",
         title: "Coordinate performer and stage messaging",
         instructions: "If approved by MO, have stage personnel deliver concise instructions to stop pushing, create space, or move back.",
-        peopleNeeded: 2
+        peopleNeeded: 2,
+        completionCriteria: "Stage message given, crowd easing back"
       },
       {
         id: "public-direction",
@@ -230,7 +242,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "info",
         title: "Issue unified crowd-movement instructions",
         instructions: "Repeat only MO-approved directions and avoid unverified casualty information.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "One approved direction on every channel"
       },
       {
         id: "vulnerable-and-separated",
@@ -238,7 +251,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "welfare",
         title: "Support separated families and vulnerable patrons",
         instructions: "Receive displaced children, assist distressed attendees, and coordinate reunification away from the pressure zone.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Separated patrons safe away from the front"
       },
       {
         id: "barrier-and-lighting",
@@ -246,7 +260,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "ops",
         title: "Inspect barriers, access lanes, and lighting",
         instructions: "Stabilize infrastructure and improve visibility without obstructing evacuation or medical movement.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Barriers checked, lanes lit and clear"
       },
       {
         id: "suspend-nearby-service",
@@ -254,7 +269,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "vendors",
         title: "Suspend service adjacent to relief routes",
         instructions: "Close queues and remove movable obstructions from designated crowd-release and emergency corridors.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Nearby service closed, relief routes clear"
       }
     ],
     triggers: [
@@ -321,7 +337,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "first-aid",
         title: "Expand heat-illness triage and treatment",
         instructions: "Prioritize altered mental status, collapse, severe dehydration, and suspected heat stroke.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Heat casualties triaged and treated"
       },
       {
         id: "cooling-welfare",
@@ -329,7 +346,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "welfare",
         title: "Expand cooling and vulnerable-patron support",
         instructions: "Prioritize children, disabled patrons, older attendees, and anyone unable to tolerate heat exposure.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Cooling space open, vulnerable patrons in it"
       },
       {
         id: "water-logistics",
@@ -337,7 +355,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "ops",
         title: "Reallocate potable water and cooling infrastructure",
         instructions: "Move approved water assets, refill capacity, shade, misting, or cooling equipment to highest-risk zones.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Water and cooling moved to high-risk zones"
       },
       {
         id: "water-queue-control",
@@ -345,7 +364,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "crowd",
         title: "Control queues at water and cooling points",
         instructions: "Prevent crowd compression, keep emergency lanes open, and spread demand across approved locations.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Water queues orderly, emergency lanes open"
       },
       {
         id: "hydration-messaging",
@@ -353,7 +373,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "info",
         title: "Issue heat and hydration guidance",
         instructions: "Publish verified water locations, cooling areas, symptoms requiring medical help, and any program changes.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Water points and heat guidance published"
       },
       {
         id: "protect-water-assets",
@@ -361,7 +382,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "security",
         title: "Protect water deliveries and critical cooling areas",
         instructions: "Keep delivery routes open and prevent conflict or unsafe crowding around limited resources.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Delivery routes open, water points calm"
       },
       {
         id: "vendor-water-support",
@@ -369,7 +391,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "vendors",
         title: "Support emergency potable-water distribution",
         instructions: "Redirect approved sealed water and cold non-alcoholic beverages where instructed and maintain food cold-chain controls.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Vendors handing out sealed water"
       },
       {
         id: "artist-schedule-adjustment",
@@ -377,7 +400,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "artist",
         title: "Implement heat-related schedule changes",
         instructions: "Communicate delayed, shortened, or paused performances and backstage heat precautions approved by MO.",
-        peopleNeeded: 2
+        peopleNeeded: 2,
+        completionCriteria: "Schedule changes confirmed with performers"
       }
     ],
     triggers: [
@@ -443,7 +467,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "crowd",
         title: "Stop uncontrolled inflow and establish metered entry",
         instructions: "Create safe pressure relief, redirect new arrivals, and maintain emergency exits and pedestrian routes.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Inflow stopped, metered entry running"
       },
       {
         id: "secure-breach",
@@ -451,7 +476,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "security",
         title: "Secure the breached gate and adjacent perimeter",
         instructions: "Protect staff, prevent secondary breaches, and coordinate with police if required.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Breach closed, perimeter held"
       },
       {
         id: "redirect-arrivals",
@@ -459,7 +485,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "info",
         title: "Redirect arriving patrons",
         instructions: "Publish approved alternate gates, expected delays, and entry suspension information without encouraging convergence.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Arrivals sent to other gates"
       },
       {
         id: "restore-entry-systems",
@@ -467,7 +494,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "ops",
         title: "Repair or replace failed barriers and access systems",
         instructions: "Restore scanning, fencing, lighting, power, or temporary infrastructure using approved procedures.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Barriers and scanners working again"
       },
       {
         id: "gate-medical-post",
@@ -475,7 +503,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "first-aid",
         title: "Position medical support at crowd-pressure points",
         instructions: "Prepare for falls, crush injury, heat illness, panic, and access problems near affected gates.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "First aid posted at the gate"
       },
       {
         id: "separated-party-support",
@@ -483,7 +512,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "welfare",
         title: "Support separated families and vulnerable arrivals",
         instructions: "Provide a controlled location for lost children, separated groups, and patrons unable to remain in queues.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Separated patrons at a safe meeting point"
       },
       {
         id: "clear-vendor-obstructions",
@@ -491,7 +521,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "vendors",
         title: "Clear nearby queues and movable vendor obstructions",
         instructions: "Reduce competing foot traffic around the breached gate and alternate access routes.",
-        peopleNeeded: null
+        peopleNeeded: null,
+        completionCriteria: "Gate routes clear of queues and obstructions"
       },
       {
         id: "program-hold-if-needed",
@@ -499,7 +530,8 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
         teamSlug: "artist",
         title: "Prepare for performance holds if capacity is uncertain",
         instructions: "Keep stages ready to pause if crowd distribution or total attendance cannot be safely verified.",
-        peopleNeeded: 2
+        peopleNeeded: 2,
+        completionCriteria: "Stages briefed and ready to hold"
       }
     ],
     triggers: [

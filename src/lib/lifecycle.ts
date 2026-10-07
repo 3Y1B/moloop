@@ -66,20 +66,46 @@ export const isOnTask = (t: Task, volunteerId: string) =>
 /** A helper counts as busy, same as the owner. */
 export const isBusy = (tasks: Task[], volunteerId: string) => tasks.some((t) => isOnTask(t, volunteerId));
 
+/** Free to send: a volunteer on duty and in shift, with these skills, not on an active task. */
+export const isFree = (v: Volunteer, skills: readonly string[], tasks: Task[], now: number) =>
+  v.role === 'volunteer' &&
+  v.duty === 'on_duty' &&
+  (v.shiftEndsAt == null || v.shiftEndsAt > now) &&
+  skills.every((skill) => v.skills.includes(skill)) &&
+  !isBusy(tasks, v.id);
+
 /**
  * Who can go along as a helper: on duty and in shift, qualified, and free. Any team on an ordinary task (the picker's
  * nearest lane crosses teams); a mobilization step's own team only. assign() enforces it.
  */
 export const canHelp = (task: Task, v: Volunteer, tasks: Task[], now: number) =>
-  v.role === 'volunteer' &&
-  v.duty === 'on_duty' &&
-  (v.shiftEndsAt == null || v.shiftEndsAt > now) &&
   (!task.mobilizationId || v.teamSlug === task.teamSlug) &&
-  (task.requiredSkills ?? []).every((skill) => v.skills.includes(skill)) &&
-  !isBusy(
+  isFree(
+    v,
+    task.requiredSkills ?? [],
     tasks.filter((t) => t.id !== task.id),
-    v.id,
+    now,
   );
+
+/** A step's crew as staffing reads it: its team, how many, which skills. */
+type StaffedStep = { teamSlug: string | null; peopleNeeded: number; requiredSkills?: readonly string[] };
+
+/**
+ * How many free people each step of a plan gets right now: its own team's, with its skills, each person counted once,
+ * steps in order, up to what the step asks for. The planner caps steps at this; Mo's review counts the shortfall from
+ * it, so both agree.
+ */
+export function freeForSteps(steps: readonly StaffedStep[], volunteers: Volunteer[], tasks: Task[], now: number) {
+  const claimed = new Set<string>();
+  return steps.map((step) => {
+    const pool = volunteers.filter(
+      (v) => !claimed.has(v.id) && v.teamSlug === step.teamSlug && isFree(v, step.requiredSkills ?? [], tasks, now),
+    );
+    const taken = pool.slice(0, Math.max(0, step.peopleNeeded));
+    for (const v of taken) claimed.add(v.id);
+    return taken.length;
+  });
+}
 
 /** Just the ids, for call sites that only need "who's on this task". */
 export const helperIdsOf = (t: Task): string[] => t.helpers.map((h) => h.volunteerId);

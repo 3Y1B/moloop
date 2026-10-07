@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Batch, type World } from '@/lib/batch';
 import type { MobilizationOutput } from '@/lib/mobilization-contracts';
-import type { Volunteer } from '@/lib/schema';
-import { planMobilization, playbookSteps } from './plan';
+import type { MobilizationStep, Task, Volunteer } from '@/lib/schema';
+import { shortfall } from '@/components/mobilization/review';
+import { capSteps, planMobilization, playbookSteps } from './plan';
 
 const at = Date.parse('2026-10-08T10:00:00Z');
 const person = (id: string, over: Partial<Volunteer> = {}): Volunteer => ({
@@ -108,7 +109,7 @@ describe('the planner always gives Mo a plan', () => {
     request.checks = 0;
   });
 
-  it('keeps the model’s plan and adds the required actions it left out, capped at the team on duty', async () => {
+  it('keeps the model’s plan and adds the required actions it left out, capped at the team’s free people', async () => {
     models.generatePlan.mockResolvedValue(output());
     expect(await planMobilization('run-1')).toEqual(['mobilization-1']);
     const plan = proposed();
@@ -118,6 +119,9 @@ describe('the planner always gives Mo a plan', () => {
     expect(plan.steps.map((s) => s.stepKey)).toEqual(required.map((s) => s.stepKey));
     expect(plan.steps[0]).toMatchObject({ title: 'Stop entry to the front', peopleNeeded: 2 });
     expect(plan.steps.slice(1).map((s) => s.title)).toEqual(required.slice(1).map((s) => s.title));
+    // Their done line is the playbook's own, not the title again.
+    expect(plan.steps.slice(1).map((s) => s.completionCriteria))
+      .toEqual(required.slice(1).map((s) => s.completionCriteria));
     expect(plan.steps.flatMap((s) => s.playbookRefs!.map((r) => r.actionId)))
       .toEqual(required.map((s) => s.stepKey));
     expect(plan.steps.every((s) => s.zoneSlug === 'oval-stage' && s.peopleNeeded >= 1 &&
@@ -200,5 +204,62 @@ describe('the planner always gives Mo a plan', () => {
     expect(models.generatePlan).not.toHaveBeenCalled();
     expect(proposed().steps).toHaveLength(8);
     expect(finished().status).toBe('failed');
+  });
+});
+
+describe('playbookSteps', () => {
+  it('gives every playbook step a done line of its own', () => {
+    for (const book of ['severe-weather-main-stage', 'crowd-crush-main-stage', 'extreme-heat-water-shortage',
+      'gate-breach-uncontrolled-ingress'] as const)
+      for (const s of playbookSteps(book, null)) {
+        expect(s.completionCriteria).toBeTruthy();
+        expect(s.completionCriteria).not.toBe(s.title);
+      }
+  });
+});
+
+describe('capSteps', () => {
+  const step = (teamSlug: MobilizationStep['teamSlug'], peopleNeeded: number, requiredSkills: string[] = []): MobilizationStep =>
+    ({ teamSlug, peopleNeeded, reason: '', candidates: [], requiredSkills });
+  const busyWith = (assigneeId: string): Task => ({
+    id: `task-${assigneeId}`, title: 'Spill', summary: 'Spill', category: 'facilities', priority: 'P3', teamSlug: 'crowd',
+    zoneSlug: 'oval-stage', locationHint: null, status: 'accepted', assigneeId,
+    reporter: { kind: 'volunteer', quote: 'spill', language: 'en' }, handledBy: 'human', createdAt: at, assignedAt: at,
+    etaAt: null, lastActivityAt: at, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null,
+    escalation: null, requiredCount: 1, helpers: [], mobilizationId: null, resolution: null, requestId: null,
+  });
+  const crew = (people: Volunteer[], tasks: Task[] = []) => ({
+    volunteers: Object.fromEntries(people.map((v) => [v.id, v])), now: at, all: () => tasks,
+  });
+  const crowd = (n: number) => Array.from({ length: n }, (_, i) => person(`crowd-${i}`));
+
+  it('caps at the team’s free people, not its on-duty count', () => {
+    const people = [...crowd(4), person('break', { duty: 'on_break' }), person('gone', { shiftEndsAt: at - 1 })];
+    expect(capSteps([step('crowd', 6)], crew(people, [busyWith('crowd-0')]))[0].peopleNeeded).toBe(3);
+  });
+
+  it('doesn’t count a busy helper', () => {
+    const helping = { ...busyWith('crowd-0'), helpers: [{ volunteerId: 'crowd-1', status: 'accepted' as const, assignedAt: at, respondedAt: at }] };
+    expect(capSteps([step('crowd', 6)], crew(crowd(3), [helping]))[0].peopleNeeded).toBe(1);
+  });
+
+  it('counts each free person once across the team’s steps, and only those with the skills', () => {
+    const people = [...crowd(3), person('medic-a', { teamSlug: 'first-aid', skills: ['first-aid'] }),
+      person('medic-b', { teamSlug: 'first-aid' })];
+    const steps = capSteps([step('crowd', 2), step('crowd', 2), step('first-aid', 3, ['first-aid'])], crew(people));
+    expect(steps.map((s) => s.peopleNeeded)).toEqual([2, 1, 1]);
+  });
+
+  it('keeps one on a step nobody is free for, and never asks for more than ten', () => {
+    const steps = capSteps([step('crowd', 40), step('crowd', 2), step('security', 2)], crew(crowd(12)));
+    expect(steps.map((s) => s.peopleNeeded)).toEqual([10, 2, 1]);
+  });
+
+  it('agrees with the review: the only shortfall is a step nobody is free for', () => {
+    const steps = capSteps([step('crowd', 3), step('crowd', 3), step('security', 2)],
+      crew(crowd(4), [busyWith('crowd-3')]));
+    expect(steps.map((s) => s.peopleNeeded)).toEqual([3, 1, 1]);
+    const plan = { steps } as Parameters<typeof shortfall>[0];
+    expect(shortfall(plan, crew(crowd(4)).volunteers, [busyWith('crowd-3')], at)).toBe(2);
   });
 });
