@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -32,10 +32,9 @@ export default function RequestScreen() {
   const view = useRequest(id);
   const stage = view?.status.stage;
   const open = stage === 'finding' || stage === 'coming' || stage === 'with_you';
-  // "Problem solved?" No opens the dock for that answer; a new answer asks again.
-  const [notSolved, setNotSolved] = useState<string | null>(null);
-  const asking = stage === 'answered' && !!view?.request.aiAnswer && notSolved === view.request.aiAnswer;
-  const layout = useMapLayout(open ? 190 : 150, { dock: open || asking });
+  // Nobody sent yet: what they add goes back to the AI, which answers again or sends someone.
+  const unsent = stage === 'understanding' || stage === 'answered';
+  const layout = useMapLayout(open ? 190 : 150, { dock: open || unsent });
 
   const top = (
     <MapTopBar
@@ -55,35 +54,38 @@ export default function RequestScreen() {
   }
 
   const { request } = view;
-  // While the answer has its own card, don't repeat it in the thread.
-  const thread = stage === 'answered' ? request.thread.filter((e) => !(e.from === 'ai' && e.text === request.aiAnswer)) : request.thread;
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.mapGround }]}>
       <RequestMap view={view} frame={layout.frame} />
       {top}
 
-      <BottomSheet detents={layout.detents} bottomInset={layout.bottomInset}>
+      <BottomSheet
+        detents={layout.detents}
+        bottomInset={layout.bottomInset}
+        raise={request.thread.filter((e) => e.from !== 'guest').length}>
         <Hero view={view} />
-        {stage === 'answered' && <Answer view={view} asking={asking} onNo={() => setNotSolved(request.aiAnswer)} />}
         {open && <Help view={view} />}
         {stage === 'sorted' && <Sorted requestId={request.id} />}
         {stage === 'cancelled' && <Button label="New request" variant="tinted" onPress={goBack} />}
-        {thread.length > 0 && (
+        {request.thread.length > 0 && (
           <Section title="Messages">
-            <Thread entries={thread} />
+            <Thread entries={request.thread} />
           </Section>
         )}
+        {stage === 'answered' && <ProblemSolved requestId={request.id} />}
         {open && <CancelRequest requestId={request.id} />}
       </BottomSheet>
 
-      {open && (
+      {(open || unsent) && (
         <VoiceDock
           placeholder="Add detail"
-          onSend={async (text) => ((await repo.guestAddDetail(request.id, text)).escalated ? 'Lead alerted.' : 'Note added.')}
+          onSend={async (text) => {
+            if (!open) return repo.guestFollowUp(request.id, text);
+            return (await repo.guestAddDetail(request.id, text)).escalated ? 'Lead alerted.' : 'Note added.';
+          }}
         />
       )}
-      {asking && <VoiceDock placeholder="What else?" onSend={(text) => repo.guestFollowUp(request.id, text)} />}
     </View>
   );
 }
@@ -117,21 +119,42 @@ function Hero({ view }: { view: RequestView }) {
   );
 }
 
-/** AI answered: the answer, then "Problem solved?" No asks what else, and the AI tries again or sends someone. */
-function Answer({ view, asking, onNo }: { view: RequestView; asking: boolean; onNo: () => void }) {
+/** Under the AI's answer. No: back to the AI, which answers again or sends someone. Yes: closed. */
+function ProblemSolved({ requestId }: { requestId: string }) {
   const theme = useTheme();
+  const repo = useRepo();
+  const [busy, setBusy] = useState(false);
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <Animated.View entering={FadeIn.duration(220)} style={[styles.answer, { backgroundColor: theme.backgroundElement }]}>
-      <Text style={[styles.answerText, { color: theme.text }]} selectable>{view.request.aiAnswer}</Text>
-      {!asking && (
-        <>
-          <Text style={[styles.solved, { color: theme.textSecondary }]}>Problem solved?</Text>
-          <View style={styles.actions}>
-            <Button label="No" variant="tinted" color={theme.textSecondary} onPress={onNo} style={styles.flex} />
-            <Button label="Yes" haptic="success" onPress={goBack} style={styles.flex} />
-          </View>
-        </>
-      )}
+    <Animated.View entering={FadeIn.duration(220)} style={[styles.solvedCard, { backgroundColor: theme.backgroundElement }]}>
+      <Text style={[styles.solved, { color: theme.text }]}>Problem solved?</Text>
+      <View style={styles.actions}>
+        <Button
+          label="No"
+          variant="tinted"
+          color={theme.textSecondary}
+          disabled={busy}
+          onPress={() => run(() => repo.guestFollowUp(requestId))}
+          style={styles.flex}
+        />
+        <Button
+          label="Yes"
+          haptic="success"
+          disabled={busy}
+          onPress={() => run(async () => {
+            await repo.guestSolved(requestId);
+            goBack();
+          })}
+          style={styles.flex}
+        />
+      </View>
     </Animated.View>
   );
 }
@@ -211,9 +234,8 @@ const styles = StyleSheet.create({
   mins: { width: 60, height: 60, borderRadius: Radius.control, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' },
   minsNumber: { fontSize: Type.hero + 2, fontWeight: '700', fontVariant: ['tabular-nums'], lineHeight: 26 },
   minsUnit: { fontSize: Type.caption, fontWeight: '600' },
-  answer: { padding: 16, gap: 14, borderRadius: Radius.card, borderCurve: 'continuous' },
-  answerText: { fontSize: Type.body + 2, lineHeight: 24 },
-  solved: { fontSize: Type.footnote, fontWeight: '600', marginBottom: -6 },
+  solvedCard: { padding: 16, gap: 12, borderRadius: Radius.card, borderCurve: 'continuous' },
+  solved: { fontSize: Type.body, fontWeight: '600' },
   help: { gap: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   pinBox: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },

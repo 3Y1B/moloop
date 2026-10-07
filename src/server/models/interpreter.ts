@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { DetailRead, EscalateTo, Match, Triage, Understood } from '@/lib/ai';
 import {
-  heuristicDetail, heuristicTriage, heuristicUnderstanding, soundsCritical, soundsUrgent, TEAM_CATEGORY,
+  heuristicDetail, heuristicTriage, soundsCritical, soundsUrgent, TEAM_CATEGORY,
 } from '@/lib/heuristics';
 import { activeTaskOf, interpretHeuristic } from '@/lib/commands';
 import { ReplyKind, type Priority, type Task, type TeamSlug } from '@/lib/schema';
@@ -14,8 +14,7 @@ import { zones, type Zone } from './venue';
 /**
  * Reads what people say and decides what to do with it: answer a routine question, pick a team and priority, create a
  * task or escalate it to a lead or Mo (the intake agent's tools, intake-tools.ts), tell if added detail is worse, tell
- * a reply from a new report. One interface, so Spark and Luna or plain
- * keywords can answer.
+ * a reply from a new report. The models answer; keywords only stand in when a call fails.
  * None of these throw on a model failure: they fail closed to a person (priority at least P2, never an AI answer)
  * and say so in `run.error`, which lands in triage_runs.
  */
@@ -57,35 +56,12 @@ export interface Interpreter {
 const URGENCY: Priority[] = ['P1', 'P2', 'P3'];
 const moreUrgent = (a: Priority, b: Priority) => (URGENCY.indexOf(a) <= URGENCY.indexOf(b) ? a : b);
 
-// ── keywords: the default, and the fallback ──
+// ── keywords: only when a model call fails ──
 
 const run = (over: Partial<Run> = {}): Run => ({
   route: 'escalated_to_triage', reason: null, confidence: null, team: null, priority: null, rewrite: null,
   models: { interpreter: 'keywords' }, latencyMs: 0, error: null, ...over,
 });
-
-export class KeywordInterpreter implements Interpreter {
-  async understand(i: Heard) {
-    const value = heuristicUnderstanding(i.text, i.zoneSlug, i.locationHint);
-    return { value, run: run({ route: value.kind === 'answer' ? 'ai_resolved' : 'escalated_to_triage' }) };
-  }
-  async triage(i: Heard) {
-    return { value: heuristicTriage(i.text, i.zoneSlug, i.locationHint), run: run() };
-  }
-  async detail(i: Heard & { before: string; open: boolean }) {
-    return {
-      value: { ...heuristicDetail(i.text), ...(i.open ? {} : { triage: heuristicTriage(`${i.before}. ${i.text}`, i.zoneSlug, i.locationHint) }) },
-      run: run(),
-    };
-  }
-  /** Keywords can't tell one incident from two, and a duplicate task is safer than a wrong merge. */
-  async match() {
-    return { value: null, run: run() };
-  }
-  async interpret({ tasks, meId, text }: { tasks: Task[]; meId: string; text: string }) {
-    return interpretHeuristic(tasks, meId, text);
-  }
-}
 
 // ── Spark ──
 
@@ -304,9 +280,5 @@ export class SparkInterpreter implements Interpreter {
   }
 }
 
-/**
- * USE_LIVE_MODELS=1 puts the models behind every decision (needs OPENAI_API_KEY, or SPARK_API_KEY with MODEL_PROVIDER=spark).
- * Anything else keeps the keyword stand-ins, so the server runs with no keys.
- */
-export const live = process.env.USE_LIVE_MODELS === '1';
-export const interpreter: Interpreter = live ? new SparkInterpreter() : new KeywordInterpreter();
+/** The models behind every decision: OPENAI_API_KEY, or SPARK_API_KEY with MODEL_PROVIDER=spark (main.ts checks). */
+export const interpreter: Interpreter = new SparkInterpreter();

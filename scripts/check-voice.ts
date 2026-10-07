@@ -3,7 +3,7 @@
  * (OpenAI, the Spark or SPEECH_BASE_URL) and a server with live models on real timings, so a proposal waits for Mo instead of
  * auto-assigning. Run both with the same env:
  *
- *   USE_LIVE_MODELS=1 npm run server
+ *   npm run server
  *   npm run voice:check
  *
  * The clips are the speech server's TTS of a few lines, sent up as a phone would send a hold:
@@ -51,8 +51,8 @@ async function until<T>(what: string, f: () => Promise<T | null | undefined | fa
 
 type Health = { policy: { autoAssignMs: number }; speech?: { transcribe: boolean; briefs: boolean } };
 const health = (await fetch(`${server}/health`).then((r) => r.json()).catch(() => null)) as Health | null;
-if (!health) throw new Error(`No server at ${server}. Start it with: USE_LIVE_MODELS=1 npm run server`);
-if (!health.speech?.transcribe || !health.speech.briefs) throw new Error('Voice is off on this server: set OPENAI_API_KEY and USE_LIVE_MODELS=1');
+if (!health) throw new Error(`No server at ${server}. Start it with: npm run server`);
+if (!health.speech?.transcribe || !health.speech.briefs) throw new Error('Voice is off on this server: set OPENAI_API_KEY');
 if (health.policy.autoAssignMs < 15_000) throw new Error('The server auto-assigns too fast for Mo to approve: restart it on real timings');
 
 // ── clips: what a phone would send ──

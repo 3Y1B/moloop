@@ -5,8 +5,9 @@ import { Limiter } from './limiter';
  *
  *  - OpenAI (default): every call, with OPENAI_API_KEY.
  *  - MODEL_PROVIDER=spark: the Spark first (SPARK_API_KEY), then OpenAI when it fails or runs late.
+ *    Chat stays on OpenAI either way.
  *
- *   chat + JSON     qwen3.5:4b        -> gpt-6-luna (reasoning off)
+ *   chat + JSON     gpt-6-luna only (reasoning off)
  *   typed decisions /v1/systemone     -> /v1/decisions, gpt-6-luna
  *   speech to text  qwen3-asr-1.7b    -> gpt-4o-mini-transcribe
  *   text to speech  qwen3-tts         -> gpt-4o-mini-tts, voice "marin" with a described manner

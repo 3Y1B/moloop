@@ -17,8 +17,6 @@ import { createClient } from '@supabase/supabase-js';
 
 import { SCENARIOS, type Route, type Said } from './intake-scenarios';
 
-process.env.USE_LIVE_MODELS = '1';
-
 // The local stack, never what .env.local points at: this empties tasks and requests.
 // The app's tsconfig has no Bun types; this is all the script uses.
 declare const Bun: { spawnSync(cmd: string[]): { exitCode: number; stdout: { toString(): string } } };

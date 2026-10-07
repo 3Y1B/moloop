@@ -31,7 +31,8 @@ const PALETTE = {
     text: '#1F2937', halo: '#FFFFFF',
   },
   dark: {
-    mask: '#13161B', maskOpacity: 0.62,
+    // No wash in the dark: a dark scrim tints the streets against the site. The base is quiet enough as it is.
+    mask: '#13161B', maskOpacity: 0,
     grass: '#1A2A1D', grove: '#1F3322', oval: '#1F3A22', stripe: '#234026', line: '#C8D3C9',
     track: '#7B4033', lane: '#C9A79E', infield: '#1F3421', turf: '#1E4A36', court: '#24486E',
     road: '#2A2F38', tunnel: '#3A404B', walk: '#3B3527', walkEdge: '#2C281E',
@@ -279,7 +280,7 @@ function ground(k: Pal): Feature[] {
   const world: P[] = [[-far, -far], [far, -far], [far, far], [-far, far]];
   const out: Feature[] = [
     // Holes wind the other way from the ring they're cut from.
-    fill([world, [...fence].reverse()], { l: 'mask', z: 0, c: k.mask, o: k.maskOpacity }),
+    ...(k.maskOpacity > 0 ? [fill([world, [...fence].reverse()], { l: 'mask', z: 0, c: k.mask, o: k.maskOpacity })] : []),
     fill([fence], { l: 'ground', z: 0, c: k.grass }),
     // Oval: mown stripes and a white boundary line.
     fill([OVAL], { l: 'ground', z: 1, c: k.oval }),

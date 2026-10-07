@@ -368,19 +368,34 @@ export function understand(b: Batch, requestId: string, ai?: Understood, match?:
   else createGuestTask(b, r, u);
 }
 
-/** "Problem solved?" No: what's still wrong goes back through `understand` with the conversation so far. */
-export function guestFollowUp(b: Batch, requestId: string, text: string) {
+/** What a bare "Problem solved?" No says in the conversation. */
+export const NOT_SOLVED = 'Not solved';
+
+/**
+ * "Problem solved?" No, or anything they add before someone's sent: back through `understand` with the conversation
+ * so far, so the AI answers again or sends someone. `text` absent: the No on its own. While it's still being
+ * understood, the text joins what the AI reads next.
+ */
+export function guestFollowUp(b: Batch, requestId: string, text?: string) {
+  const r = b.requests[requestId];
+  if (!r) throw new CommandError('not_found', `No request ${requestId}`);
+  if (r.taskId || (r.stage !== 'answered' && r.stage !== 'understanding')) return;
+  if (!text && r.stage !== 'answered') return;
+  b.request({
+    ...r,
+    heard: text ? `${r.heard}. ${text}` : r.heard,
+    stage: 'understanding',
+    aiAnswer: null,
+    thread: [...r.thread, { from: 'guest', text: text || NOT_SOLVED, at: b.now }],
+  });
+}
+
+/** "Problem solved?" Yes: the answer did it. Closed for good; it no longer counts as open. */
+export function guestSolved(b: Batch, requestId: string) {
   const r = b.requests[requestId];
   if (!r) throw new CommandError('not_found', `No request ${requestId}`);
   if (r.stage !== 'answered' || r.taskId) return;
-  b.request({ ...r, heard: `${r.heard}. ${text}`, stage: 'understanding', aiAnswer: null, thread: [...r.thread, { from: 'guest', text, at: b.now }] });
-}
-
-/** Asking for a person: a task for the team that fits, P3 unless `ai` raised it. */
-export function guestRequestHuman(b: Batch, requestId: string, ai?: Triage) {
-  const r = b.requests[requestId];
-  if (!r || r.taskId) return;
-  createGuestTask(b, r, ai ?? heuristicPerson(r.heard, r.zoneSlug, r.locationHint));
+  b.request({ ...r, stage: 'sorted' });
 }
 
 /** "What's changed?" A note for the volunteer, or a priority bump that alerts the lead. */
@@ -432,7 +447,12 @@ export function guestReopen(b: Batch, requestId: string) {
   const r = b.requests[requestId];
   if (!r) return;
   const task = r.taskId ? b.tasks[r.taskId] : undefined;
-  if (!task) return guestRequestHuman(b, requestId);
+  // Sorted by an AI answer: back through the AI, which won't repeat itself.
+  if (!task) {
+    if (r.stage !== 'sorted') return;
+    b.request({ ...r, stage: 'understanding', aiAnswer: null, reopenedAt: b.now, thread: [...r.thread, { from: 'guest', text: 'Still need help', at: b.now }] });
+    return;
+  }
   if (task.status !== 'resolved') return;
   b.request({ ...r, reopenedAt: b.now, thread: [...r.thread, { from: 'guest', text: 'Still need help', at: b.now }] });
   const fresh: Task = {

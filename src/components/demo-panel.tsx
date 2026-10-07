@@ -110,8 +110,8 @@ function Panel({ top }: { top: number }) {
   );
 }
 
-const BASE = 112;
-const KNOB = 48;
+const BASE = 96;
+const KNOB = 36;
 const REACH = (BASE - KNOB) / 2;
 /** Full tilt, metres a second: a brisk walk, so crossing the site doesn't take all demo. */
 const SPEED = 4;
@@ -153,10 +153,14 @@ function Joystick({ top }: { top: number }) {
   const knob = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }, { translateY: y.value }] }));
 
   return (
-    <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(140)} style={[styles.base, { top, backgroundColor: `${theme.card}CC` }]}>
+    <Animated.View
+      entering={FadeIn.duration(180)}
+      exiting={FadeOut.duration(140)}
+      style={[styles.base, { top, backgroundColor: theme.card, borderColor: theme.border }]}>
       <GestureDetector gesture={pan}>
         <View style={styles.pad}>
-          <Animated.View style={[styles.knob, { backgroundColor: theme.tint }, knob]} />
+          <View style={[styles.track, { borderColor: theme.border }]} />
+          <Animated.View style={[styles.knob, { backgroundColor: theme.tint, borderColor: theme.card }, knob]} />
         </View>
       </GestureDetector>
     </Animated.View>
@@ -178,8 +182,13 @@ const styles = StyleSheet.create({
   },
   chipText: { fontSize: Type.caption, fontWeight: '600' },
   base: {
-    position: 'absolute', right: 16, width: BASE, height: BASE, borderRadius: BASE / 2, ...floating,
+    position: 'absolute', right: 16, width: BASE, height: BASE, borderRadius: BASE / 2,
+    borderWidth: StyleSheet.hairlineWidth * 2, ...floating,
   },
   pad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, ...floating },
+  track: {
+    position: 'absolute', width: BASE - 24, height: BASE - 24, borderRadius: (BASE - 24) / 2,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+  },
+  knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, borderWidth: 3, ...floating },
 });

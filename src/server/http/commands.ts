@@ -186,15 +186,8 @@ async function ownRequest(requestId: string, caller: Caller) {
   });
 }
 
-route('guestFollowUp', 'any', z.object({ requestId: Id, text: Text }), async (a, caller) => {
-  await transact({ requestIds: [a.requestId] }, (b, w) => {
-    mustOwn(w, a.requestId, caller);
-    C.guestFollowUp(b, a.requestId, a.text);
-  });
-  understandLater(a.requestId);
-});
-
-route('guestAddDetail', 'any', z.object({ requestId: Id, text: Text }), async (a, caller) => {
+/** Added detail on a request with a task: a note for whoever's on it, or a priority bump. */
+async function addDetail(a: { requestId: string; text: string }, caller: Caller) {
   const { request, task } = await ownRequest(a.requestId, caller);
   const open = !!task && !['resolved', 'cancelled'].includes(task.status);
   const judged = await interpreter.detail({
@@ -205,7 +198,31 @@ route('guestAddDetail', 'any', z.object({ requestId: Id, text: Text }), async (a
     mustOwn(w, a.requestId, caller);
     return C.guestAddDetail(b, a.requestId, a.text, judged.value);
   }, { run: { ...judged.run, requestId: a.requestId } });
+}
+
+// "Problem solved?" No (no text), or what they add before anyone's sent: the AI reads the conversation again.
+route('guestFollowUp', 'any', z.object({ requestId: Id, text: Text.optional() }), async (a, caller) => {
+  const { request } = await ownRequest(a.requestId, caller);
+  // Someone was sent meanwhile: what they add is detail for them.
+  if (request.taskId && a.text) {
+    await addDetail({ requestId: a.requestId, text: a.text }, caller);
+    return;
+  }
+  await transact({ requestIds: [a.requestId] }, (b, w) => {
+    mustOwn(w, a.requestId, caller);
+    C.guestFollowUp(b, a.requestId, a.text);
+  });
+  understandLater(a.requestId);
 });
+
+route('guestSolved', 'any', RequestArgs, async (a, caller) => {
+  await transact({ requestIds: [a.requestId] }, (b, w) => {
+    mustOwn(w, a.requestId, caller);
+    C.guestSolved(b, a.requestId);
+  });
+});
+
+route('guestAddDetail', 'any', z.object({ requestId: Id, text: Text }), (a, caller) => addDetail(a, caller));
 
 route('guestCancel', 'any', RequestArgs, async (a, caller) => {
   await transact({ requestIds: [a.requestId] }, (b, w) => {
@@ -219,4 +236,6 @@ route('guestReopen', 'any', RequestArgs, async (a, caller) => {
     mustOwn(w, a.requestId, caller);
     C.guestReopen(b, a.requestId);
   });
+  // Sorted by an AI answer goes back to the AI; a no-op for one with a task.
+  understandLater(a.requestId);
 });

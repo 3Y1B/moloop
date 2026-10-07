@@ -5,7 +5,7 @@
  *  - the festival-goer sees who's coming only once they're on it, counting down as they walk, then "is here"
  *  - the volunteer sees the festival-goer's position, so their route ends where the person is
  *
- *   PORT=8788 SCHEDULER_MS=0 USE_LIVE_MODELS=0 bun src/server/main.ts
+ *   PORT=8788 SCHEDULER_MS=0 bun src/server/main.ts
  *   SERVER_URL=http://127.0.0.1:8788 npm run presence:check
  *
  * Brings its own security crew (the seeded cast has nobody on security) and removes everything it creates.
@@ -38,7 +38,7 @@ const section = (name: string) => console.log(`\n# ${name}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 if (!(await fetch(`${serverUrl}/health`).then((r) => r.ok).catch(() => false))) {
-  throw new Error(`No server at ${serverUrl}. Start one: PORT=8788 SCHEDULER_MS=0 USE_LIVE_MODELS=0 bun src/server/main.ts`);
+  throw new Error(`No server at ${serverUrl}. Start one: PORT=8788 SCHEDULER_MS=0 bun src/server/main.ts`);
 }
 
 // ── pure rules ──

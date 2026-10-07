@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Task } from '@/lib/schema';
 import { fakeHttp, type FakeReply } from './fake-http';
-import { KeywordInterpreter, SparkInterpreter } from './interpreter';
+import { SparkInterpreter } from './interpreter';
 
 const NOW = 1_800_000_000_000;
 
@@ -110,12 +110,6 @@ describe('Interpreter.match: is a new report about a task already open?', () => 
 
       expect(value).toBeNull();
       expect(run.error).toBeTruthy();
-    });
-
-    it('always, from keywords alone', async () => {
-      const { value } = await new KeywordInterpreter().match();
-
-      expect(value).toBeNull();
     });
   });
 });

@@ -1,5 +1,5 @@
 import { Camera, GeoJSONSource, Images, Layer, Map, Marker, type CameraRef, type LayerProps } from '@maplibre/maplibre-react-native';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { VoiceGradient } from '@/constants/theme';
@@ -29,9 +29,14 @@ export function VenueMap(props: VenueMapProps) {
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const box = size ? frameBox(props, size) : null;
   const overlays = useOverlays(props, box && size ? box.w / size.width : 1);
-  // Jump into place on first show, glide after that.
-  const [placed, setPlaced] = useState(false);
   const { camera, onUserMove, canRecenter, recenter } = useFollow(props, size);
+  // Jump into place on first show, glide after that. The first spot goes in as the initial view: the native camera
+  // re-applies its stop whenever any part of it changes, duration included, so flipping the duration once the map
+  // had loaded yanked it back while the person was already dragging.
+  const [initial, setInitial] = useState(camera);
+  if (camera && !initial) setInitial(camera);
+  // The library stringifies an object style on every render, and the site art makes it ~330 KB; do it once.
+  const styleJSON = useMemo(() => (mapStyle ? JSON.stringify(mapStyle) : null), [mapStyle]);
   const cameraRef = useRef<CameraRef>(null);
   // Where the map can go depends on how far in it is; settles after each move, which is close enough to hold the edge.
   const [zoom, setZoom] = useState<number | null>(null);
@@ -46,10 +51,10 @@ export function VenueMap(props: VenueMapProps) {
         const { width, height } = e.nativeEvent.layout;
         if (width > 0 && height > 0) setSize({ width, height });
       }}>
-      {mapStyle && size && camera && (
+      {styleJSON && size && camera && initial && (
         <Map
           style={StyleSheet.absoluteFill}
-          mapStyle={mapStyle}
+          mapStyle={styleJSON}
           logo={false}
           compass={false}
           attribution={interactive}
@@ -59,15 +64,15 @@ export function VenueMap(props: VenueMapProps) {
           doubleTapZoom={interactive}
           touchRotate={false}
           touchPitch={false}
-          onDidFinishLoadingMap={() => setPlaced(true)}
           onRegionWillChange={(e) => e.nativeEvent.userInteraction && onUserMove()}
           onRegionDidChange={(e) => setZoom(Math.round(e.nativeEvent.zoom * 8) / 8)}>
           <Camera
             ref={cameraRef}
             {...camera}
+            initialViewState={initial}
             minZoom={minZoomFor(size, frame, camera)}
             maxBounds={shownZoom != null ? panBounds(panLimit(shownZoom, size, frame, camera)) : undefined}
-            duration={placed ? 500 : 0}
+            duration={500}
             easing="ease"
           />
           <Images images={STYLE_ICONS} />

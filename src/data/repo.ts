@@ -83,8 +83,13 @@ export interface Repo {
 
   /** Ask or report. Resolves with the new request id straight away; the pipeline runs after. `clips`: what it was said in. */
   guestAsk(text: string, zoneSlug: string | null, locationHint?: string | null, clips?: string[]): Promise<string>;
-  /** "Problem solved?" No: what's still wrong. The AI reads the conversation again: another answer, or someone goes. */
-  guestFollowUp(requestId: string, text: string): Promise<void>;
+  /**
+   * "Problem solved?" No (no `text`), or what they add before anyone's sent. The AI reads the conversation again:
+   * another answer, or someone goes.
+   */
+  guestFollowUp(requestId: string, text?: string): Promise<void>;
+  /** "Problem solved?" Yes: closes the request. */
+  guestSolved(requestId: string): Promise<void>;
   /** "What's changed?" The AI decides: a note for the volunteer, or a priority bump that alerts the lead. */
   guestAddDetail(requestId: string, text: string): Promise<{ escalated: boolean }>;
   guestCancel(requestId: string): Promise<void>;

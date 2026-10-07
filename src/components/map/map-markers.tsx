@@ -1,6 +1,5 @@
-import { useEffect, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { NODES, VENUE_ZONES, type Point } from '@/data/venue';
@@ -60,17 +59,11 @@ function Pin({ color, size = 1 }: { color: string; size?: number }) {
   );
 }
 
-/** Me: a blue dot with a slow pulse. */
+/** Me: the standard location puck. A blue dot in a white ring, on a faint blue halo. */
 function Me({ color }: { color: string }) {
-  const pulse = useSharedValue(0);
-  useEffect(() => {
-    pulse.set(withRepeat(withTiming(1, { duration: 1800, easing: Easing.out(Easing.quad) }), -1, false));
-    return () => cancelAnimation(pulse);
-  }, [pulse]);
-  const ring = useAnimatedStyle(() => ({ opacity: 0.45 * (1 - pulse.get()), transform: [{ scale: 0.4 + pulse.get() * 1.1 }] }));
   return (
     <View style={styles.meBox}>
-      <Animated.View style={[styles.mePulse, { backgroundColor: color }, ring]} />
+      <View style={[styles.meHalo, { backgroundColor: `${color}26`, borderColor: `${color}4D` }]} />
       <View style={styles.meOuter}>
         <View style={[styles.meInner, { backgroundColor: color }]} />
       </View>
@@ -78,14 +71,14 @@ function Me({ color }: { color: string }) {
   );
 }
 
-const ME = 44;
+const ME = 32;
 const styles = StyleSheet.create({
   ringBox: { width: DOT + 8, height: DOT + 8, borderRadius: (DOT + 8) / 2, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   dot: { width: DOT, height: DOT, borderRadius: DOT / 2, borderWidth: 1.5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   initials: { color: '#fff', fontSize: 9, fontWeight: '700' },
   stale: { opacity: 0.45 },
   meBox: { width: ME, height: ME, alignItems: 'center', justifyContent: 'center' },
-  mePulse: { position: 'absolute', width: ME, height: ME, borderRadius: ME / 2 },
-  meOuter: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' },
-  meInner: { width: 12, height: 12, borderRadius: 6 },
+  meHalo: { position: 'absolute', width: ME, height: ME, borderRadius: ME / 2, borderWidth: StyleSheet.hairlineWidth },
+  meOuter: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.3)' },
+  meInner: { width: 13, height: 13, borderRadius: 6.5 },
 });

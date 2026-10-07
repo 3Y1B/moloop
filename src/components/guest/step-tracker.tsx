@@ -30,6 +30,8 @@ function progress(stage: GuestRequestStage, reached: number): { done: number; ac
     case 'with_you':
       return { done: 2, active: 2 };
     case 'answered':
+      // Sorted only once they say the answer solved it.
+      return { done: 2, active: null };
     case 'sorted':
       return { done: 3, active: null };
     case 'cancelled':

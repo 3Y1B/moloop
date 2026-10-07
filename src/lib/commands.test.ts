@@ -246,3 +246,54 @@ describe('"Problem solved?" No on an AI answer', () => {
     expect(b.requests.asked.stage).toBe('finding');
   });
 });
+
+describe('"Problem solved?" on an AI answer', () => {
+  const answer = { kind: 'answer' as const, answer: 'Toilets are behind the Oval stage.', language: 'en' };
+  const answered = () => {
+    const b = festival([], [{ ...asked, heard: 'where are the toilets', thread: [{ from: 'guest', text: 'where are the toilets', at: NOW }] }]);
+    C.understand(b, 'asked', answer);
+    return b;
+  };
+
+  it('No on its own goes back to the AI, saying so in the conversation', () => {
+    const b = answered();
+
+    C.guestFollowUp(b, 'asked');
+
+    expect(b.requests.asked).toMatchObject({ stage: 'understanding', aiAnswer: null, taskId: null, heard: 'where are the toilets' });
+    expect(b.requests.asked.thread.map((e) => [e.from, e.text])).toEqual([
+      ['guest', 'where are the toilets'], ['ai', answer.answer], ['guest', C.NOT_SOLVED],
+    ]);
+  });
+
+  it('what they add while the AI is still reading joins the conversation', () => {
+    const b = answered();
+    C.guestFollowUp(b, 'asked');
+
+    C.guestFollowUp(b, 'asked', 'the queue is huge');
+
+    expect(b.requests.asked).toMatchObject({ stage: 'understanding', heard: 'where are the toilets. the queue is huge' });
+    expect(b.requests.asked.thread.map((e) => e.text).slice(-2)).toEqual([C.NOT_SOLVED, 'the queue is huge']);
+  });
+
+  it('Yes closes it for good', () => {
+    const b = answered();
+
+    C.guestSolved(b, 'asked');
+    C.guestFollowUp(b, 'asked');
+
+    expect(b.requests.asked.stage).toBe('sorted');
+    expect(b.requests.asked.thread).toHaveLength(2);
+  });
+
+  it('still needing help after Yes goes back to the AI', () => {
+    const b = answered();
+    C.guestSolved(b, 'asked');
+
+    C.guestReopen(b, 'asked');
+
+    expect(b.requests.asked).toMatchObject({ stage: 'understanding', aiAnswer: null, reopenedAt: NOW });
+    C.understand(b, 'asked', answer);
+    expect(b.requests.asked.stage).toBe('finding');
+  });
+});

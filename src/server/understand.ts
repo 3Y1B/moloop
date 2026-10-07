@@ -15,22 +15,31 @@ export async function understandRequest(requestId: string) {
   if (inFlight.has(requestId)) return;
   inFlight.add(requestId);
   try {
-    const r = await read({ requestIds: [requestId] }, ({ world }) => world.requests[requestId]);
-    if (!r || r.stage !== 'understanding') return;
-    const { value, run } = await interpreter.understand({ text: conversation(r), zoneSlug: r.zoneSlug, locationHint: r.locationHint, from: { kind: 'festivalgoer' } });
-    // A report (not a question) may be about something already open nearby.
-    const matched = value.kind === 'task'
-      ? await read({}, ({ world }) => Object.values(world.tasks)).then((tasks) => matchOpen(tasks, {
-        text: r.heard, zoneSlug: r.zoneSlug ?? value.zoneSlug, locationHint: r.locationHint ?? value.locationHint,
-      }))
-      : undefined;
-    const taskId = matched?.value?.taskId;
-    await transact({ requestIds: [requestId], taskIds: taskId ? [taskId] : [] }, (b) => C.understand(b, requestId, value, matched?.value), {
-      run: taskId ? { ...matched!.run, requestId, taskId } : { ...run, requestId },
-    });
+    // Again while they added to it during the model call: the model reads the whole conversation each time.
+    while (await understandOnce(requestId) === 'changed');
   } finally {
     inFlight.delete(requestId);
   }
+}
+
+async function understandOnce(requestId: string): Promise<'done' | 'changed'> {
+  const r = await read({ requestIds: [requestId] }, ({ world }) => world.requests[requestId]);
+  if (!r || r.stage !== 'understanding') return 'done';
+  const { value, run } = await interpreter.understand({ text: conversation(r), zoneSlug: r.zoneSlug, locationHint: r.locationHint, from: { kind: 'festivalgoer' } });
+  // A report (not a question) may be about something already open nearby.
+  const matched = value.kind === 'task'
+    ? await read({}, ({ world }) => Object.values(world.tasks)).then((tasks) => matchOpen(tasks, {
+      text: r.heard, zoneSlug: r.zoneSlug ?? value.zoneSlug, locationHint: r.locationHint ?? value.locationHint,
+    }))
+    : undefined;
+  const taskId = matched?.value?.taskId;
+  return transact({ requestIds: [requestId], taskIds: taskId ? [taskId] : [] }, (b) => {
+    if (b.requests[requestId]?.thread.length !== r.thread.length) return 'changed' as const;
+    C.understand(b, requestId, value, matched?.value);
+    return 'done' as const;
+  }, {
+    run: taskId ? { ...matched!.run, requestId, taskId } : { ...run, requestId },
+  });
 }
 
 /** The first ask is just what they said; after "not solved", the model sees what it already told them. */

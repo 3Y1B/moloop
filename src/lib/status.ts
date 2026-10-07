@@ -151,7 +151,9 @@ export type GuestStatus = Status & {
 export function guestStage(request: GuestRequest, task: Task | undefined, { volunteers, positions, guestId }: StatusLookups, now: number): GuestStatus {
   if (request.stage === 'cancelled') return { stage: 'cancelled', label: 'Cancelled', tone: 'neutral' };
   if (!task) {
-    if (request.stage === 'answered') return { stage: 'answered', label: 'Answered', tone: 'success' };
+    // Answered isn't done: it's sorted once they say the answer solved it.
+    if (request.stage === 'answered') return { stage: 'answered', label: 'Answered', tone: 'tint' };
+    if (request.stage === 'sorted') return { stage: 'sorted', label: 'Sorted', tone: 'success' };
     if (request.stage === 'understanding') return { stage: 'understanding', label: 'Understanding', tone: 'neutral' };
     return { stage: 'finding', label: 'Finding someone', tone: 'tint' };
   }

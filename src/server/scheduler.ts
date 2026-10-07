@@ -1,5 +1,4 @@
 import { schedulerStep } from '@/lib/commands';
-import { live } from './models/interpreter';
 import { sweepUnderstanding } from './understand';
 import { transact } from './world';
 
@@ -18,7 +17,7 @@ export function startScheduler(everyMs: number) {
     // Spark is down, so the sweep runs beside the passes and never holds up a nudge.
     if (!sweeping) {
       sweeping = true;
-      sweepUnderstanding(live ? 30_000 : 5_000)
+      sweepUnderstanding(30_000)
         .catch((e) => console.error('understanding sweep failed', e))
         .finally(() => (sweeping = false));
     }

@@ -67,8 +67,8 @@ const LIMITS = { transcribe: { primaryMs: 8_000, lastMs: 15_000 }, speak: { prim
 
 export const speechAvailable = () => local() || onSpark() || hasOpenAi();
 
-/** Spoken briefs cost a speech call per message, so they come on with the rest of the live models. */
-export const briefsEnabled = () => speechAvailable() && process.env.USE_LIVE_MODELS === '1';
+/** Spoken briefs: a speech call per message, whenever there's a speech model. */
+export const briefsEnabled = () => speechAvailable();
 
 /** The models answering first, for the logs. */
 export const speechModels = () => {

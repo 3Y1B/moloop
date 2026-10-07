@@ -328,6 +328,8 @@ try {
   await leadRepo.broadcast('everyone');
   await leadRepo.sendDirect(priya, 'hi');
   await guestRepo.guestFollowUp(request.id, 'still lost');
+  await guestRepo.guestFollowUp(request.id);
+  await guestRepo.guestSolved(request.id);
   await guestRepo.guestCancel(request.id);
   await guestRepo.guestReopen(request.id);
   await priyaRepo.guestReply(T.tom, 'on my way');
@@ -351,6 +353,8 @@ try {
     ['broadcast', jToken, { body: 'everyone' }],
     ['sendDirect', jToken, { volunteerId: priya, body: 'hi' }],
     ['guestFollowUp', gToken, { requestId: request.id, text: 'still lost' }],
+    ['guestFollowUp', gToken, { requestId: request.id }],
+    ['guestSolved', gToken, { requestId: request.id }],
     ['guestCancel', gToken, { requestId: request.id }],
     ['guestReopen', gToken, { requestId: request.id }],
     ['guestReply', pToken, { taskId: T.tom, text: 'on my way' }],

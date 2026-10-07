@@ -9,6 +9,9 @@ const RepoContext = createContext<Repo | null>(null);
 
 let repo: Repo | undefined;
 
+/** The last module run's repo. Fast Refresh re-runs this module but keeps the Supabase client, so it's closed here. */
+const hot = globalThis as { __moloopRepo?: { repo: SupabaseRepo; appState?: { remove(): void } } };
+
 /**
  * The shared world: sign-in, realtime, server commands. One per app, created on first use. Not per
  * component: React runs a state initializer twice in development and drops one result, and a repo that
@@ -16,9 +19,15 @@ let repo: Repo | undefined;
  */
 function getRepo(): Repo {
   if (repo) return repo;
+  if (hot.__moloopRepo) {
+    hot.__moloopRepo.appState?.remove();
+    void hot.__moloopRepo.repo.dispose();
+  }
   const created = new SupabaseRepo(getSupabase());
   // Back from the background: realtime may have dropped changes while the phone slept.
-  if (Platform.OS !== 'web') AppState.addEventListener('change', (state) => state === 'active' && created.resync());
+  const appState =
+    Platform.OS !== 'web' ? AppState.addEventListener('change', (state) => state === 'active' && created.resync()) : undefined;
+  hot.__moloopRepo = { repo: created, appState };
   repo = created;
   return created;
 }

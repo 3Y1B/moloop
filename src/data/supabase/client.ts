@@ -43,14 +43,20 @@ export function getSupabase(): SupabaseClient<Database> {
 
 // ── sign-in ──
 
-/** Crew: a 6-digit code by email. Crew accounts are pre-created (`npm run db:seed`), so no sign-ups here. */
-export async function sendCode(email: string) {
-  const { error } = await getSupabase().auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
-  if (error) throw error;
-}
-
-export async function verifyCode(email: string, code: string) {
-  const { error } = await getSupabase().auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' });
+/**
+ * Crew: email only. The server checks the email is crew and hands back a session (src/server/http/sign-in.ts);
+ * crew accounts are pre-created (`npm run db:seed`), so no sign-ups here.
+ */
+export async function signInWithEmail(email: string) {
+  const server = (process.env.EXPO_PUBLIC_SERVER_URL ?? 'http://127.0.0.1:8787').replace(/\/+$/, '');
+  const res = await fetch(`${server}/auth/sign-in`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: email.trim() }),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(res.status === 404 ? 'not found' : (body?.error ?? `sign-in failed (${res.status})`));
+  const { error } = await getSupabase().auth.setSession({ access_token: body.access_token, refresh_token: body.refresh_token });
   if (error) throw error;
 }
 

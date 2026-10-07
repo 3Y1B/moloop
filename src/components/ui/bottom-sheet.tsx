@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -18,10 +18,12 @@ export const SHEET_RADIUS = 22;
  * from the top of the content drags the sheet back down. `bottomInset` keeps content clear of
  * whatever is pinned over the sheet's bottom edge (the voice dock).
  */
-export function BottomSheet({ detents, stop = 1, header, bottomInset = 0, children }: {
+export function BottomSheet({ detents, stop = 1, raise, header, bottomInset = 0, children }: {
   detents: number[];
   /** Where the sheet rests. Changing it moves the sheet there (a new task arriving raises it). */
   stop?: number;
+  /** Changing it opens the sheet all the way and scrolls to the end (a reply came in). */
+  raise?: string | number;
   /** Stays put above the scrolling content. */
   header?: ReactNode;
   bottomInset?: number;
@@ -61,6 +63,18 @@ export function BottomSheet({ detents, stop = 1, header, bottomInset = 0, childr
     y.set(withSpring(offsets[Math.min(stop, top)], SPRING));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stop]);
+
+  // Not on mount: only when it changes. Waits for the new content to lay out and the sheet to settle before scrolling.
+  const raisedFor = useRef(raise);
+  useEffect(() => {
+    if (raise === raisedFor.current) return;
+    raisedFor.current = raise;
+    y.set(withSpring(0, SPRING));
+    setAt(top);
+    const t = setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raise]);
 
   const { native, pan } = useMemo(() => {
     const native = Gesture.Native();

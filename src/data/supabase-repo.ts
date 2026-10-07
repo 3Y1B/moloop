@@ -52,8 +52,6 @@ const must = <T>(res: { data: T | null; error: { message: string } | null }, wha
   return res.data ?? ([] as unknown as T);
 };
 
-/** Repos made so far in this process: each one's realtime channels carry its number. */
-let repoCount = 0;
 
 type Change<T extends keyof Database['public']['Tables']> = RealtimePostgresChangesPayload<Row<T>>;
 
@@ -71,7 +69,11 @@ export class SupabaseRepo implements Repo {
   /** task id → report id, so a realtime row (no embed) keeps its reporter unless the report changed. */
   private reportOf = new Map<string, string>();
 
-  private readonly id = ++repoCount;
+  /** Carried by every channel topic. Random, not a module counter: Fast Refresh re-runs this module and a counter
+   * would start again at 1 while the old repo's channels are still open on the shared client. */
+  private readonly id = Math.random().toString(36).slice(2, 10);
+  /** Channels opened so far. A reconnect gets a fresh topic: offline, removeChannel can't close the old one. */
+  private joins = 0;
   private userId: string | null | undefined = undefined;
   private anonymous = false;
   /** Bumped on every session change: async work for an older session drops its result. */
@@ -225,8 +227,12 @@ export class SupabaseRepo implements Repo {
     return requestId;
   }
 
-  async guestFollowUp(requestId: string, text: string) {
+  async guestFollowUp(requestId: string, text?: string) {
     await this.post('guestFollowUp', { requestId, text });
+  }
+
+  async guestSolved(requestId: string) {
+    await this.post('guestSolved', { requestId });
   }
 
   guestAddDetail(requestId: string, text: string) {
@@ -318,8 +324,8 @@ export class SupabaseRepo implements Repo {
     // Every table the phone reads that's in the supabase_realtime publication, minus shift_assignments (not in
     // the snapshot). `messages` arrive through the caller's own deliveries.
     // supabase-js hands back the existing channel for a topic that's already open on the client, so the topic
-    // is unique per repo as well as per session: two repos on one client must never share a channel.
-    let channel = this.db.channel(`repo:${this.id}:${uid}:${gen}`, { config: { postgres_changes_options: { wait: true } } });
+    // is unique per repo and per join: no two channels, old or new, may ever share one.
+    let channel = this.db.channel(`repo:${this.id}:${uid}:${++this.joins}`, { config: { postgres_changes_options: { wait: true } } });
     for (const add of [
       pg('tasks', (p) => this.onTask(p)),
       pg('task_assignments', (p) => this.onAssignment(p)),

@@ -9,9 +9,9 @@ import { OpenAiDecisions } from './openai-decisions';
 import { hasOpenAi, onSpark, openai, spark, sparkLimiter } from './providers';
 
 /**
- * The two seams the interpreter decides with, on OpenAI or the Spark (providers.ts):
+ * The seams the interpreter decides with (providers.ts):
  *
- *  - `generate`: chat completions with JSON-schema output, validated with zod, one repair round.
+ *  - `generate`: chat completions with JSON-schema output, validated with zod, one repair round. OpenAI only.
  *  - `decide`: typed questions answered with probabilities. Narrow questions, one thing each.
  *  - `callTool`: one step of a tool-using agent. OpenAI only: the Spark's tool calling is undocumented.
  *
@@ -24,9 +24,8 @@ export type CallOptions = { urgent?: boolean; signal?: AbortSignal };
 // How long the Spark gets before OpenAI takes over, and how long the last resort gets.
 const LIMITS = { chat: { primaryMs: 5_000, lastMs: 15_000 }, decide: { primaryMs: 4_000, lastMs: 10_000 }, tool: { primaryMs: 15_000, lastMs: 15_000 } };
 
-let clients: { sparkChat: LunaLlm; openaiChat: LunaLlm; jev: Jev; decisions: OpenAiDecisions } | undefined;
+let clients: { openaiChat: LunaLlm; jev: Jev; decisions: OpenAiDecisions } | undefined;
 const models = () => (clients ??= {
-  sparkChat: new LunaLlm({ ...spark(), model: process.env.LLM_MODEL ?? 'qwen3.5:4b' }),
   openaiChat: new LunaLlm({ ...openai(), model: 'gpt-6-luna' }),
   jev: new Jev(spark()),
   decisions: new OpenAiDecisions(openai()),
@@ -38,7 +37,7 @@ const queued = <R>(id: string, urgent: boolean | undefined, call: (signal: Abort
 const cloud = <R>(id: string, call: (signal: AbortSignal) => Promise<R>): Attempt<R> | null => (hasOpenAi() ? { id, call } : null);
 
 /** The models answering first, for triage_runs. */
-export const chatModelId = () => (onSpark() ? models().sparkChat : models().openaiChat).id;
+export const chatModelId = () => models().openaiChat.id;
 export const decideModelId = () => (onSpark() ? models().jev : models().decisions).id;
 
 /** Structured output validated against `schema`. */
@@ -47,11 +46,7 @@ export function generate<T extends z.ZodType>(
   o: CallOptions = {},
 ): Promise<z.infer<T>> {
   const m = models();
-  return withFallback(
-    queued(m.sparkChat.id, o.urgent, (signal) => m.sparkChat.generate({ ...args, signal })),
-    cloud(m.openaiChat.id, (signal) => m.openaiChat.generate({ ...args, signal })),
-    { ...LIMITS.chat, signal: o.signal },
-  );
+  return withFallback(null, cloud(m.openaiChat.id, (signal) => m.openaiChat.generate({ ...args, signal })), { ...LIMITS.chat, signal: o.signal });
 }
 
 /** The model calls one of `tools` (arguments validated), or replies in plain text. */

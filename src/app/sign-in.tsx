@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { Redirect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,7 +17,6 @@ import Animated, {
   Easing,
   FadeIn,
   FadeInDown,
-  LinearTransition,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
@@ -31,26 +30,24 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Brand, Fonts, Radius, Type } from '@/constants/theme';
 import { useSnapshot } from '@/data/hooks';
-import { sendCode, signInAsGuest, verifyCode } from '@/data/supabase/client';
+import { signInAsGuest, signInWithEmail } from '@/data/supabase/client';
 import { useTheme } from '@/hooks/use-theme';
 
-type Step = 'choose' | 'email' | 'code';
+type Step = 'choose' | 'email';
 
-const CODE_LENGTH = 6;
 /** One calm curve for the whole hero: no overshoot, no stretch. */
 const EASE = { duration: 420, easing: Easing.bezier(0.25, 0.1, 0.25, 1) };
 
-/** Supabase auth errors → one short line. */
+/** Sign-in errors → one short line. */
 function problem(e: unknown): string {
   const message = e instanceof Error ? e.message.toLowerCase() : '';
-  if (message.includes('signup') || message.includes('not found')) return 'No crew account for that email';
-  if (message.includes('expired') || message.includes('invalid')) return 'Wrong or expired code';
+  if (message.includes('not found')) return 'No crew account for that email';
   if (message.includes('rate') || message.includes('security purposes')) return 'Too many tries. Wait a minute';
   return 'Couldn’t sign in';
 }
 
 /**
- * Sign in on the live backend: crew by email code, festival-goers anonymously.
+ * Sign in on the live backend: crew by email, festival-goers anonymously.
  * Once the session is in and the world has loaded, the role layouts take over.
  */
 export default function SignInScreen() {
@@ -60,7 +57,6 @@ export default function SignInScreen() {
   const s = useSnapshot();
   const [step, setStep] = useState<Step>('choose');
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
   const [busy, setBusy] = useState<'guest' | 'crew' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,12 +81,11 @@ export default function SignInScreen() {
     );
   }
 
-  const run = async (who: 'guest' | 'crew', fn: () => Promise<void>, next?: Step) => {
+  const run = async (who: 'guest' | 'crew', fn: () => Promise<void>) => {
     setBusy(who);
     setError(null);
     try {
       await fn();
-      if (next) setStep(next);
     } catch (e) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setError(problem(e));
@@ -101,14 +96,11 @@ export default function SignInScreen() {
 
   const back = () => {
     setError(null);
-    setCode('');
-    setStep(step === 'code' ? 'email' : 'choose');
+    setStep('choose');
   };
 
   const validEmail = /^\S+@\S+\.\S+$/.test(email.trim());
-  const validCode = new RegExp(`^\\d{${CODE_LENGTH}}$`).test(code.trim());
-  const send = () => validEmail && !busy && run('crew', () => sendCode(email), 'code');
-  const verify = () => validCode && !busy && run('crew', () => verifyCode(email, code));
+  const submit = () => validEmail && !busy && run('crew', () => signInWithEmail(email));
 
   return (
     <KeyboardAvoidingView
@@ -179,26 +171,12 @@ export default function SignInScreen() {
                 autoCorrect={false}
                 keyboardType="email-address"
                 textContentType="emailAddress"
-                returnKeyType="send"
-                onSubmitEditing={send}
+                returnKeyType="go"
+                onSubmitEditing={submit}
                 style={[styles.fieldInput, { color: theme.text }]}
               />
             </View>
-            <Button label={busy ? 'Sending…' : 'Send code'} size="large" color={Brand.blue} disabled={!validEmail || !!busy} onPress={send} />
-          </Animated.View>
-        )}
-
-        {step === 'code' && (
-          <Animated.View key="code" entering={FadeInDown.duration(320)} style={styles.stack}>
-            <View style={styles.headingBlock}>
-              <Text style={[styles.heading, { color: theme.text }]}>Enter code</Text>
-              <Text style={[styles.sub, { color: theme.textSecondary }]} numberOfLines={1}>
-                {email.trim()}
-              </Text>
-            </View>
-            <CodeCells value={code} onChange={(t) => setCode(t.replace(/\D/g, '').slice(0, CODE_LENGTH))} onDone={verify} />
-            <Button label={busy ? 'Signing in…' : 'Sign in'} size="large" color={Brand.blue} disabled={!validCode || !!busy} onPress={verify} />
-            <Button label="Resend code" variant="plain" size="small" color={Brand.blue} disabled={!!busy} onPress={() => run('crew', () => sendCode(email))} />
+            <Button label={busy ? 'Signing in…' : 'Sign in'} size="large" color={Brand.blue} disabled={!validEmail || !!busy} onPress={submit} />
           </Animated.View>
         )}
 
@@ -263,52 +241,6 @@ function Choice({ sf, md, title, onPress, busy, disabled }: {
   );
 }
 
-/** Six boxes over one invisible input, so paste and SMS/email autofill still work. */
-function CodeCells({ value, onChange, onDone }: { value: string; onChange: (t: string) => void; onDone: () => void }) {
-  const theme = useTheme();
-  const input = useRef<TextInput>(null);
-  const [focused, setFocused] = useState(true);
-
-  return (
-    <Pressable onPress={() => input.current?.focus()} style={styles.cells} accessibilityLabel="Code">
-      {Array.from({ length: CODE_LENGTH }, (_, i) => {
-        const digit = value[i];
-        const active = focused && i === Math.min(value.length, CODE_LENGTH - 1);
-        return (
-          <Animated.View
-            key={i}
-            layout={LinearTransition.duration(150)}
-            style={[
-              styles.cell,
-              {
-                backgroundColor: theme.backgroundElement,
-                borderColor: active ? Brand.blue : digit ? theme.border : 'transparent',
-              },
-            ]}>
-            <Text style={[styles.cellText, { color: theme.text }]}>{digit ?? ''}</Text>
-          </Animated.View>
-        );
-      })}
-      <TextInput
-        ref={input}
-        autoFocus
-        value={value}
-        onChangeText={onChange}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        keyboardType="number-pad"
-        autoComplete="one-time-code"
-        textContentType="oneTimeCode"
-        returnKeyType="done"
-        maxLength={CODE_LENGTH}
-        onSubmitEditing={onDone}
-        caretHidden
-        style={styles.hiddenInput}
-      />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
@@ -345,9 +277,7 @@ const styles = StyleSheet.create({
 
   body: { flex: 1, width: '100%', maxWidth: 440, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 28, gap: 14 },
   stack: { gap: 12 },
-  headingBlock: { gap: 4, marginBottom: 4 },
   heading: { fontSize: 24, fontWeight: '700', letterSpacing: -0.4 },
-  sub: { fontSize: Type.callout },
 
   choice: {
     height: 68,
@@ -374,19 +304,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   fieldInput: { flex: 1, height: '100%', fontSize: Type.body + 2, outlineWidth: 0, outlineColor: 'transparent' },
-
-  cells: { flexDirection: 'row', gap: 8 },
-  cell: {
-    flex: 1,
-    height: 58,
-    borderRadius: Radius.control,
-    borderCurve: 'continuous',
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cellText: { fontSize: 24, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  hiddenInput: { ...StyleSheet.absoluteFill, opacity: 0.011, color: 'transparent', outlineWidth: 0, outlineColor: 'transparent' },
 
   error: { fontSize: Type.callout, minHeight: 20, textAlign: 'center' },
 });

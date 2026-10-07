@@ -8,7 +8,6 @@
  * questions are answered in the asker's language, a reply to your task is not filed as a new report, and the intake
  * agent escalates what a volunteer mustn't act on alone (to Mo for whole-event calls) and nothing routine.
  */
-process.env.USE_LIVE_MODELS = '1';
 
 const { SparkInterpreter } = await import('../src/server/models/interpreter');
 const { chatModelId, toolModelId } = await import('../src/server/models');

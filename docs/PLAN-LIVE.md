@@ -11,7 +11,7 @@ Everything below is the gap between today and that video. The site plan is alrea
 | State | `MockRepo`: each phone keeps its own in-memory world and runs its own scheduler | One shared world in Supabase, pushed to every phone over realtime |
 | Lifecycle | Pure functions in `src/lib/lifecycle.ts`, driven by `MockRepo` | The same functions, driven by one server |
 | Pipeline | `src/server/pipeline`: route → triage → assign, each report handled once | The same pipeline plus re-triage of follow-ups, writing to Supabase |
-| Models | Keyword stand-ins by default; with `USE_LIVE_MODELS=1`, OpenAI (GPT-6 Luna for typed decisions and chat) decides everything the server decides, or the Spark first with `MODEL_PROVIDER=spark` | Add Spark `qwen3-asr` for speech-to-text and `qwen3-tts` for text-to-speech (phase 4) |
+| Models | OpenAI (GPT-6 Luna for typed decisions and chat) decides everything the server decides, or the Spark first for decisions and speech with `MODEL_PROVIDER=spark`. Keywords only stand in when a call fails | Add Spark `qwen3-asr` for speech-to-text and `qwen3-tts` for text-to-speech (phase 4) |
 | Voice | Hold the pill → `expo-audio` → `/api/transcribe` → Qwen3-ASR → "Heard: …"; spoken briefs through Qwen3-TTS (phase 4) | Spark reachable on the day |
 | Location | GPS → `presence` → maps, routes, assignment distance and the festival-goer's countdown (phase 5) | A dev build on every phone |
 | Alerts | In-app messages only | Push notification when the phone is locked; spoken brief when the app is open |
@@ -68,7 +68,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
   - Proposals map to `task_assignments(status = proposed)` plus `agent_actions`, as `store.ts` already assumes. Add `auto_assign_at`.
 - Seed the festival zones with real `lat`/`lng` from `toLngLat`, the teams and skills, and the field-test people with their real names and roles.
 - **Auth:**
-  - Crew: email OTP, with accounts pre-created by the seed.
+  - Crew: email only, no code; the server checks the email is seeded crew and hands back a session (`POST /auth/sign-in`).
   - Festival-goers: anonymous sign-in.
   - Tighten RLS so it matches what each screen reads.
 
@@ -87,7 +87,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - **Server, scheduler:** every 5 s, run `tick()` over active tasks and `proposalDue()` over pending proposals, and write any changes.
 - `createRepo()` in `src/data/provider.tsx` always builds `SupabaseRepo`. The in-memory mock and its dev panel are gone (2026-10-07).
 
-**Status, client side:** done locally. `src/data/supabase-repo.ts` with the row mappers in `src/data/supabase/rows.ts`, sign-in at `src/app/sign-in.tsx` (crew by email code, festival-goers anonymous), and `npm run repo:check` (real sessions, realtime timings, the command contract against a stub server). The `/api/*` command routes are the server's half.
+**Status, client side:** done locally. `src/data/supabase-repo.ts` with the row mappers in `src/data/supabase/rows.ts`, sign-in at `src/app/sign-in.tsx` (crew by email, festival-goers anonymous), and `npm run repo:check` (real sessions, realtime timings, the command contract against a stub server). The `/api/*` command routes are the server's half.
 
 **Done when:** two phones signed in as a volunteer and a lead see the same task change state within a second, and a silent task nudges once, not once per phone.
 
@@ -125,9 +125,9 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 
 **Done when:** typed reports go through the live models end to end, and `triage_runs` shows the model ids and latencies.
 
-**Status:** done locally, on typed text. `USE_LIVE_MODELS=1` turns it on; keys are in the server's env only (`.env.example`).
+**Status:** done locally, on typed text. Always on; keys are in the server's env only (`.env.example`).
 
-- **Two models, one seam.** `src/server/models/interpreter.ts` is the only thing the server asks. `SparkInterpreter` and `KeywordInterpreter` both implement it, so the server runs with no keys and the same commands run either way.
+- **One seam.** `src/server/models/interpreter.ts` is the only thing the server asks. `SparkInterpreter` implements it; when a model call fails it falls back to the keyword heuristics, so a person still gets the report.
   - **Typed decisions** (OpenAI `/v1/decisions` on `gpt-6-luna`, or Spark `/v1/systemone` with `MODEL_PROVIDER=spark`): team, priority, "is this only a routine question", "did the detail make it worse", and "is this utterance a reply to my task". About 0.2 s each on the Spark.
   - **Chat** (JSON-schema output, validated with zod, one repair retry): the English title and summary, category, zone, language, and the answer to a routine question in the asker's language, from the venue facts only. GPT-6 Luna on OpenAI (`gpt-6-luna`, reasoning off), or `qwen3.5:4b` on the Spark with `MODEL_PROVIDER=spark`. About 1 to 1.5 s.
   - **Fallback.** With `MODEL_PROVIDER=spark`, a Spark call that fails or runs late (5 s chat, 4 s decisions, 8 s ASR, 12 s TTS) is cancelled and OpenAI answers instead (`src/server/models/fallback.ts`). If both fail, the request goes to a person.
@@ -142,7 +142,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 - **Logged.** Every decision that makes or changes a task or a request writes a `triage_runs` row (model ids, team and priority with confidences, the rewrite, latency, error) on the task's report, or on the request when the AI answered. Migration `…_triage_runs_for_requests.sql`. `interpret` comes before any report exists, so it logs to the server console only.
 - **Rate limits.** Spark allows 4 calls at once and 100 a minute per key. One queue in front of it (`SPARK_CONCURRENCY`, `SPARK_RPM`) lets a volunteer's utterance or report jump ahead of a festival-goer's request. A call that gives up while waiting leaves the queue without using a slot. A typed report costs two calls, so about 47 a minute is the ceiling on Spark. OpenAI has no such cap that we reach.
 - **Stuck requests.** The scheduler picks up any request left at "Understanding" (a restart, a dead call). The sweep runs beside the scheduler passes, so a slow or dead model never holds up a nudge.
-- **Checks.** `npm run models:check` runs 18 real utterances against the live models and prints latencies. `npm run commands:check` passes against both the keyword server and a `USE_LIVE_MODELS=1` server.
+- **Checks.** `npm run models:check` runs 18 real utterances against the live models and prints latencies. `npm run commands:check` passes against the server.
 - **Not done:**
   - The latency budget over 4G on the oval. It needs phones and the Spark box, and the speech leg (phase 4) comes before "Heard".
   - Localising what festival-goers read besides the AI's answer.
@@ -179,7 +179,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
   - After a transaction commits, each spoken message (a new task when you're free, backup, next up) is rendered by TTS. It goes in the `speech` bucket at `<recipient>/<message>.mp3`, and `message_deliveries.audio_path` points at it.
   - The phone sees that update over realtime. If the app is open and the message is under 2 minutes old and unread, it plays (`use-spoken-briefs.ts`).
   - Holding the pill cuts a brief off; it starts again after "Heard". Only the recipient can read their own audio (storage RLS).
-  - Briefs are on with `USE_LIVE_MODELS=1`.
+  - Briefs are on whenever there's a speech model.
 - **Speech server.**
   - OpenAI by default (`gpt-4o-mini-transcribe`, `gpt-4o-mini-tts` with voice `marin`). With `MODEL_PROVIDER=spark`, Spark first, sharing its queue, then OpenAI.
   - `SPEECH_BASE_URL` puts any OpenAI-shaped server first, such as `mlx_audio.server` on a Mac with the same Qwen3-ASR 1.7B and Qwen3-TTS 1.7B weights (`.env.example`), with OpenAI behind it.
@@ -255,7 +255,7 @@ The mock's `guestAddDetail` is the single-request version of this. It generalise
 
 **Done when:** a second, independent report about the same person upgrades the existing task instead of creating a duplicate, and the volunteer already on the way hears the update.
 
-**Status:** done locally, with live models. Checked by `npm run commands:check` (section 7) against both a keyword and a `USE_LIVE_MODELS=1` server.
+**Status:** done locally, with live models. Checked by `npm run commands:check` (section 7) against the server.
 
 - **Candidates.** `nearbyOpenTasks` (`src/lib/nearby.ts`): open tasks from the last 20 minutes, in the same zone or within 100 m on foot (neighbouring zones on the oval are 25 to 100 m apart), nearest first, at most 5.
 - **One typed call.** `Interpreter.match` asks which candidate the report is about (or none), how urgent the two read together are, and whether it says it's sorted. It needs 0.6 confidence to join a task; below that, or if the model fails, it's a new incident. Red-flag words still force P1, and an unsure priority rounds up. Keywords never merge: a duplicate is safer than a wrong merge.
