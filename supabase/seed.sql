@@ -20,8 +20,8 @@ insert into skills (slug, name, requires_expiry) values
   ('multilingual',   'Speaks a language other than English', false);
 
 insert into zones (slug, name, kind, is_open_air, capacity) values
-  ('gate-a',        'Gate A (Tunnel)',    'gate',      true,  3000),
-  ('gate-b',        'Gate B (Walkway)',   'gate',      true,  2000),
+  ('gate-a',        'VIP Gate (Tunnel)',  'gate',      true,  3000),
+  ('gate-b',        'Main Entrance',      'gate',      true,  2000),
   ('lawn-stage',    'Oval Stage',         'stage',     true,  8000),
   ('river-stage',   'Track Stage',        'stage',     true,  3000),
   ('water-1',       'Water Station 1',    'water',     true,  null),
@@ -29,11 +29,17 @@ insert into zones (slug, name, kind, is_open_air, capacity) values
   ('first-aid-hq',  'First Aid Post',     'first_aid', false, null),
   ('food-alley',    'Food Alley',         'food',      true,  1500),
   ('info-tent',     'Info Tent',          'area',      false, null),
-  ('backstage',     'Backstage',          'area',      true,  null),
+  ('artist-gate',   'Artist Gate',        'gate',      true,  null),
+  ('artist-village','Artist Village',     'area',      true,  null),
+  ('backstage',     'Oval Stage Backstage','area',     true,  null),
+  ('track-backstage','Track Stage Backstage','area',    true,  null),
   ('toilets-west',  'Toilets West',       'area',      true,  null),
   ('toilets-east',  'Toilets East',       'area',      true,  null),
   ('the-grove',     'The Grove',          'area',      true,  800),
-  ('pavilion',      'Pavilion (Crew HQ)', 'area',      false, null);
+  ('pavilion',      'Pavilion (Crew HQ)', 'area',      false, null),
+  ('ticket-office', 'Ticket Office',      'area',      false, null),
+  ('merch-lounge',  'Merch & Lounge',     'area',      false, null),
+  ('supplies',      'Supplies (Crew)',    'area',      false, null);
 
 insert into playbooks (slug, title, trigger, steps) values
   ('heat-35c', 'Extreme heat (>=35C)', 'BoM forecast or on-site reading >= 35C',

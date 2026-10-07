@@ -1,5 +1,5 @@
 import { FENCE, NODES, VENUE_ZONES, truckSpots, type Point } from '@/data/venue';
-import { DECOR, GRANDSTAND } from '@/data/venue-features';
+import { ARTIST_BUILDINGS, CONTROL_SHEDS, DECOR, GRANDSTAND } from '@/data/venue-features';
 
 /*
  * Walking routes across open ground. Inside the fence you can walk anywhere (grass, the track, the
@@ -48,7 +48,6 @@ function obstacles(): Obstacle[] {
     const s = z.shape;
     if (s.kind === 'stage' || s.kind === 'tent' || s.kind === 'toilets') out.push({ ring: boxRing(s), name: named(z.node) });
     else if (s.kind === 'building') out.push({ ring: s.ring.map(pt), name: named(z.node) });
-    else if (s.kind === 'area' && z.icon === 'backstage') out.push({ ring: s.ring.map(pt), name: 'Backstage' });
     else if (s.kind === 'trucks') {
       // One block per unbroken run of trucks, so the gap left in the row is a way through.
       // Unnamed: the nearest landmark ("the west end of Food Alley") says more.
@@ -66,8 +65,12 @@ function obstacles(): Obstacle[] {
   for (const b of DECOR.medics) out.push({ ring: boxRing(b), name: 'the medic tent' });
   for (const b of DECOR.foh) out.push({ ring: boxRing(b), name: 'the sound desk' });
   out.push({ ring: boxRing(DECOR.bar), name: 'the bar' });
-  out.push({ ring: boxRing(DECOR.security), name: 'bag check' });
-  out.push({ ring: boxRing(DECOR.booth), name: 'the ticket booth' });
+  for (const b of DECOR.security) out.push({ ring: boxRing(b), name: 'bag check' });
+  for (const b of ARTIST_BUILDINGS) out.push({ ring: b.ring.map(pt), name: `the ${b.name}` });
+  for (const ring of CONTROL_SHEDS) out.push({ ring: ring.map(pt), name: 'the Control Room' });
+  for (const b of DECOR.stores) out.push({ ring: boxRing(b), name: 'the stock containers' });
+  for (const ring of DECOR.cabins) out.push({ ring: ring.map(pt), name: 'the dressing cabins' });
+  for (const ring of DECOR.coaches) out.push({ ring: ring.map(pt), name: 'the artists’ coaches' });
   return out;
 }
 

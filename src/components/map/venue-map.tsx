@@ -1,13 +1,15 @@
-import { Camera, GeoJSONSource, Images, Layer, Map, Marker, type LayerProps } from '@maplibre/maplibre-react-native';
-import { useState } from 'react';
+import { Camera, GeoJSONSource, Images, Layer, Map, Marker, type CameraRef, type LayerProps } from '@maplibre/maplibre-react-native';
+import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { VoiceGradient } from '@/constants/theme';
 import { toLngLat } from '@/data/venue';
 import { useTheme } from '@/hooks/use-theme';
+import { MapButton } from './map-button';
 import { STYLE_ICONS } from './map-icons';
 import { useOverlays, type Overlay } from './map-markers';
-import { cameraFor, frameBox, liveData, liveLayers, type VenueMapProps } from './map-model';
+import { frameBox, liveData, liveLayers, minZoomFor, panBounds, panLimit, type VenueMapProps } from './map-model';
+import { useFollow } from './use-follow';
 import { useMapStyle } from './map-style';
 import { useGlide } from './use-glide';
 
@@ -29,7 +31,11 @@ export function VenueMap(props: VenueMapProps) {
   const overlays = useOverlays(props, box && size ? box.w / size.width : 1);
   // Jump into place on first show, glide after that.
   const [placed, setPlaced] = useState(false);
-  const camera = box && size ? cameraFor(box, size.width) : null;
+  const { camera, onUserMove, canRecenter, recenter } = useFollow(props, size);
+  const cameraRef = useRef<CameraRef>(null);
+  // Where the map can go depends on how far in it is; settles after each move, which is close enough to hold the edge.
+  const [zoom, setZoom] = useState<number | null>(null);
+  const shownZoom = zoom ?? camera?.zoom;
 
   return (
     <View
@@ -53,14 +59,32 @@ export function VenueMap(props: VenueMapProps) {
           doubleTapZoom={interactive}
           touchRotate={false}
           touchPitch={false}
-          onDidFinishLoadingMap={() => setPlaced(true)}>
-          <Camera {...camera} minZoom={13} duration={placed ? 500 : 0} easing="ease" />
+          onDidFinishLoadingMap={() => setPlaced(true)}
+          onRegionWillChange={(e) => e.nativeEvent.userInteraction && onUserMove()}
+          onRegionDidChange={(e) => setZoom(Math.round(e.nativeEvent.zoom * 8) / 8)}>
+          <Camera
+            ref={cameraRef}
+            {...camera}
+            minZoom={minZoomFor(size, frame, camera)}
+            maxBounds={shownZoom != null ? panBounds(panLimit(shownZoom, size, frame, camera)) : undefined}
+            duration={placed ? 500 : 0}
+            easing="ease"
+          />
           <Images images={STYLE_ICONS} />
           <GeoJSONSource id="live" data={liveData(route, target, targetColor ?? theme.danger)} lineMetrics>
             {LIVE.map((layer) => <Layer key={layer.id} {...layer} />)}
           </GeoJSONSource>
           {overlays.map((o) => <GlidingMarker key={o.key} overlay={o} />)}
         </Map>
+      )}
+      {interactive && canRecenter && size && (
+        <MapButton
+          label="Back to me"
+          sf="location.fill"
+          md="my_location"
+          onPress={() => recenter((c) => cameraRef.current?.easeTo({ ...c, duration: 600, easing: 'ease' }))}
+          style={[styles.recenter, { bottom: (frame?.bottom ?? 0) * size.height + 12 }]}
+        />
       )}
     </View>
   );
@@ -78,4 +102,5 @@ function GlidingMarker({ overlay: o }: { overlay: Overlay }) {
 
 const styles = StyleSheet.create({
   wrap: { overflow: 'hidden' },
+  recenter: { position: 'absolute', right: 16 },
 });

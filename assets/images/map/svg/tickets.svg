@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="0.8" stdDeviation="1" flood-color="#0B1220" flood-opacity="0.32"/></filter></defs>
+  <circle cx="16" cy="16" r="13" fill="#fff" filter="url(#s)"/>
+  <circle cx="16" cy="16" r="11" fill="#D97706"/>
+  <g fill="#fff" transform="translate(16 16) scale(0.78) rotate(-14) translate(-12 -12)"><path d="M4.5 6.5h15A1.5 1.5 0 0 1 21 8v2a2 2 0 0 0 0 4v2a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16v-2a2 2 0 0 0 0-4V8a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M15 8.4v7.2" fill="none" stroke="#D97706" stroke-width="1.4" stroke-dasharray="1.5 1.3"/></g>
+</svg>

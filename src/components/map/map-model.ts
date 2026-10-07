@@ -1,7 +1,7 @@
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { StyleProp, ViewStyle } from 'react-native';
 
-import { GEO, NODES, VENUE, VENUE_ZONES, toLngLat, type Point } from '@/data/venue';
+import { GEO, NODES, VENUE, VENUE_ZONES, toLngLat, toPlan, type Point } from '@/data/venue';
 import type { Route } from '@/lib/route';
 import type { Priority } from '@/lib/schema';
 import { zoneFootprint } from './map-art';
@@ -85,6 +85,73 @@ export function cameraFor(box: Box, width: number): Camera {
   // Metres per point at zoom 0 with 512-point tiles, scaled by latitude.
   const zoom = Math.log2((40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / 512 / metresPerPoint);
   return { center: toLngLat({ x: box.x + box.w / 2, y: box.y + box.h / 2 }), zoom, bearing: GEO.bearing - 90 };
+}
+
+/**
+ * As far out as the map goes: the whole site in the part nothing covers, or the screen's own framing if
+ * that's further out (me standing outside).
+ */
+export function minZoomFor(size: { width: number; height: number }, frame: VenueMapProps['frame'], auto: Camera | null): number {
+  const site = cameraFor(frameBox({ route: null, me: null, fit: 'site', frame }, size), size.width).zoom;
+  return Math.min(site, auto?.zoom ?? site);
+}
+/** How far past the plan's edge the map can be dragged, in metres. */
+const SLACK = 10;
+
+/** Plan metres per point at a zoom; the inverse of cameraFor's zoom. */
+function metresPerPoint(zoom: number): number {
+  return (40_075_016.686 * Math.cos((GEO.origin[1] * Math.PI) / 180)) / 512 / 2 ** zoom;
+}
+
+/**
+ * Where the middle of the map can go at a zoom, in plan metres, so the site's edge never comes more than SLACK
+ * into the part of the map nothing covers. Zoomed out past the site, it keeps the whole site in that part instead.
+ * The screen's own framing always fits (it can reach past the edge, e.g. to take in me standing outside).
+ */
+export function panLimit(zoom: number, size: { width: number; height: number }, frame: VenueMapProps['frame'], auto: Camera | null): Box {
+  const m = metresPerPoint(zoom);
+  const w = size.width * m, h = size.height * m;
+  const top = (frame?.top ?? 0) * h, bottom = (frame?.bottom ?? 0) * h;
+  // What there is to see: the site, and whatever the screen frames itself.
+  let [x0, y0, x1, y1] = [-SLACK, -SLACK, VENUE.width + SLACK, VENUE.height + SLACK];
+  const c = auto && toPlan(auto.center);
+  if (auto && c) {
+    const am = metresPerPoint(auto.zoom);
+    const aw = size.width * am, ah = size.height * am;
+    const aTop = c.y - ah / 2 + (frame?.top ?? 0) * ah, aBottom = c.y + ah / 2 - (frame?.bottom ?? 0) * ah;
+    [x0, y0, x1, y1] = [Math.min(x0, c.x - aw / 2), Math.min(y0, aTop), Math.max(x1, c.x + aw / 2), Math.max(y1, aBottom)];
+  }
+  // The middle runs from one edge in view to the other edge in view, whichever way round they come.
+  const range = (lo: number, hi: number) => [Math.min(lo, hi), Math.max(lo, hi)];
+  let [cx0, cx1] = range(x0 + w / 2, x1 - w / 2);
+  // Measured on the uncovered part, then shifted back to the middle of the whole map.
+  const seen = h - top - bottom;
+  const shift = h / 2 - top - seen / 2;
+  let [cy0, cy1] = range(y0 + seen / 2 + shift, y1 - seen / 2 + shift);
+  // Native maps clamp with the last settled zoom, so the screen's own framing must get through at any zoom.
+  if (c) {
+    [cx0, cx1, cy0, cy1] = [Math.min(cx0, c.x), Math.max(cx1, c.x), Math.min(cy0, c.y), Math.max(cy1, c.y)];
+  }
+  return { x: cx0, y: cy0, w: cx1 - cx0, h: cy1 - cy0 };
+}
+
+/** The limit as [west, south, east, north], for maps that only take a lng/lat box. The plan sits 8° off north, so it's a touch looser. */
+export function panBounds(limit: Box): [number, number, number, number] {
+  const corners = [
+    { x: limit.x, y: limit.y }, { x: limit.x + limit.w, y: limit.y },
+    { x: limit.x, y: limit.y + limit.h }, { x: limit.x + limit.w, y: limit.y + limit.h },
+  ].map(toLngLat);
+  const lngs = corners.map((c) => c[0]), lats = corners.map((c) => c[1]);
+  return [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
+}
+
+/** A lng/lat pulled back inside the limit, square to the plan. */
+export function clampToLimit(lngLat: readonly [number, number], limit: Box): [number, number] {
+  const p = toPlan(lngLat);
+  return toLngLat({
+    x: Math.min(Math.max(p.x, limit.x), limit.x + limit.w),
+    y: Math.min(Math.max(p.y, limit.y), limit.y + limit.h),
+  });
 }
 
 /**

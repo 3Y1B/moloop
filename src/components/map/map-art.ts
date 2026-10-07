@@ -1,7 +1,7 @@
 import type { ExpressionSpecification, LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
 
-import { FENCE, TRUCK, VENUE_ZONES, toLngLat, truckSpots, type VenueZone, type ZoneIcon } from '@/data/venue';
-import { CAR_PARK, DECOR, FIELD, GRANDSTAND, OVAL, PATHS, SERVICE_ROAD, TENNIS, TRACK, TREES, TUNNEL } from '@/data/venue-features';
+import { FENCE, GEO, TRUCK, VENUE_ZONES, toLngLat, truckSpots, type VenueZone, type ZoneIcon } from '@/data/venue';
+import { ARTIST_BUILDINGS, CAR_PARK, CONTROL_SHEDS, DECOR, FIRST_AID_ROOM, PAVILION_TOILETS, FIELD, GATEWAYS, GRANDSTAND, OVAL, PATHS, SERVICE_ROAD, TENNIS, TRACK, TREES, TUNNEL, YARD } from '@/data/venue-features';
 import type { MapIconName } from './map-icons';
 
 /*
@@ -24,7 +24,7 @@ const PALETTE = {
     road: '#DADDE2', tunnel: '#B8BDC6', walk: '#F6E9CC', walkEdge: '#E4D2AA',
     shadow: '#1E2A1E', shadowOpacity: 0.16,
     crowd: '#FFFFFF', crowdOpacity: 0.28,
-    deck: '#2B2F38', tower: '#1C1F26', barrier: '#FFFFFF',
+    deck: '#2B2F38', tower: '#1C1F26', barrier: '#FFFFFF', rail: '#6B7585',
     tree: '#62A866', treeLit: '#80BF77', sail: '#FFF8E6', sailEdge: '#E3D3AA',
     stand: '#C7CDD6', standRow: '#AEB6C1', trailer: '#F4F5F7', trailerEdge: '#B9C0CA',
     fence: '#E8664F', fenceCasing: '#FFFFFF', area: '#64748B', areaOpacity: 0.16,
@@ -37,7 +37,7 @@ const PALETTE = {
     road: '#2A2F38', tunnel: '#3A404B', walk: '#3B3527', walkEdge: '#2C281E',
     shadow: '#000000', shadowOpacity: 0.35,
     crowd: '#C9D6C4', crowdOpacity: 0.08,
-    deck: '#0D0F13', tower: '#08090C', barrier: '#C8CDD5',
+    deck: '#0D0F13', tower: '#08090C', barrier: '#C8CDD5', rail: '#AEB6C2',
     tree: '#2E5A33', treeLit: '#3B6E3F', sail: '#5B5648', sailEdge: '#433F34',
     stand: '#3A404B', standRow: '#4A515D', trailer: '#3A404B', trailerEdge: '#555D6A',
     fence: '#E8664F', fenceCasing: '#13161B', area: '#94A3B8', areaOpacity: 0.12,
@@ -51,12 +51,12 @@ const ROOF = {
   light: {
     stage: ['#F06C96', '#E5487A'], stage2: ['#A07CF0', '#8B5CF6'], info: ['#2BBACF', '#14A3B8'], firstaid: ['#FFFFFF', '#E6E8EC'],
     backstage: ['#8A97A8', '#64748B'], security: ['#475569', '#334155'], bar: ['#B17EEB', '#9B5DE5'], foh: ['#5B6472', '#454D59'],
-    pavilion: ['#E3A47F', '#C9774F'],
+    pavilion: ['#E3A47F', '#C9774F'], tickets: ['#F4C77A', '#DDA24A'], shop: ['#7FD3C6', '#4DB6A6'], supplies: ['#C9D19A', '#A9B46E'], artists: ['#D88AD2', '#B03FA8'], control: ['#8E98EC', '#6370D1'],
   },
   dark: {
     stage: ['#D9557F', '#B83A63'], stage2: ['#8A6AD6', '#7049D0'], info: ['#1F9AAD', '#13808F'], firstaid: ['#D9DCE1', '#B7BCC4'],
     backstage: ['#5E6B7C', '#465264'], security: ['#3B4656', '#2A3341'], bar: ['#8B5CC9', '#7442B8'], foh: ['#4B5360', '#3A414C'],
-    pavilion: ['#A86A4A', '#8A5236'],
+    pavilion: ['#A86A4A', '#8A5236'], tickets: ['#A5793A', '#87612B'], shop: ['#2F7F75', '#24665E'], supplies: ['#58622F', '#454D24'], artists: ['#9C4A97', '#7D3578'], control: ['#4C57A8', '#3A4390'],
   },
 } as const;
 const CROSS = '#E5484D';
@@ -118,7 +118,7 @@ function fan(front: P, out: P, side: P, depth: number, halfWidth: number, n = 24
 // ---------------------------------------------------------------------------------------------
 // Features. Every one says which layer draws it (`l`), its order in that layer (`z`) and its colour.
 
-type Props = { l: 'mask' | 'ground' | 'groundLine' | 'walk' | 'thing' | 'thingLine' | 'fence' | 'tunnel' | 'areaLine'; z: number; c: string; o?: number; w?: number; min?: number };
+type Props = { l: 'mask' | 'ground' | 'groundLine' | 'walk' | 'thing' | 'thingLine' | 'canopyShade' | 'canopy' | 'canopyLine' | 'fence' | 'tunnel' | 'areaLine'; z: number; c: string; o?: number; w?: number; min?: number };
 type Feature = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.LineString, Props>;
 
 const close = (ring: P[]) => [...ring.map(ll), ll(ring[0])];
@@ -126,10 +126,10 @@ const fill = (rings: P[][], p: Props): Feature => ({ type: 'Feature', properties
 const stroke = (pts: P[], p: Props): Feature => ({ type: 'Feature', properties: p, geometry: { type: 'LineString', coordinates: pts.map(ll) } });
 
 /** Something standing on the ground: a soft shadow down and to the right, then the thing. */
-function standing(ring: P[], c: string, z: number, k: Pal, lift = 0.8): Feature[] {
+function standing(ring: P[], c: string, z: number, k: Pal, lift = 0.8, l: Props['l'] = 'thing'): Feature[] {
   return [
-    fill([shift(ring, lift, lift * 1.2)], { l: 'thing', z: z - 0.5, c: k.shadow, o: k.shadowOpacity }),
-    fill([ring], { l: 'thing', z, c }),
+    fill([shift(ring, lift, lift * 1.2)], { l: l === 'canopy' ? 'canopyShade' : l, z: z - 0.5, c: k.shadow, o: k.shadowOpacity }),
+    fill([ring], { l, z, c }),
   ];
 }
 
@@ -216,6 +216,32 @@ function building(ring: P[], [lit, shaded]: readonly [string, string], k: Pal): 
   return [...standing(ring, shaded, 34, k, 1.8), fill([roof], { l: 'thing', z: 34.1, c: lit })];
 }
 
+const edgeKey = (a: P, b: P) => (a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]) ? `${a}|${b}` : `${b}|${a}`);
+
+/** An area's outline, minus the edges it shares with a neighbouring area, so touching zones read as one. */
+function outline(ring: P[]): P[][] {
+  const count = new Map<string, number>();
+  for (const z of Object.values(VENUE_ZONES)) {
+    if (z.shape.kind !== 'area' || z.icon === 'shade') continue;
+    const r = z.shape.ring;
+    r.forEach((p, i) => { const key = edgeKey(p, r[(i + 1) % r.length]); count.set(key, (count.get(key) ?? 0) + 1); });
+  }
+  const lines: P[][] = [];
+  let run: P[] = [];
+  ring.forEach((p, i) => {
+    const q = ring[(i + 1) % ring.length];
+    if (count.get(edgeKey(p, q)) === 1) {
+      if (!run.length) run.push(p);
+      run.push(q);
+    } else if (run.length) {
+      lines.push(run);
+      run = [];
+    }
+  });
+  if (run.length) lines.push(run);
+  return lines;
+}
+
 function zoneArt(z: VenueZone, scheme: Scheme, k: Pal, stageIndex: number): Feature[] {
   const s = z.shape;
   const roof = ROOF[scheme];
@@ -238,10 +264,10 @@ function zoneArt(z: VenueZone, scheme: Scheme, k: Pal, stageIndex: number): Feat
         ? [fill([s.ring], { l: 'ground', z: 10, c: k.grove })]
         : [
             fill([s.ring], { l: 'ground', z: 25, c: k.area, o: k.areaOpacity }),
-            stroke([...s.ring, s.ring[0]], { l: 'areaLine', z: 0, c: k.area, w: 0.3, min: 1.2 }),
+            ...outline(s.ring).map((line) => stroke(line, { l: 'areaLine', z: 0, c: k.area, w: 0.3, min: 1.2 })),
           ];
     case 'building':
-      return building(s.ring, roof.pavilion, k);
+      return building(s.ring, z.icon === 'tickets' || z.icon === 'shop' || z.icon === 'supplies' ? roof[z.icon] : roof.pavilion, k);
     case 'gate':
       return [];
   }
@@ -283,6 +309,7 @@ function ground(k: Pal): Feature[] {
     }),
     // Service road, the car park it ends in, and the tunnel it comes up out of.
     fill([CAR_PARK], { l: 'ground', z: 1, c: k.road }),
+    fill([YARD], { l: 'ground', z: 1, c: k.road }),
     stroke(SERVICE_ROAD, { l: 'groundLine', z: -1, c: k.road, w: 6, min: 3 }),
     stroke(TUNNEL, { l: 'tunnel', z: 0, c: k.tunnel, w: 5, min: 2.5 }),
   ];
@@ -297,12 +324,13 @@ function decor(scheme: Scheme, k: Pal): Feature[] {
   const roof = ROOF[scheme];
   const out: Feature[] = [];
   for (const [x, y, r] of TREES) {
-    out.push(...standing(circle([x, y], r), k.tree, 60, k, r * 0.25));
-    out.push(fill([circle([x - r * 0.28, y - r * 0.3], r * 0.55, 14)], { l: 'thing', z: 60.1, c: k.treeLit }));
+    out.push(...standing(circle([x, y], r), k.tree, 60, k, r * 0.25, 'canopy'));
+    out.push(fill([circle([x - r * 0.28, y - r * 0.3], r * 0.55, 14)], { l: 'canopy', z: 60.1, c: k.treeLit }));
   }
+  // Sails hang above the planting, so a canopy never covers their edge.
   for (const sail of DECOR.sails) {
-    out.push(...standing(sail, k.sail, 55, k, 1.6));
-    out.push(stroke([...sail, sail[0]], { l: 'thingLine', z: 0, c: k.sailEdge, w: 0.25, min: 0.8 }));
+    out.push(...standing(sail, k.sail, 61, k, 1.6, 'canopy'));
+    out.push(stroke([...sail, sail[0]], { l: 'canopyLine', z: 0, c: k.sailEdge, w: 0.25, min: 0.8 }));
   }
   DECOR.umbrellas.forEach((at, i) => {
     const ring = circle(at, 1.6, 16);
@@ -311,6 +339,23 @@ function decor(scheme: Scheme, k: Pal): Feature[] {
       out.push(fill([[at, ring[s * 2], ring[s * 2 + 1], ring[(s * 2 + 2) % 16]]], { l: 'thing', z: 55, c: s % 2 ? '#FFFFFF' : UMBRELLAS[i % UMBRELLAS.length] }));
     }
   });
+  // The Artist Village: Ormond's buildings taken over, cabins and coaches in the yard.
+  for (const b of ARTIST_BUILDINGS) out.push(...building(b.ring, roof.artists, k));
+  for (const ring of DECOR.cabins) {
+    const cx = ring.reduce((t, p) => t + p[0], 0) / 4, cy = ring.reduce((t, p) => t + p[1], 0) / 4;
+    out.push(...standing(ring, roof.artists[1], 50, k, 0.7));
+    out.push(fill([ring.map(([x, y]): P => [cx + (x - cx) * 0.78, cy + (y - cy) * 0.78])], { l: 'thing', z: 50.1, c: roof.artists[0] }));
+  }
+  for (const ring of DECOR.coaches) {
+    out.push(...standing(ring, k.trailer, 50, k, 0.9));
+    out.push(stroke([...ring, ring[0]], { l: 'thingLine', z: 0, c: k.trailerEdge, w: 0.2, min: 0.6 }));
+  }
+  // The Control Rooms: the sheds, and the stock containers beside them.
+  for (const ring of CONTROL_SHEDS) out.push(...building(ring, roof.control, k));
+  for (const b of DECOR.stores) {
+    out.push(...standing(rect(b), roof.supplies[1], 50, k, 0.7));
+    out.push(fill([rect(inset(b, 0.35))], { l: 'thing', z: 50.1, c: roof.supplies[0] }));
+  }
   for (const b of DECOR.trailers) {
     out.push(...standing(rect(b), k.trailer, 50, k, 0.6));
     out.push(stroke([...rect(b), rect(b)[0]], { l: 'thingLine', z: 0, c: k.trailerEdge, w: 0.2, min: 0.6 }));
@@ -318,9 +363,9 @@ function decor(scheme: Scheme, k: Pal): Feature[] {
   for (const b of DECOR.medics) out.push(...tent(b, roof.firstaid, 50, k, true));
   for (const b of DECOR.foh) out.push(...tent(b, roof.foh, 50, k));
   out.push(...tent(DECOR.bar, roof.bar, 50, k));
-  out.push(...tent(DECOR.security, roof.security, 50, k));
-  out.push(...tent(DECOR.booth, roof.security, 50, k));
-  for (const line of [...DECOR.lanes, ...DECOR.barriers]) out.push(stroke(line, { l: 'thingLine', z: 1, c: k.barrier, w: 0.35, min: 1 }));
+  for (const b of DECOR.security) out.push(...tent(b, roof.security, 50, k));
+  // Queue rails: darker than the pit barriers, so they show on the pale ground outside the fence.
+  for (const line of [...DECOR.lanes, ...DECOR.barriers]) out.push(stroke(line, { l: 'thingLine', z: 1, c: k.rail, w: 0.35, min: 1 }));
   return out;
 }
 
@@ -333,7 +378,9 @@ function footpaths(k: Pal): Feature[] {
 }
 
 function fence(k: Pal): Feature[] {
-  return FENCE.map((line) => stroke(line, { l: 'fence', z: 0, c: k.fence }));
+  // A post wherever the fence stops for a gate.
+  const posts = FENCE.flatMap((line) => [line[0], line[line.length - 1]]).flatMap((end) => standing(circle(end, 0.9, 12), k.fence, 70, k, 0.4));
+  return [...FENCE.map((line) => stroke(line, { l: 'fence', z: 0, c: k.fence })), ...posts];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -342,8 +389,18 @@ function fence(k: Pal): Feature[] {
 /** Where a zone's badge goes: the middle of what's drawn for it. */
 function iconAt(z: VenueZone): P {
   const s = z.shape;
+  if (z.badge) return z.badge;
   if (s.kind === 'water' || s.kind === 'gate') return [s.x, s.y];
-  if (s.kind === 'area' || s.kind === 'building') {
+  if (s.kind === 'building') {
+    // Area centroid: a footprint's corners bunch up along its fiddly sides.
+    let a = 0, x = 0, y = 0;
+    s.ring.forEach((p, i) => {
+      const q = s.ring[(i + 1) % s.ring.length], c = p[0] * q[1] - q[0] * p[1];
+      a += c; x += (p[0] + q[0]) * c; y += (p[1] + q[1]) * c;
+    });
+    return [x / (3 * a), y / (3 * a)];
+  }
+  if (s.kind === 'area') {
     const n = s.ring.length;
     return [s.ring.reduce((t, p) => t + p[0], 0) / n, s.ring.reduce((t, p) => t + p[1], 0) / n];
   }
@@ -351,18 +408,40 @@ function iconAt(z: VenueZone): P {
 }
 
 /** Which badges are placed first when they compete for room. */
-const RANK: Record<ZoneIcon, number> = { stage: 0, gate: 1, firstaid: 2, food: 3, info: 4, water: 5, toilets: 6, shade: 7, backstage: 8, pavilion: 9 };
+const RANK: Record<ZoneIcon, number> = { stage: 0, gate: 1, firstaid: 2, food: 3, info: 4, water: 5, toilets: 6, shade: 7, backstage: 8, pavilion: 9, tickets: 10, shop: 11, supplies: 12, artists: 13 };
 
-type PointProps = { icon: MapIconName; label: string; rank: number; decor: boolean };
+/** Zones whose name goes above the badge: they back onto the sports centres, which a name below would cover. */
+const NAME_ABOVE = new Set(['first-aid-hq', 'info-tent']);
+
+/** Compass bearing of a direction in plan space. */
+const bearingOf = ([dx, dy]: P) => (Math.atan2(dx, -dy) * 180) / Math.PI + GEO.bearing - 90;
+
+type PointProps = {
+  icon: MapIconName; label: string; rank: number;
+  /** A zone's badge, a decor badge, or a gate's in/out arrows. */
+  kind: 'zone' | 'decor' | 'way';
+  above?: boolean;
+  /** Arrows only: compass bearing of the way in. */
+  rotate?: number;
+};
 const point = (at: P, p: PointProps): GeoJSON.Feature<GeoJSON.Point, PointProps> => ({ type: 'Feature', properties: p, geometry: { type: 'Point', coordinates: ll(at) } });
 
 function points(): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: [
-      ...Object.values(VENUE_ZONES).map((z) => point(iconAt(z), { icon: z.icon, label: z.label, rank: RANK[z.icon], decor: false })),
-      ...DECOR.medics.map((b) => point(centre(b), { icon: 'medic', label: '', rank: 20, decor: true })),
-      point(centre(DECOR.bar), { icon: 'bar', label: 'Bar', rank: 21, decor: true }),
+      ...Object.values(VENUE_ZONES).map((z) =>
+        point(iconAt(z), { icon: z.icon, label: z.label, rank: RANK[z.icon], kind: 'zone', above: NAME_ABOVE.has(z.slug) }),
+      ),
+      ...DECOR.medics.map((b) => point(centre(b), { icon: 'medic', label: '', rank: 20, kind: 'decor' })),
+      point(centre(DECOR.bar), { icon: 'bar', label: 'Bar', rank: 21, kind: 'decor' }),
+      point(PAVILION_TOILETS, { icon: 'toilets', label: 'Toilets', rank: 20, kind: 'decor' }),
+      point(FIRST_AID_ROOM, { icon: 'medic', label: 'First Aid', rank: 20, kind: 'decor' }),
+      point([231, 115], { icon: 'supplies', label: 'Storage', rank: 22, kind: 'decor' }),
+      point([51, 240.5], { icon: 'supplies', label: 'Storage', rank: 22, kind: 'decor' }),
+      ...CONTROL_SHEDS.map((ring) => point([(ring[0][0] + ring[2][0]) / 2, (ring[0][1] + ring[2][1]) / 2], { icon: 'control', label: 'Control Room', rank: 22, kind: 'decor' })),
+      ...ARTIST_BUILDINGS.map((b) => point(b.at, { icon: b.icon, label: b.name, rank: 22, kind: 'decor' })),
+      ...GATEWAYS.map((g) => point(g.at, { icon: 'way', label: '', rank: 30, kind: 'way', rotate: bearingOf(g.in) })),
     ],
   };
 }
@@ -426,6 +505,10 @@ export function siteGroundLayers(scheme: Scheme): LayerSpecification[] {
     lineLayer('site-area-line', 'areaLine', { dash: [2, 1.5] }),
     fillLayer('site-things', 'thing'),
     lineLayer('site-things-line', 'thingLine'),
+    // Trees and sails get their own layers, shadows under canopies: a fill layer draws every polygon's antialiased edge after all its fills, which would show a building's (or a shadow's) edge through a canopy.
+    fillLayer('site-canopy-shade', 'canopyShade'),
+    fillLayer('site-canopy', 'canopy'),
+    lineLayer('site-canopy-line', 'canopyLine'),
     {
       id: 'site-fence-casing', type: 'line', source: 'site-art', filter: on('fence'),
       layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -443,9 +526,18 @@ export function siteGroundLayers(scheme: Scheme): LayerSpecification[] {
 export function siteLabelLayers(scheme: Scheme): LayerSpecification[] {
   const k = PALETTE[scheme];
   const size: ExpressionSpecification = ['interpolate', ['linear'], ['zoom'], 15, 0.55, 16.5, 0.72, 18, 0.92, 19.5, 1];
+  const above: ExpressionSpecification = ['==', ['get', 'above'], true];
   return [
     {
-      id: 'site-decor-icons', type: 'symbol', source: 'site-points', filter: ['==', ['get', 'decor'], true],
+      id: 'site-ways', type: 'symbol', source: 'site-points', filter: ['==', ['get', 'kind'], 'way'],
+      minzoom: 16.5,
+      layout: {
+        'icon-image': 'site-way', 'icon-size': ['interpolate', ['linear'], ['zoom'], 16.5, 0.65, 18, 0.9, 19.5, 1.05],
+        'icon-rotate': ['get', 'rotate'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      },
+    },
+    {
+      id: 'site-decor-icons', type: 'symbol', source: 'site-points', filter: ['==', ['get', 'kind'], 'decor'],
       minzoom: 16,
       layout: {
         'icon-image': ['concat', 'site-', ['get', 'icon']], 'icon-size': size, 'icon-allow-overlap': false, 'symbol-sort-key': ['get', 'rank'],
@@ -455,11 +547,16 @@ export function siteLabelLayers(scheme: Scheme): LayerSpecification[] {
       paint: { 'text-color': k.text, 'text-halo-color': k.halo, 'text-halo-width': 1.5 },
     },
     {
-      id: 'site-icons', type: 'symbol', source: 'site-points', filter: ['==', ['get', 'decor'], false],
+      id: 'site-icons', type: 'symbol', source: 'site-points', filter: ['==', ['get', 'kind'], 'zone'],
       layout: {
         'icon-image': ['concat', 'site-', ['get', 'icon']], 'icon-size': size, 'icon-allow-overlap': true, 'symbol-sort-key': ['get', 'rank'],
         'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 15, 9.5, 18, 12.5],
-        'text-anchor': 'top', 'text-offset': ['interpolate', ['linear'], ['zoom'], 15, ['literal', [0, 0.95]], 18, ['literal', [0, 1.2]]],
+        'text-anchor': ['case', above, 'bottom', 'top'],
+        'text-offset': [
+          'interpolate', ['linear'], ['zoom'],
+          15, ['case', above, ['literal', [0, -0.95]], ['literal', [0, 0.95]]],
+          18, ['case', above, ['literal', [0, -1.2]], ['literal', [0, 1.2]]],
+        ],
         'text-optional': true, 'text-max-width': 8,
       },
       paint: { 'text-color': k.text, 'text-halo-color': k.halo, 'text-halo-width': 1.6 },

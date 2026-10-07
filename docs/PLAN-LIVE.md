@@ -2,7 +2,7 @@
 
 The promo video is a real field test on the UniMelb University Oval and athletics track. It uses real phones, live GPS, and people talking into the mic. Spark transcribes what they say, the AI triages, assigns and re-triages as it happens, and Mo coordinates from a shed. We film from the volunteer side and the festival-goer side. Demo day runs in a hall, where the same backend is driven by simulated people (phase 8).
 
-Everything below is the gap between today and that video. The site plan is already on the oval and track (`src/data/venue.ts`), with Gate A at the Tin Alley tunnel and Gate B between the two sports centres.
+Everything below is the gap between today and that video. The site plan is already on the oval and track (`src/data/venue.ts`), with the VIP Gate (Gate A) at the Tin Alley tunnel and the Main Entrance (Gate B) between the two sports centres.
 
 ## Where we are
 
@@ -226,6 +226,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
   - A volunteer's route runs from their phone to the festival-goer's phone, when the festival-goer is within 60 m of what they reported. Otherwise it ends at the zone.
 - **Assignment** ranks by walking distance from presence: `rankCandidates` on the phone, and on the server through `World.positions`. Backup ETAs use it too.
 - **Maps.** Every dot glides to its new spot over about the time since its last update, so a second apart reads as walking; a jump of more than 60 m snaps.
+  - The camera follows until someone drags or pinches the map; then it stays put, and a location button takes it back to them and follows again.
   - Leads see their team where they really are; Mo sees the whole crew.
   - The task map and teammates on Directions follow presence.
   - The festival-goer sees their helper's real dot, the walk they have left, "Priya is coming · N min" counting down, and "Priya is here" within 12 m.

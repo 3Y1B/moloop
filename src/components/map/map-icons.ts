@@ -13,8 +13,15 @@ export const MAP_ICONS = {
   toilets: require('@/assets/images/map/toilets.png'),
   shade: require('@/assets/images/map/shade.png'),
   pavilion: require('@/assets/images/map/pavilion.png'),
+  tickets: require('@/assets/images/map/tickets.png'),
+  shop: require('@/assets/images/map/shop.png'),
+  supplies: require('@/assets/images/map/supplies.png'),
+  artists: require('@/assets/images/map/artists.png'),
+  control: require('@/assets/images/map/control.png'),
   bar: require('@/assets/images/map/bar.png'),
   medic: require('@/assets/images/map/medic.png'),
+  /** A gate's way in (green, up) and way out. */
+  way: require('@/assets/images/map/way.png'),
 } as const;
 
 export type MapIconName = keyof typeof MAP_ICONS;

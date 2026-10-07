@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Riverside festival map</title>
+
+</head>
+<body>
+
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&amp;family=Bebas+Neue&amp;family=Archivo:wght@500;600;700&amp;display=swap">
+<style>
+@page{size:1200px 1720px;margin:0}
+html,body{margin:0;width:1200px;height:1720px}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+a{color:#1F2A5C}a:hover{color:#11162E}
+.tag{position:absolute;font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.12em;line-height:1;padding:9px 14px 6px;white-space:nowrap;box-shadow:4px 4px 0 rgba(20,24,60,.28)}
+.sub{display:block;font-family:'Archivo',sans-serif;font-weight:700;font-size:12px;letter-spacing:.14em;margin-top:5px}
+.badge{position:absolute;width:34px;height:34px;box-sizing:border-box;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);box-shadow:2px 3px 0 rgba(20,24,60,.3);font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:.04em;color:#fff;line-height:1;padding-top:2px}
+.key{position:static;transform:none;flex-shrink:0}
+.ic{fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.slab{fill:#14603A;stroke:#14603A;stroke-width:6;stroke-linejoin:round}
+.rim{fill:none;stroke:#14603A;stroke-width:6;stroke-linejoin:round}.site{fill:#2F9B58}
+.fence{fill:none;stroke:#fff;stroke-width:.7;stroke-dasharray:1.6 1.2;opacity:.85}
+.road{fill:none;stroke:#E6D3AE;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+.walk{fill:none;stroke:#E6D3AE;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.55}
+.oval{fill:#45B46C;stroke:#fff;stroke-width:.8}
+.crowd{fill:#fff;opacity:.16}
+.foh{fill:#1F2A5C}
+.track{fill:#EF7556;fill-rule:evenodd}
+.lane{fill:none;stroke:#fff;stroke-width:.35;stroke-dasharray:2 1.5;opacity:.8}
+.infield{fill:#45B46C}
+.turf{fill:#2E8A55;stroke:#fff;stroke-width:.5}
+.court{fill:#3D7BD8;stroke:#fff;stroke-width:.5}
+.stand{fill:#E9E2D4}
+.carpark{fill:#D3CCBC;stroke:#1F2A5C;stroke-width:.4;stroke-linejoin:round}
+.stall{fill:none;stroke:#FFFFFF;stroke-width:.4}
+.pav{fill:#A8643E;stroke:#1F2A5C;stroke-width:.6;stroke-linejoin:round}
+.pav-lit{fill:#CB8452}
+.pav-seam{fill:none;stroke:#7E4529;stroke-width:.35;stroke-linecap:round;opacity:.7}
+.pav-ridge{fill:none;stroke:#F3E2C4;stroke-width:.8;stroke-linecap:round}
+.pav-verandah{fill:none;stroke:#F3E2C4;stroke-width:.9;stroke-linecap:round;stroke-dasharray:1.4 .8}
+.pav-cupola{fill:#7E4529;stroke:#1F2A5C;stroke-width:.3}
+.pav-pole{stroke:#1F2A5C;stroke-width:.3}
+.pav-flag{fill:#E8336A}
+.pav-shadow{fill:#14603A;opacity:.55}
+.grove{fill:#3BA866}
+.tree{fill:#1A7442}.treelit{fill:#36A35F}
+.deck{fill:#1F2A5C}.spk{fill:#11162E}
+.roof-pink{fill:#E8336A}.roof-violet{fill:#6D3FD6}
+.t1{fill:#FFC93C}.t2{fill:#E8336A}.t3{fill:#13A3A0}.t4{fill:#F28C28}.t5{fill:#6D3FD6}
+.bar{fill:#6D3FD6}.barlit{fill:#8C66E6}
+.back{fill:#14603A;opacity:.35}.trailer{fill:#F4F1EA}
+.tent-info{fill:#0E8C9E}.tent-fa{fill:#fff}.cross{fill:#E5484D}
+.loo{fill:#4C5FD5}
+.yard{fill:#E6D3AE}
+.backline{fill:none;stroke:#1F2A5C;stroke-width:.5;stroke-dasharray:1.6 1.2;opacity:.6}
+.bshadow{fill:#14603A;opacity:.55}
+.b-tick{fill:#F4C77A;stroke:#1F2A5C;stroke-width:.5;stroke-linejoin:round}
+.b-shop{fill:#7FD3C6;stroke:#1F2A5C;stroke-width:.5;stroke-linejoin:round}
+.b-sup{fill:#C9D19A;stroke:#1F2A5C;stroke-width:.4;stroke-linejoin:round}
+.b-art{fill:#D88AD2;stroke:#1F2A5C;stroke-width:.5;stroke-linejoin:round}
+.b-ctl{fill:#8E98EC;stroke:#1F2A5C;stroke-width:.5;stroke-linejoin:round}
+.cabin{fill:#B03FA8}
+.arrow-c{stroke:#1F2A5C;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;fill:#1F2A5C}
+.arrow{stroke:#FFC93C;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round;fill:#FFC93C}
+.sail-shadow{fill:#14603A;opacity:.5}
+.sail{fill:#FFF8E6}
+.sail-dark{fill:#E9D8AE}
+.sail-fold{stroke:#D3BF8E;stroke-width:.3;stroke-linecap:round;opacity:.8}
+.sail-edge{fill:none;stroke:#B9A56E;stroke-width:.45;stroke-linejoin:round}
+.post{fill:#1F2A5C;stroke:#FFF8E6;stroke-width:.3}
+.post-lit{fill:#9AA4D6}
+.gate{fill:#FFC93C;stroke:#1F2A5C;stroke-width:.6}
+.rail{fill:none;stroke:#1F2A5C;stroke-width:.4;stroke-linecap:round;opacity:.75}.bagcheck{fill:#334155}
+</style>
+
+<div style="width: 1200px; height: 1720px; position: relative; overflow: hidden; background: #A8DDF2; font-family: 'Archivo', sans-serif; color: #1F2A5C">
+
+<div style="position: absolute; left: 630px; top: 40px; width: 580px; height: 580px; border-radius: 50%; background: #FFC93C"></div>
+
+<svg style="position: absolute; left: 0; top: 1342px; display: block" width="1200" height="40" viewBox="0 0 1200 40" aria-hidden="true"><path d="M0,30 C150,0 300,0 450,22 C600,44 750,44 900,20 C1020,2 1110,6 1200,22 L1200,40 L0,40 Z" style="fill: #1F4FA6"></path></svg>
+<div style="position: absolute; left: 0; top: 1380px; width: 1200px; height: 340px; background: #1F4FA6"></div>
+
+<div style="position: absolute; left: 64px; top: 56px; display: flex; flex-direction: column; align-items: flex-start">
+<h1 style="margin: 0; font-family: 'Alfa Slab One', serif; font-weight: 400; font-size: 128px; line-height: 1; letter-spacing: -0.01em; color: #E8336A; text-shadow: 6px 6px 0 #1F2A5C">Riverside</h1>
+<div style="margin: 20px 0 0 10px; padding: 9px 18px 6px; background: #1F2A5C; color: #FFFFFF; font-family: 'Bebas Neue', sans-serif; font-size: 30px; letter-spacing: 0.14em; line-height: 1; transform: rotate(-3deg)">Hosted by Fieldday Events</div>
+<div style="margin-top: 26px; font-family: 'Bebas Neue', sans-serif; font-size: 44px; letter-spacing: 0.12em; line-height: 1.05; color: #1F2A5C">Three days · Mid-December<br>Melbourne riverfront</div>
+</div>
+
+<div style="position: absolute; left: 171px; top: 410px; width: 857px; height: 973px">
+<svg width="857" height="973" viewBox="14 -9 280 318" role="img" aria-label="Festival site map" style="display: block; overflow: visible">
+<polygon class="slab" transform="translate(0 6)" points="140.8,281.5 78.9,281.5 78.9,284.8 38.6,284.8 38.6,280.1 28.3,280.2 22,268 21,241 19,216 18,197 17,184 17,166 18,156 19,148 25,120 28,101 30,88 35,71 35.5,52 31,45.5 38,36 47,28 56,19 64,13.5 71,8 78,3.5 84,7 91,9.5 106,6.8 112,4.6 125,2.8 140,2.5 153,4.5 162.8,4.2 170.5,9.9 182.1,-5.5 198,0 217,1.5 227.8,-3.2 242.9,8 256.7,18.1 264.8,24.1 262.9,32.2 271.7,38.9 284,48.3 289.1,53.4 284.9,63.6 277,72 263,75 250,78 240,81 238,100 246,130 247,160 247,190 246,225 243,243 239,262 237,281 229.7,281.4 229.4,262.6 227.3,262.4 227.1,242.6 203.2,243 203.1,277.2 198.3,277.4 198.3,280.1 193.7,280.1 193.8,282.1 163.5,282.5"></polygon>
+<polygon class="rim" points="140.8,281.5 78.9,281.5 78.9,284.8 38.6,284.8 38.6,280.1 28.3,280.2 22,268 21,241 19,216 18,197 17,184 17,166 18,156 19,148 25,120 28,101 30,88 35,71 35.5,52 31,45.5 38,36 47,28 56,19 64,13.5 71,8 78,3.5 84,7 91,9.5 106,6.8 112,4.6 125,2.8 140,2.5 153,4.5 162.8,4.2 170.5,9.9 182.1,-5.5 198,0 217,1.5 227.8,-3.2 242.9,8 256.7,18.1 264.8,24.1 262.9,32.2 271.7,38.9 284,48.3 289.1,53.4 284.9,63.6 277,72 263,75 250,78 240,81 238,100 246,130 247,160 247,190 246,225 243,243 239,262 237,281 229.7,281.4 229.4,262.6 227.3,262.4 227.1,242.6 203.2,243 203.1,277.2 198.3,277.4 198.3,280.1 193.7,280.1 193.8,282.1 163.5,282.5"></polygon>
+<polygon class="site" points="140.8,281.5 78.9,281.5 78.9,284.8 38.6,284.8 38.6,280.1 28.3,280.2 22,268 21,241 19,216 18,197 17,184 17,166 18,156 19,148 25,120 28,101 30,88 35,71 35.5,52 31,45.5 38,36 47,28 56,19 64,13.5 71,8 78,3.5 84,7 91,9.5 106,6.8 112,4.6 125,2.8 140,2.5 153,4.5 162.8,4.2 170.5,9.9 182.1,-5.5 198,0 217,1.5 227.8,-3.2 242.9,8 256.7,18.1 264.8,24.1 262.9,32.2 271.7,38.9 284,48.3 289.1,53.4 284.9,63.6 277,72 263,75 250,78 240,81 238,100 246,130 247,160 247,190 246,225 243,243 239,262 237,281 229.7,281.4 229.4,262.6 227.3,262.4 227.1,242.6 203.2,243 203.1,277.2 198.3,277.4 198.3,280.1 193.7,280.1 193.8,282.1 163.5,282.5"></polygon>
+
+<polygon class="grove" points="24,106 44,103 50,118 57,136 52,152 40,165 27,166 21,140"></polygon>
+<polyline class="road" points="232,281 232,248 231,240 228,237 220,234 212,230 208,225 208,211 207,190 203,183 202,172 201,145 204,134 207,122 209,113 212,104 218,96 225,86 227,79 221,62 215,51 211,45 201,36 182,24 165,20 148,15"></polyline>
+<polyline class="road" points="232,281 232,306"></polyline>
+<polyline class="road" points="150,286 150,294"></polyline>
+
+<polygon class="yard" points="240,49 245,34 259,33 269,37 281,50 288,57 285,67 272,72 256,75 239,75 237,62"></polygon>
+<polygon class="back" points="153.1,6.3 162.2,6 170.9,12.4 182.7,-3.4 197.6,1.8 217.3,3.3 227.6,-1.1 241.8,9.4 255.6,19.5 262.8,24.8 260.9,32.9 270.6,40.3 282.4,49.4 285,58.1 276,70.4 262.6,73.2 249.5,76.3 239.5,79.3 238.5,85 237,98 242.5,121 244.5,143 245,153 240,157 222,157.5 206.5,157 198,154.5 196.5,144.5 199.6,132.9 201.5,122 202,119 202,85 201,75 195,64 188,53 182.1,49.2 173.4,44.4 163.5,40.4 147.7,35.5 149.1,11.4"></polygon>
+<polyline class="backline" points="153.1,6.3 162.2,6 170.9,12.4 182.7,-3.4 197.6,1.8 217.3,3.3 227.6,-1.1 241.8,9.4 255.6,19.5 262.8,24.8 260.9,32.9 270.6,40.3 282.4,49.4 285,58.1 276,70.4 262.6,73.2 249.5,76.3 239.5,79.3 238.5,85 237,98 242.5,121 244.5,143 245,153 240,157 222,157.5 206.5,157 198,154.5 196.5,144.5 199.6,132.9 201.5,122 202,119 202,85 201,75 195,64 188,53 182.1,49.2 173.4,44.4 163.5,40.4 147.7,35.5 149.1,11.4"></polyline>
+<polyline class="walk" points="47,115 49,101 53,87 57,75 61,68 65,62 70,58 75,53 86,46 95,41 108,36 118,34 130,32 138,32 148,33 169,39 179,44 184,47 190,51 196,57 201,64 204,69 207,77 208,82 209,87 210,98 209,101 207,113 204,122 201,130 198,135 192,142 185,150 180,154 172,160 165,164 155,168 148,170 141,171 132,172 119,171 110,170 100,169 92,167 86,165 78,161 74,157 68,153 63,147 59,141 56,135 53,129 51,123 50,118 47,115"></polyline>
+<polyline class="walk" points="23,276 23,268 22,241 21,233 20,216 20,197 19,184 19,166 20,156 21,148 27,120 30,101 32,88 37,71 38,68 46,57 51,52 62,39 75,32 74,25 75,22 78,19 80,16 91,12 112,6 125,4 131,3"></polyline>
+<polyline class="walk" points="75,32 79,34 85,37 88,37 95,33"></polyline>
+<polyline class="walk" points="88,37 75,53"></polyline>
+<polyline class="walk" points="19,184 33,150 39,132 47,115 38,102"></polyline>
+<polyline class="walk" points="32,88 35,94 38,102 38,114 39,132"></polyline>
+<polyline class="walk" points="22,241 32,257 47,274 54,273 76,273 141,273 163,273"></polyline>
+<polyline class="walk" points="148,286 148,282 147,278 141,273"></polyline>
+<polyline class="walk" points="148,286 157,278 163,273 173,274 181,269 189,258 196,251 200,244 209,227"></polyline>
+
+<polygon class="oval" points="152,168 143,170 130,171 115,170 106,169 96,167 85,164 78,160 70,152 61,143 57,135 53,126 50,116 50,105 52,94 56,82 59,75 66,65 73,57 83,49 92,43 102,39 113,36 123,34 135,33 148,34 164,39 174,43 183,48 191,55 198,62 205,77 208,93 208,103 206,113 203,125 197,134 189,145 181,152 173,159 164,163"></polygon>
+<ellipse class="crowd" cx="160" cy="102" rx="26" ry="30"></ellipse>
+<rect class="foh" x="127" y="99" width="6" height="6" rx="0.8"></rect>
+
+<path class="track" d="M67,184.5 H164 A40.5,40.5 0 0 1 164,265.5 H67 A40.5,40.5 0 0 1 67,184.5 Z M67,195 H164 A30,30 0 0 1 164,255 H67 A30,30 0 0 1 67,195 Z"></path>
+<path class="lane" d="M67,189.75 H164 A35.25,35.25 0 0 1 164,260.25 H67 A35.25,35.25 0 0 1 67,189.75 Z"></path>
+<path class="infield" d="M67,195 H164 A30,30 0 0 1 164,255 H67 A30,30 0 0 1 67,195 Z"></path>
+<rect class="turf" x="67" y="197" width="92" height="55"></rect>
+<rect class="foh" x="114" y="222" width="5" height="5" rx="0.8"></rect>
+<polygon class="back" points="18,189 18.5,186.7 19.8,184.8 21.7,183.5 24,183 59,183 62.8,183.8 66.1,185.9 68.2,189.2 69,193 69,258 68.2,261.8 66.1,265.1 62.8,267.2 59,268 29,268 26.7,267.5 24.8,266.2 23.5,264.3 23,262 22,241 20,216 19,197"></polygon>
+<polygon class="backline" points="18,189 18.5,186.7 19.8,184.8 21.7,183.5 24,183 59,183 62.8,183.8 66.1,185.9 68.2,189.2 69,193 69,258 68.2,261.8 66.1,265.1 62.8,267.2 59,268 29,268 26.7,267.5 24.8,266.2 23.5,264.3 23,262 22,241 20,216 19,197"></polygon>
+<polygon class="bshadow" points="48,206 57,206 57,212 48,212" transform="translate(.8 1.2)"></polygon>
+<polygon class="b-ctl" points="48,206 57,206 57,212 48,212"></polygon>
+<rect class="b-sup" x="47" y="238" width="6" height="2.4"></rect>
+<rect class="b-sup" x="47" y="241.6" width="6" height="2.4"></rect>
+<rect class="b-sup" x="55" y="238" width="6" height="2.4"></rect>
+
+<rect class="court" x="214" y="159" width="11" height="24"></rect>
+<rect class="court" x="228" y="159" width="11" height="24"></rect>
+<rect class="court" x="214" y="193" width="11" height="24"></rect>
+<rect class="court" x="228" y="193" width="11" height="24"></rect>
+
+<polygon class="stand" points="48,99 37,96 44,76 55,79"></polygon>
+<polygon class="carpark" points="120,14 125,24 128,22 135,19 137,17 139,17 139,4 127,5 127,10"></polygon>
+<path class="stall" d="M129.5,6.5 v5 M132,6.5 v5 M134.5,6.5 v5 M137,6.5 v5"></path>
+<polygon class="bshadow" points="203.2,243 227.1,242.6 227.3,262.4 229.4,262.6 229.7,281.4 230.1,306.4 164.5,306.9 164.2,294.5 163.5,282.5 193.8,282.1 193.7,280.1 198.3,280.1 198.3,277.4 203.1,277.2 203.2,262.6 202,262.7 202,249.5 203.2,249.5" transform="translate(.8 1.2)"></polygon>
+<polygon class="b-tick" points="203.2,243 227.1,242.6 227.3,262.4 229.4,262.6 229.7,281.4 230.1,306.4 164.5,306.9 164.2,294.5 163.5,282.5 193.8,282.1 193.7,280.1 198.3,280.1 198.3,277.4 203.1,277.2 203.2,262.6 202,262.7 202,249.5 203.2,249.5"></polygon>
+<polygon class="bshadow" points="78.9,281.5 140.8,281.5 140.8,299.2 79,299.2" transform="translate(.8 1.2)"></polygon>
+<polygon class="b-shop" points="78.9,281.5 140.8,281.5 140.8,299.2 79,299.2"></polygon>
+<polygon class="bshadow" points="28.3,280.2 38.6,280.1 38.6,284.8 78.9,284.8 79,308.2 48.3,308.2 48.3,291.4 38.7,291.4 38.6,295.3 28.3,295.4" transform="translate(.8 1.2)"></polygon>
+<polygon class="b-sup" points="28.3,280.2 38.6,280.1 38.6,284.8 78.9,284.8 79,308.2 48.3,308.2 48.3,291.4 38.7,291.4 38.6,295.3 28.3,295.4"></polygon>
+<polygon class="pav-shadow" transform="translate(1.2 1.8)" points="80.2,16.6 91.7,12.5 115.6,6.5 126,27.8 122.4,28.8 121.4,31.3 103.4,35.2 93.9,40.8 91.8,37.4 95.3,33 97.8,29.6 96.9,26.3 93.4,27.5 94.6,31.6 85.4,34.8 82.4,31.5 83,28.9 80.8,22.6"></polygon>
+<polygon class="pav" points="80.2,16.6 91.7,12.5 115.6,6.5 126,27.8 122.4,28.8 121.4,31.3 103.4,35.2 93.9,40.8 91.8,37.4 95.3,33 97.8,29.6 96.9,26.3 93.4,27.5 94.6,31.6 85.4,34.8 82.4,31.5 83,28.9 80.8,22.6"></polygon>
+<polygon class="pav-lit" points="80.2,16.6 91.7,12.5 115.6,6.5 120.6,16.8 82,22"></polygon>
+<path class="pav-seam" d="M86,21.5 L85.1,14.6 M90,20.9 L89,13.5 M94,20.4 L93,12.3 M98,19.9 L97,11.3 M102,19.3 L101,10.3 M106,18.8 L105,9.3 M110,18.2 L109,8.3 M114,17.7 L113,7.3 M118,17.2 L117.4,12"></path>
+<path class="pav-seam" d="M102,19.3 L104,34.9 M106,18.8 L108,34.1 M110,18.2 L112,33.2 M114,17.7 L116,32.3 M118,17.2 L120,31.6"></path>
+<polyline class="pav-verandah" points="121,30.4 104,34.1"></polyline>
+<polyline class="pav-ridge" points="82,22 120.6,16.8"></polyline>
+<rect class="pav-cupola" x="99.6" y="17.6" width="3.6" height="3.6" rx="0.3"></rect>
+<rect class="pav-lit" x="100.4" y="18.2" width="2" height="1.4"></rect>
+<line class="pav-pole" x1="101.4" y1="17.6" x2="101.4" y2="12.8"></line>
+<polygon class="pav-flag" points="101.4,12.8 104.4,13.7 101.4,14.6"></polygon>
+<polygon class="pav" points="80.2,16.6 91.7,12.5 115.6,6.5 126,27.8 122.4,28.8 121.4,31.3 103.4,35.2 93.9,40.8 91.8,37.4 95.3,33 97.8,29.6 96.9,26.3 93.4,27.5 94.6,31.6 85.4,34.8 82.4,31.5 83,28.9 80.8,22.6" style="fill: none"></polygon>
+
+<rect class="deck" x="188" y="85" width="14" height="34" rx="1"></rect>
+<rect class="roof-pink" x="190" y="86.5" width="11" height="31" rx="0.8"></rect>
+<rect class="spk" x="185.5" y="83.5" width="2.5" height="4.5"></rect>
+<rect class="spk" x="185.5" y="116" width="2.5" height="4.5"></rect>
+
+<rect class="deck" x="69" y="209" width="12" height="32" rx="1"></rect>
+<rect class="roof-violet" x="69.5" y="210.5" width="9.5" height="29" rx="0.8"></rect>
+<rect class="spk" x="81" y="207.5" width="2.5" height="4.5"></rect>
+<rect class="spk" x="81" y="238" width="2.5" height="4.5"></rect>
+
+<rect class="t1" x="74" y="177" width="6" height="5" rx="0.8"></rect><rect class="t2" x="81.6" y="177" width="6" height="5" rx="0.8"></rect><rect class="t3" x="89.2" y="177" width="6" height="5" rx="0.8"></rect><rect class="t4" x="96.8" y="177" width="6" height="5" rx="0.8"></rect><rect class="t5" x="104.4" y="177" width="6" height="5" rx="0.8"></rect><rect class="t1" x="119.6" y="177" width="6" height="5" rx="0.8"></rect><rect class="t2" x="127.2" y="177" width="6" height="5" rx="0.8"></rect><rect class="t3" x="134.8" y="177" width="6" height="5" rx="0.8"></rect><rect class="t4" x="142.4" y="177" width="6" height="5" rx="0.8"></rect><rect class="t5" x="150" y="177" width="6" height="5" rx="0.8"></rect>
+<circle class="t1" cx="64" cy="160" r="2"></circle><circle class="t2" cx="71" cy="166" r="2"></circle><circle class="t3" cx="61" cy="168" r="2"></circle>
+
+<rect class="bar" x="217" y="162" width="18" height="13" rx="1"></rect>
+<rect class="barlit" x="217" y="162" width="18" height="6" rx="1"></rect>
+
+<polygon class="bshadow" points="209.9,7.4 213.9,10.3 216.6,12.4 214.4,15.6 222.2,21.7 218.5,27.1 213.8,23.9 212.5,25.8 206.7,26.8 205.7,26.1 204.8,27.2 199,23.2 202.2,18.4 200.9,17.5 202.5,15.2 195.3,9.6 199,4.4 207.2,10.4" transform="translate(.8 1.2)"></polygon>
+<polygon class="b-art" points="209.9,7.4 213.9,10.3 216.6,12.4 214.4,15.6 222.2,21.7 218.5,27.1 213.8,23.9 212.5,25.8 206.7,26.8 205.7,26.1 204.8,27.2 199,23.2 202.2,18.4 200.9,17.5 202.5,15.2 195.3,9.6 199,4.4 207.2,10.4"></polygon>
+<polygon class="bshadow" points="154.5,6 152.5,11.7 172.5,18.9 174.6,13.1" transform="translate(.8 1.2)"></polygon>
+<polygon class="b-art" points="154.5,6 152.5,11.7 172.5,18.9 174.6,13.1"></polygon>
+<polygon class="bshadow" points="242.9,8 226.6,30.6 240.3,40.9 243.9,36 251.1,25.9 256.7,18.1" transform="translate(.8 1.2)"></polygon>
+<polygon class="b-art" points="242.9,8 226.6,30.6 240.3,40.9 243.9,36 251.1,25.9 256.7,18.1"></polygon>
+<polygon class="cabin" points="246.98,46.26 251.77,49.87 250.21,51.95 245.42,48.34"></polygon>
+<polygon class="cabin" points="252.41,50.35 257.2,53.97 255.64,56.04 250.85,52.43"></polygon>
+<polygon class="cabin" points="257.84,54.45 262.64,58.06 261.07,60.13 256.28,56.52"></polygon>
+<polygon class="cabin" points="263.27,58.54 268.07,62.15 266.5,64.23 261.71,60.62"></polygon>
+<polygon class="cabin" points="250.78,40.96 255.57,44.57 254.01,46.65 249.22,43.04"></polygon>
+<polygon class="cabin" points="256.21,45.05 261,48.67 259.44,50.74 254.65,47.13"></polygon>
+<polygon class="cabin" points="261.64,49.15 266.44,52.76 264.87,54.83 260.08,51.22"></polygon>
+<polygon class="cabin" points="267.07,53.24 271.87,56.85 270.3,58.93 265.51,55.32"></polygon>
+<polygon class="trailer" points="255.4,35 264.19,41.62 262.38,44.02 253.6,37.4"></polygon>
+<polygon class="trailer" points="265.39,42.52 274.17,49.14 272.37,51.54 263.58,44.92"></polygon>
+<rect class="trailer" x="227" y="132" width="7" height="3"></rect>
+<rect class="trailer" x="227" y="138" width="7" height="3"></rect>
+<rect class="trailer" x="237" y="133" width="5" height="5"></rect>
+<polygon class="bshadow" points="226.5,98 235.5,98 235.5,105 226.5,105" transform="translate(.8 1.2)"></polygon>
+<polygon class="b-ctl" points="226.5,98 235.5,98 235.5,105 226.5,105"></polygon>
+<rect class="b-sup" x="224" y="112" width="6" height="2.4"></rect>
+<rect class="b-sup" x="224" y="115.6" width="6" height="2.4"></rect>
+<rect class="b-sup" x="232" y="112" width="6" height="2.4"></rect>
+<rect class="tent-info" x="117" y="275" width="9" height="5.5" rx="0.6"></rect>
+<rect class="tent-fa" x="40" y="270.5" width="12" height="8" rx="0.6"></rect>
+<rect class="cross" x="45.2" y="272.2" width="1.6" height="4.6"></rect>
+<rect class="cross" x="43.7" y="273.7" width="4.6" height="1.6"></rect>
+<rect class="loo" x="28" y="174" width="13" height="2.6"></rect>
+<rect class="loo" x="216" y="197" width="18" height="3"></rect>
+<rect class="loo" x="216" y="208" width="18" height="3"></rect>
+<rect class="gate" x="230" y="279.5" width="6" height="3" rx="0.6"></rect>
+<rect class="gate" x="149" y="280.5" width="6" height="3" rx="0.6"></rect>
+<path class="rail" d="M146,284 V299 M150,284 V299 M154,284 V299 M141,287 H146 M154,287 L163.5,287.5"></path>
+<path class="rail" d="M230.5,250 V278 M232.5,250 V278 M234.5,250 V278"></path>
+<rect class="bagcheck" x="156" y="274.5" width="6" height="5" rx="0.6"></rect>
+<rect class="bagcheck" x="235" y="229" width="7" height="6" rx="0.6"></rect>
+
+<circle class="tree" cx="38" cy="144" r="4"></circle><circle class="treelit" cx="36.9" cy="142.9" r="2.2"></circle>
+<circle class="tree" cx="32" cy="123" r="4"></circle><circle class="treelit" cx="30.9" cy="121.9" r="2.2"></circle>
+<circle class="tree" cx="23" cy="129" r="3.5"></circle><circle class="treelit" cx="22" cy="128" r="1.9"></circle>
+<circle class="tree" cx="34" cy="111" r="3.5"></circle><circle class="treelit" cx="33" cy="110" r="1.9"></circle>
+<circle class="tree" cx="28" cy="150" r="3.5"></circle><circle class="treelit" cx="27" cy="149" r="1.9"></circle>
+<circle class="tree" cx="46" cy="158" r="3.5"></circle><circle class="treelit" cx="45" cy="157" r="1.9"></circle>
+<circle class="tree" cx="23" cy="158" r="3"></circle><circle class="treelit" cx="22.2" cy="157.2" r="1.7"></circle>
+<circle class="tree" cx="51" cy="128" r="3"></circle><circle class="treelit" cx="50.2" cy="127.2" r="1.7"></circle>
+<circle class="tree" cx="53" cy="169" r="3"></circle><circle class="treelit" cx="52.2" cy="168.2" r="1.7"></circle>
+<circle class="tree" cx="40" cy="82" r="3.5"></circle><circle class="treelit" cx="39" cy="81" r="1.9"></circle>
+<circle class="tree" cx="39" cy="63" r="3.5"></circle><circle class="treelit" cx="38" cy="62" r="1.9"></circle>
+<circle class="tree" cx="53" cy="58" r="4"></circle><circle class="treelit" cx="51.9" cy="56.9" r="2.2"></circle>
+<circle class="tree" cx="62" cy="53" r="3.5"></circle><circle class="treelit" cx="61" cy="52" r="1.9"></circle>
+<circle class="tree" cx="70" cy="46" r="3"></circle><circle class="treelit" cx="69.2" cy="45.2" r="1.7"></circle>
+<circle class="tree" cx="54" cy="40" r="3.5"></circle><circle class="treelit" cx="53" cy="39" r="1.9"></circle>
+<circle class="tree" cx="64" cy="31" r="3.5"></circle><circle class="treelit" cx="63" cy="30" r="1.9"></circle>
+<circle class="tree" cx="42" cy="40" r="3"></circle><circle class="treelit" cx="41.2" cy="39.2" r="1.7"></circle>
+<circle class="tree" cx="44" cy="47" r="3"></circle><circle class="treelit" cx="43.2" cy="46.2" r="1.7"></circle>
+<circle class="tree" cx="142" cy="25" r="4.5"></circle><circle class="treelit" cx="140.7" cy="23.7" r="2.5"></circle>
+<circle class="tree" cx="156" cy="27" r="4.5"></circle><circle class="treelit" cx="154.7" cy="25.7" r="2.5"></circle>
+<circle class="tree" cx="176" cy="33" r="4.5"></circle><circle class="treelit" cx="174.7" cy="31.7" r="2.5"></circle>
+<circle class="tree" cx="193" cy="41" r="4.5"></circle><circle class="treelit" cx="191.7" cy="39.7" r="2.5"></circle>
+<circle class="tree" cx="203" cy="48" r="4"></circle><circle class="treelit" cx="201.9" cy="46.9" r="2.2"></circle>
+<circle class="tree" cx="208" cy="55" r="4"></circle><circle class="treelit" cx="206.9" cy="53.9" r="2.2"></circle>
+<circle class="tree" cx="216" cy="89" r="4"></circle><circle class="treelit" cx="214.9" cy="87.9" r="2.2"></circle>
+<circle class="tree" cx="192" cy="160" r="3.5"></circle><circle class="treelit" cx="191" cy="159" r="1.9"></circle>
+<circle class="tree" cx="62" cy="278" r="3"></circle><circle class="treelit" cx="61.2" cy="277.2" r="1.7"></circle>
+<circle class="tree" cx="92" cy="278" r="3"></circle><circle class="treelit" cx="91.2" cy="277.2" r="1.7"></circle>
+<circle class="tree" cx="103" cy="278" r="3"></circle><circle class="treelit" cx="102.2" cy="277.2" r="1.7"></circle>
+
+<circle class="tree" cx="188" cy="11" r="5.8"></circle><circle class="treelit" cx="186.4" cy="9.3" r="3.2"></circle>
+<circle class="tree" cx="228" cy="5" r="6.7"></circle><circle class="treelit" cx="226.1" cy="3.0" r="3.7"></circle>
+<circle class="tree" cx="226" cy="17" r="5.4"></circle><circle class="treelit" cx="224.5" cy="15.4" r="3.0"></circle>
+<circle class="tree" cx="228" cy="35" r="5"></circle><circle class="treelit" cx="226.6" cy="33.5" r="2.8"></circle>
+<circle class="tree" cx="253" cy="24" r="3.3"></circle><circle class="treelit" cx="252.1" cy="23.0" r="1.8"></circle>
+<clipPath id="sail0"><path d="M33.12 118.55 Q40.76 113.69 46.75 107.09 Q47.26 115.68 50.23 123.77 Q42.08 120.03 33.12 118.55Z"></path></clipPath>
+<path class="sail-shadow" transform="translate(.7 1.1)" d="M33.12 118.55 Q40.76 113.69 46.75 107.09 Q47.26 115.68 50.23 123.77 Q42.08 120.03 33.12 118.55Z"></path>
+<path class="sail" d="M33.12 118.55 Q40.76 113.69 46.75 107.09 Q47.26 115.68 50.23 123.77 Q42.08 120.03 33.12 118.55Z"></path>
+<polygon class="sail-dark" clip-path="url(#sail0)" points="33.12,118.55 47.88,115.55 54.94,140.19 84.45,134.20"></polygon>
+<line class="sail-fold" x1="33.12" y1="118.55" x2="47.88" y2="115.55"></line>
+<path class="sail-edge" d="M33.12 118.55 Q40.76 113.69 46.75 107.09 Q47.26 115.68 50.23 123.77 Q42.08 120.03 33.12 118.55Z"></path>
+<circle class="post" cx="33.12" cy="118.55" r="1"></circle><circle class="post-lit" cx="32.82" cy="118.25" r=".38"></circle>
+<circle class="post" cx="46.75" cy="107.09" r="1"></circle><circle class="post-lit" cx="46.45" cy="106.79" r=".38"></circle>
+<circle class="post" cx="50.23" cy="123.77" r="1"></circle><circle class="post-lit" cx="49.93" cy="123.47" r=".38"></circle>
+<clipPath id="sail1"><path d="M35.75 148.23 Q31.92 155.63 26.18 161.87 Q34.62 160.97 42.86 162.30 Q38.26 155.80 35.75 148.23Z"></path></clipPath>
+<path class="sail-shadow" transform="translate(.7 1.1)" d="M35.75 148.23 Q31.92 155.63 26.18 161.87 Q34.62 160.97 42.86 162.30 Q38.26 155.80 35.75 148.23Z"></path>
+<path class="sail" d="M35.75 148.23 Q31.92 155.63 26.18 161.87 Q34.62 160.97 42.86 162.30 Q38.26 155.80 35.75 148.23Z"></path>
+<polygon class="sail-dark" clip-path="url(#sail1)" points="35.75,148.23 34.57,161.53 59.44,163.84 57.07,190.43"></polygon>
+<line class="sail-fold" x1="35.75" y1="148.23" x2="34.57" y2="161.53"></line>
+<path class="sail-edge" d="M35.75 148.23 Q31.92 155.63 26.18 161.87 Q34.62 160.97 42.86 162.30 Q38.26 155.80 35.75 148.23Z"></path>
+<circle class="post" cx="35.75" cy="148.23" r="1"></circle><circle class="post-lit" cx="35.45" cy="147.93" r=".38"></circle>
+<circle class="post" cx="26.18" cy="161.87" r="1"></circle><circle class="post-lit" cx="25.88" cy="161.56" r=".38"></circle>
+<circle class="post" cx="42.86" cy="162.30" r="1"></circle><circle class="post-lit" cx="42.56" cy="162.00" r=".38"></circle>
+<clipPath id="sail2"><path d="M19.25 138.04 Q24.80 135.94 29.69 132.38 Q28.38 138.31 28.67 144.28 Q24.42 140.46 19.25 138.04Z"></path></clipPath>
+<path class="sail-shadow" transform="translate(.7 1.1)" d="M19.25 138.04 Q24.80 135.94 29.69 132.38 Q28.38 138.31 28.67 144.28 Q24.42 140.46 19.25 138.04Z"></path>
+<path class="sail" d="M19.25 138.04 Q24.80 135.94 29.69 132.38 Q28.38 138.31 28.67 144.28 Q24.42 140.46 19.25 138.04Z"></path>
+<polygon class="sail-dark" clip-path="url(#sail2)" points="19.25,138.04 28.78,138.32 28.45,156.19 47.52,156.75"></polygon>
+<line class="sail-fold" x1="19.25" y1="138.04" x2="28.78" y2="138.32"></line>
+<path class="sail-edge" d="M19.25 138.04 Q24.80 135.94 29.69 132.38 Q28.38 138.31 28.67 144.28 Q24.42 140.46 19.25 138.04Z"></path>
+<circle class="post" cx="19.25" cy="138.04" r="1"></circle><circle class="post-lit" cx="18.95" cy="137.74" r=".38"></circle>
+<circle class="post" cx="29.69" cy="132.38" r="1"></circle><circle class="post-lit" cx="29.39" cy="132.08" r=".38"></circle>
+<circle class="post" cx="28.67" cy="144.28" r="1"></circle><circle class="post-lit" cx="28.37" cy="143.97" r=".38"></circle>
+<polyline class="fence" points="140.8,281.5 78.9,281.5 78.9,284.8 38.6,284.8 38.6,280.1 28.3,280.2 22,268 21,241 19,216 18,197 17,184 17,166 18,156 19,148 25,120 28,101 30,88 35,71 35.5,52 31,45.5 38,36 47,28 56,19 64,13.5 71,8 78,3.5 84,7 91,9.5 106,6.8 112,4.6 125,2.8 140,2.5 153,4.5 162.8,4.2 170.5,9.9 182.1,-5.5 198,0 217,1.5 227.8,-3.2 242.9,8 256.7,18.1 264.8,24.1 262.9,32.2 271.7,38.9 284,48.3 289.1,53.4"></polyline>
+<polyline class="fence" points="284.9,63.6 277,72 263,75 250,78 240,81 238,100 246,130 247,160 247,190 246,225 243,243 239,262 237,281"></polyline>
+<polyline class="fence" points="229.7,281.4 229.4,262.6 227.3,262.4 227.1,242.6 203.2,243 203.1,277.2 198.3,277.4 198.3,280.1 193.7,280.1 193.8,282.1 163.5,282.5"></polyline>
+<line class="arrow-c" x1="244" y1="290" x2="238.35" y2="284.77"></line><polygon class="arrow-c" points="236,282.6 239.10,283.97 237.60,285.58"></polygon><line class="arrow" x1="244" y1="290" x2="238.35" y2="284.77"></line><polygon class="arrow" points="236,282.6 239.10,283.97 237.60,285.58"></polygon>
+<line class="arrow-c" x1="152" y1="307" x2="152.00" y2="288.00"></line><polygon class="arrow-c" points="152,284.8 153.10,288.00 150.90,288.00"></polygon><line class="arrow" x1="152" y1="307" x2="152.00" y2="288.00"></line><polygon class="arrow" points="152,284.8 153.10,288.00 150.90,288.00"></polygon>
+<line class="arrow-c" x1="100" y1="-1" x2="100.00" y2="9.30"></line><polygon class="arrow-c" points="100,12.5 98.90,9.30 101.10,9.30"></polygon><line class="arrow" x1="100" y1="-1" x2="100.00" y2="9.30"></line><polygon class="arrow" points="100,12.5 98.90,9.30 101.10,9.30"></polygon>
+</svg>
+
+<div class="tag" style="left: 526px; top: 340px; transform: translate(-100%, -50%); background: #E8336A; color: #FFFFFF">Oval Stage</div>
+<div class="tag" style="left: 309px; top: 716px; transform: translate(-50%, -50%); background: #6D3FD6; color: #FFFFFF">Track Stage</div>
+<div class="tag" style="left: 309px; top: 559px; transform: translate(-50%, -100%); background: #FFC93C; color: #1F2A5C">Food Alley<span class="sub">40 vendors</span></div>
+<div class="tag" style="left: 73px; top: 322px; transform: translate(-50%, -50%); background: #7FE0C2; color: #1F2A5C">The Grove<span class="sub">Shade + chill</span></div>
+<div class="tag" style="left: 581px; top: 517px; transform: translate(-50%, -100%); background: #FFC93C; color: #1F2A5C">Bar</div>
+<div class="tag" style="left: 692px; top: 934px; transform: translate(0, -50%); background: #FFC93C; color: #1F2A5C">VIP Gate</div>
+<div class="tag" style="left: 422px; top: 973px; transform: translate(-50%, 0); background: #FFC93C; color: #1F2A5C">Main Entrance</div>
+
+<div class="tag" style="left: 597px; top: 166px; transform: translate(-50%, -50%) rotate(42deg); background: #E8336A; color: #FFFFFF">Artists &amp; Staff<span class="sub">Restricted zone</span></div>
+<div class="tag" style="left: 86px; top: 716px; transform: translate(-50%, -50%); background: #E8336A; color: #FFFFFF">Backstage<span class="sub">Restricted zone</span></div>
+<div class="tag" style="left: 263px; top: 21px; transform: translate(-50%, -100%); background: #A8643E; color: #FFFFFF">Pavilion<span class="sub">Chill + AC</span></div>
+<div class="badge" style="left: 534px; top: 427px; background: #FFFFFF; border-color: #E5484D" aria-label="First aid"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" style="stroke: #E5484D; stroke-width: 4" d="M12 5v14M5 12h14"></path></svg></div>
+<div class="badge" style="left: 99px; top: 455px; background: #FFFFFF; border-color: #E5484D" aria-label="First aid"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" style="stroke: #E5484D; stroke-width: 4" d="M12 5v14M5 12h14"></path></svg></div>
+<div class="badge" style="left: 113px; top: 487px; background: #1E9BEA" aria-label="Water refill"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" d="M12 3.5c3 4 5.5 7 5.5 10a5.5 5.5 0 0 1-11 0c0-3 2.5-6 5.5-10z"></path></svg></div>
+<div class="badge" style="left: 541px; top: 575px; background: #1E9BEA" aria-label="Water refill"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" d="M12 3.5c3 4 5.5 7 5.5 10a5.5 5.5 0 0 1-11 0c0-3 2.5-6 5.5-10z"></path></svg></div>
+<div class="badge" style="left: 63px; top: 563px; background: #4C5FD5" aria-label="Toilets"><svg width="22" height="22" viewBox="6.5 5.5 19 20" aria-hidden="true"><g fill="#fff"><circle cx="11.2" cy="8.4" r="2.1"/><circle cx="20.8" cy="8.4" r="2.1"/><rect x="9.1" y="11.5" width="4.2" height="7.4" rx="1"/><rect x="7.5" y="11.5" width="1.35" height="6.2" rx="0.65"/><rect x="13.55" y="11.5" width="1.35" height="6.2" rx="0.65"/><rect x="9.1" y="17.7" width="1.8" height="6.3" rx="0.5"/><rect x="11.5" y="17.7" width="1.8" height="6.3" rx="0.5"/><path d="M19 11.5 L22.6 11.5 L24.4 18.9 L17.2 18.9z"/><path d="M18.5 12.5L16.9 17.7" stroke="#fff" stroke-width="1.35" stroke-linecap="round" fill="none"/><path d="M23.1 12.5L24.7 17.7" stroke="#fff" stroke-width="1.35" stroke-linecap="round" fill="none"/><rect x="19.4" y="18.3" width="1.3" height="5.7" rx="0.5"/><rect x="21.3" y="18.3" width="1.3" height="5.7" rx="0.5"/></g></svg></div>
+<div class="badge" style="left: 236px; top: 89px; background: #4C5FD5" aria-label="Toilets"><svg width="22" height="22" viewBox="6.5 5.5 19 20" aria-hidden="true"><g fill="#fff"><circle cx="11.2" cy="8.4" r="2.1"/><circle cx="20.8" cy="8.4" r="2.1"/><rect x="9.1" y="11.5" width="4.2" height="7.4" rx="1"/><rect x="7.5" y="11.5" width="1.35" height="6.2" rx="0.65"/><rect x="13.55" y="11.5" width="1.35" height="6.2" rx="0.65"/><rect x="9.1" y="17.7" width="1.8" height="6.3" rx="0.5"/><rect x="11.5" y="17.7" width="1.8" height="6.3" rx="0.5"/><path d="M19 11.5 L22.6 11.5 L24.4 18.9 L17.2 18.9z"/><path d="M18.5 12.5L16.9 17.7" stroke="#fff" stroke-width="1.35" stroke-linecap="round" fill="none"/><path d="M23.1 12.5L24.7 17.7" stroke="#fff" stroke-width="1.35" stroke-linecap="round" fill="none"/><rect x="19.4" y="18.3" width="1.3" height="5.7" rx="0.5"/><rect x="21.3" y="18.3" width="1.3" height="5.7" rx="0.5"/></g></svg></div>
+<div class="badge" style="left: 646px; top: 652px; background: #4C5FD5" aria-label="Toilets"><svg width="22" height="22" viewBox="6.5 5.5 19 20" aria-hidden="true"><g fill="#fff"><circle cx="11.2" cy="8.4" r="2.1"/><circle cx="20.8" cy="8.4" r="2.1"/><rect x="9.1" y="11.5" width="4.2" height="7.4" rx="1"/><rect x="7.5" y="11.5" width="1.35" height="6.2" rx="0.65"/><rect x="13.55" y="11.5" width="1.35" height="6.2" rx="0.65"/><rect x="9.1" y="17.7" width="1.8" height="6.3" rx="0.5"/><rect x="11.5" y="17.7" width="1.8" height="6.3" rx="0.5"/><path d="M19 11.5 L22.6 11.5 L24.4 18.9 L17.2 18.9z"/><path d="M18.5 12.5L16.9 17.7" stroke="#fff" stroke-width="1.35" stroke-linecap="round" fill="none"/><path d="M23.1 12.5L24.7 17.7" stroke="#fff" stroke-width="1.35" stroke-linecap="round" fill="none"/><rect x="19.4" y="18.3" width="1.3" height="5.7" rx="0.5"/><rect x="21.3" y="18.3" width="1.3" height="5.7" rx="0.5"/></g></svg></div>
+<div class="badge" style="left: 98px; top: 868px; background: #FFFFFF; border-color: #E5484D" aria-label="First aid"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" style="stroke: #E5484D; stroke-width: 4" d="M12 5v14M5 12h14"></path></svg></div>
+<div class="badge" style="left: 176px; top: 648px; background: #FFFFFF; border-color: #E5484D" aria-label="First aid"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" style="stroke: #E5484D; stroke-width: 4" d="M12 5v14M5 12h14"></path></svg></div>
+<div class="badge" style="left: 329px; top: 878px; background: #0E8C9E" aria-label="Info"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" style="stroke-width: 3" d="M12 11v7M12 6.5h.01"></path></svg></div>
+<div class="tag" style="left: 557px; top: 878px; transform: translate(-50%, -50%); background: #FFC93C; color: #1F2A5C">Tickets</div>
+<div class="tag" style="left: 294px; top: 921px; transform: translate(-50%, -50%); background: #7FE0C2; color: #1F2A5C">Merch</div>
+<div class="badge" style="left: 306px; top: 80px; background: #FFFFFF; border-color: #E5484D" aria-label="First aid"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" style="stroke: #E5484D; stroke-width: 4" d="M12 5v14M5 12h14"></path></svg></div>
+</div>
+
+<div style="position: absolute; left: 64px; top: 1520px; width: 1072px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px">
+<div><div style="font-family: 'Bebas Neue', sans-serif; font-size: 76px; line-height: 0.9; color: #FFC93C">60</div><div style="font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 0.12em; color: #FFFFFF">Artists</div></div>
+<div><div style="font-family: 'Bebas Neue', sans-serif; font-size: 76px; line-height: 0.9; color: #FFC93C">40</div><div style="font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 0.12em; color: #FFFFFF">Food vendors</div></div>
+<div><div style="font-family: 'Bebas Neue', sans-serif; font-size: 76px; line-height: 0.9; color: #FFC93C">2</div><div style="font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 0.12em; color: #FFFFFF">Stages</div></div>
+<div><div style="font-family: 'Bebas Neue', sans-serif; font-size: 76px; line-height: 0.9; color: #FFC93C">3</div><div style="font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 0.12em; color: #FFFFFF">Days</div></div>
+</div>
+
+<div style="position: absolute; left: 64px; top: 1650px; width: 1072px; display: flex; align-items: center; justify-content: space-between; gap: 24px">
+<div style="display: flex; align-items: center; gap: 28px; color: #FFFFFF; font-weight: 600; font-size: 17px">
+<div style="display: flex; align-items: center; gap: 10px"><div class="badge key" style="background: #1E9BEA"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" d="M12 3.5c3 4 5.5 7 5.5 10a5.5 5.5 0 0 1-11 0c0-3 2.5-6 5.5-10z"></path></svg></div>Free water</div>
+<div style="display: flex; align-items: center; gap: 10px"><div class="badge key" style="background: #4C5FD5"><svg width="22" height="22" viewBox="6.5 5.5 19 20" aria-hidden="true"><g fill="#fff"><circle cx="11.2" cy="8.4" r="2.1"/><circle cx="20.8" cy="8.4" r="2.1"/><rect x="9.1" y="11.5" width="4.2" height="7.4" rx="1"/><rect x="7.5" y="11.5" width="1.35" height="6.2" rx="0.65"/><rect x="13.55" y="11.5" width="1.35" height="6.2" rx="0.65"/><rect x="9.1" y="17.7" width="1.8" height="6.3" rx="0.5"/><rect x="11.5" y="17.7" width="1.8" height="6.3" rx="0.5"/><path d="M19 11.5 L22.6 11.5 L24.4 18.9 L17.2 18.9z"/><path d="M18.5 12.5L16.9 17.7" stroke="#fff" stroke-width="1.35" stroke-linecap="round" fill="none"/><path d="M23.1 12.5L24.7 17.7" stroke="#fff" stroke-width="1.35" stroke-linecap="round" fill="none"/><rect x="19.4" y="18.3" width="1.3" height="5.7" rx="0.5"/><rect x="21.3" y="18.3" width="1.3" height="5.7" rx="0.5"/></g></svg></div>Toilets</div>
+<div style="display: flex; align-items: center; gap: 10px"><div class="badge key" style="background: #FFFFFF; border-color: #E5484D"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" style="stroke: #E5484D; stroke-width: 4" d="M12 5v14M5 12h14"></path></svg></div>First aid</div>
+<div style="display: flex; align-items: center; gap: 10px"><div class="badge key" style="background: #0E8C9E"><svg width="18" height="18" viewBox="0 0 24 24"><path class="ic" style="stroke-width: 3" d="M12 11v7M12 6.5h.01"></path></svg></div>Info</div>
+</div>
+<div style="font-family: 'Bebas Neue', sans-serif; font-size: 34px; letter-spacing: 0.14em; color: #FFFFFF; white-space: nowrap">[Website]</div>
+</div>
+
+</div>
+
+
+</body>
+</html>

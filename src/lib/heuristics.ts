@@ -40,10 +40,10 @@ export const TEAM_CATEGORY: Record<TeamSlug, IncidentCategory> = {
 /** Stand-in for the AI's routine answers (answer_info). First matching pattern wins. */
 export const GUEST_ANSWERS: { re: RegExp; answer: string }[] = [
   { re: /toilet|bathroom|loo|restroom/i, answer: 'Nearest toilets to the Oval Stage are Toilets East, by the tennis courts. There are more at Toilets West, next to the Grove.' },
-  { re: /water|refill|drink/i, answer: 'Free water refills at Water Station 1 (west end of Food Alley) and Water Station 2 (east end, near the Oval Stage).' },
+  { re: /water|refill|drink/i, answer: 'Free water refills at Water Station 1 (in the Grove, by the first aid tent) and Water Station 2 (east end, near the Oval Stage).' },
   { re: /lost property|lost my|left my/i, answer: 'Lost property is at the Info Tent, open until 11pm. Bring ID to collect.' },
   { re: /\b(times?|set|on next|playing|line-?up|schedule)\b/i, answer: 'Next up: Oval Stage at 5:30pm, Track Stage at 6:00pm. Full times are on the board at the Info Tent.' },
-  { re: /\b(map|where is|where's|how do i get)\b/i, answer: 'The Info Tent is just inside Gate B, on the left. Food Alley runs between the oval and the track.' },
+  { re: /\b(map|where is|where's|how do i get)\b/i, answer: 'The Info Tent is just inside the Main Entrance, on the left. Food Alley runs between the oval and the track.' },
 ];
 
 /** Stand-in for triage: keyword → team + priority. */

@@ -44,6 +44,22 @@ export const TUNNEL: Ring = [[232, 306], [232, 281]];
 /** The car park behind the Pavilion, where Newman Drive ends. */
 export const CAR_PARK: Ring = [[120, 14], [125, 24], [128, 22], [135, 19], [137, 17], [139, 17], [139, 4], [127, 5], [127, 10]];
 
+/** Ormond College's car park, now the Artist Village's yard. */
+export const YARD: Ring = [[240, 49], [245, 34], [259, 33], [269, 37], [281, 50], [288, 57], [285, 67], [272, 72], [256, 75], [239, 75], [237, 62]];
+
+/** Ormond's buildings round the yard, from OpenStreetMap, which the artists have taken over. `at` is where the badge goes. */
+export const ARTIST_BUILDINGS: { name: string; icon: 'backstage' | 'food' | 'artists'; at: [number, number]; ring: Ring }[] = [
+  {
+    name: 'Green Room', icon: 'backstage', at: [209, 17],
+    ring: [
+      [209.9, 7.4], [213.9, 10.3], [216.6, 12.4], [214.4, 15.6], [222.2, 21.7], [218.5, 27.1], [213.8, 23.9], [212.5, 25.8], [206.7, 26.8],
+      [205.7, 26.1], [204.8, 27.2], [199, 23.2], [202.2, 18.4], [200.9, 17.5], [202.5, 15.2], [195.3, 9.6], [199, 4.4], [207.2, 10.4],
+    ],
+  },
+  { name: 'Dressing', icon: 'artists', at: [163.5, 12.5], ring: [[154.5, 6], [152.5, 11.7], [172.5, 18.9], [174.6, 13.1]] },
+  { name: 'Catering', icon: 'food', at: [241, 25], ring: [[242.9, 8], [226.6, 30.6], [240.3, 40.9], [243.9, 36], [251.1, 25.9], [256.7, 18.1]] },
+];
+
 /**
  * The real footpaths inside the fence, from OpenStreetMap. Just paving: you can walk anywhere on the
  * grass too, so routes don't follow them.
@@ -69,7 +85,7 @@ export const PATHS: Ring[] = [
   // Across the Grove
   [[19, 184], [33, 150], [39, 132], [47, 115], [38, 102]],
   [[32, 88], [35, 94], [38, 102], [38, 114], [39, 132]],
-  // South walk, between the track and the sports centres, and the ramp up to Gate A
+  // South walk, between the track and the sports centres, and the ramp up to the VIP Gate
   [[22, 241], [32, 257], [47, 274], [54, 273], [76, 273], [141, 273], [163, 273]],
   [[148, 286], [148, 282], [147, 278], [141, 273]],
   [[148, 286], [157, 278], [163, 273], [173, 274], [181, 269], [189, 258], [196, 251], [200, 244], [209, 227]],
@@ -86,12 +102,52 @@ export const TREES: [number, number, number][] = [
   [142, 25, 4.5], [156, 27, 4.5], [176, 33, 4.5], [193, 41, 4.5], [203, 48, 4], [208, 55, 4], [216, 89, 4], [192, 160, 3.5],
   // South walk
   [62, 278, 3], [92, 278, 3], [103, 278, 3],
+  // Artist Village: the lawn by the Green Room, round the Catering courtyard and by the netball court
+  [188, 11, 5.8], [228, 5, 6.7], [226, 17, 5.4], [228, 35, 5], [253, 24, 3.3],
+];
+
+/** A w × h rectangle centred on (cx, cy), turned `deg` clockwise on the plan. */
+function turned(cx: number, cy: number, w: number, h: number, deg: number): Ring {
+  const c = Math.cos((deg * Math.PI) / 180), s = Math.sin((deg * Math.PI) / 180);
+  return ([[-w, -h], [w, -h], [w, h], [-w, h]] as const).map(([x, y]) => [+(cx + (x * c - y * s) / 2).toFixed(2), +(cy + (x * s + y * c) / 2).toFixed(2)]);
+}
+
+/** `n` rooms of w × h in a row, `gap` apart, the first starting at (x, y) and the row running `deg` clockwise from east. */
+function row(x: number, y: number, deg: number, n: number, w: number, h: number, gap = 0.8): Ring[] {
+  const c = Math.cos((deg * Math.PI) / 180), s = Math.sin((deg * Math.PI) / 180);
+  return Array.from({ length: n }, (_, i) => {
+    const d = w / 2 + i * (w + gap);
+    return turned(x + d * c, y + d * s, w, h, deg);
+  });
+}
+
+/** Ormond's buildings run 37° off the plan's grid; what the artists have put in the yard lines up with them. */
+const YARD_GRID = 37;
+
+/** The ways through the fence: the middle of each gate's opening, and which way is in. */
+export const GATEWAYS: { at: [number, number]; in: [number, number] }[] = [
+  { at: [233.3, 281.2], in: [0, -1] }, // the VIP Gate (Gate A), at the top of the tunnel
+  { at: [152, 281], in: [0, -1] }, // the Main Entrance (Gate B)
+  { at: [287, 58.5], in: [-0.93, -0.38] }, // the Artist Gate, across the yard's road
+];
+
+/** First aid room in the east end of the Pavilion, well back from the Oval Stage's crowd. */
+export const FIRST_AID_ROOM: [number, number] = [114, 17];
+
+/** Toilets in the west end of the Pavilion. */
+export const PAVILION_TOILETS: [number, number] = [91, 20];
+
+/** The control sheds: the Oval Stage's on the concrete pad inside the compound off Newman Drive, the Track Stage's in the track's west bend behind it. */
+export const CONTROL_SHEDS: Ring[] = [
+  [[226.5, 98], [235.5, 98], [235.5, 105], [226.5, 105]],
+  [[48, 206], [57, 206], [57, 212], [48, 212]],
 ];
 
 export const DECOR = {
-  /** Medic points: at the Oval Stage, beside the Track Stage and on the south walk. */
+  /** Medic points: at the Oval Stage, in the Grove, beside the Track Stage and on the south walk. First aid is also in the Pavilion (`FIRST_AID_ROOM`). */
   medics: [
     { x: 186, y: 128, w: 5, h: 5 },
+    { x: 44, y: 137, w: 5, h: 5 },
     { x: 69, y: 200, w: 5, h: 5 },
     { x: 84, y: 275, w: 5, h: 4.5 },
   ] satisfies Box[],
@@ -101,33 +157,54 @@ export const DECOR = {
     { x: 114, y: 222, w: 5, h: 5 },
   ] satisfies Box[],
   bar: { x: 217, y: 162, w: 18, h: 13 } satisfies Box,
-  /** Bag check at Gate A, beside the top of the tunnel road. */
-  security: { x: 235, y: 229, w: 7, h: 6 } satisfies Box,
-  /** Ticket booth at Gate B. */
-  booth: { x: 157, y: 288, w: 4, h: 3 } satisfies Box,
-  /** Queue lanes up the tunnel road. */
+  /** Bag check at every gate, where the queue lanes end: beside the top of the tunnel road at the VIP Gate, just inside the Main Entrance, and in the yard inside the Artist Gate. */
+  security: [
+    { x: 235, y: 229, w: 7, h: 6 },
+    { x: 156, y: 274.5, w: 6, h: 5 },
+    { x: 276, y: 63, w: 5, h: 4 },
+  ] satisfies Box[],
+  /** Queue lanes, two at each gate: up the tunnel road to the VIP Gate, out in the walkway at the Main Entrance, and outside the Artist Gate. */
   lanes: [
     [[230.5, 250], [230.5, 278]],
     [[232.5, 250], [232.5, 278]],
     [[234.5, 250], [234.5, 278]],
+    [[146, 283], [146, 299]],
+    [[150, 283], [150, 299]],
+    [[154, 283], [154, 299]],
+    [[287.5, 61.4], [293.5, 63.9]],
+    [[288.4, 59.1], [294.4, 61.5]],
+    [[289.4, 56.8], [295.4, 59.2]],
   ] satisfies Ring[],
-  /** Crowd barriers either side of the way in at Gate B. */
+  /** Crowd barriers from the Main Entrance's lanes out to the buildings either side, so the way in is through the lanes. */
   barriers: [
-    [[141, 287], [147, 287]],
-    [[153, 287], [163, 287.5]],
+    [[141, 287], [146, 287]],
+    [[154, 287], [163.5, 287.5]],
   ] satisfies Ring[],
-  /** Shade sails in the Grove. */
+  /** Shade sails in the Grove, in the gaps between the trees so no canopy pokes out from under one. */
   sails: [
-    [[29, 126], [42, 121], [37, 134]],
-    [[40, 141], [53, 145], [43, 153]],
-    [[25, 148], [36, 146], [31, 159]],
+    [[36.3, 117.9], [45.7, 110], [48.1, 121.5]],
+    [[28.9, 160.5], [35.5, 151.1], [40.4, 160.8]],
+    [[28.5, 134.2], [27.8, 142.4], [21.3, 138.1]],
   ] satisfies Ring[],
-  /** Picnic umbrellas between Water 1 and Food Alley. */
+  /** Picnic umbrellas between the Grove and Food Alley. */
   umbrellas: [[64, 160], [71, 166], [61, 168]] satisfies [number, number][],
-  /** Artist trailers in the backstage compound. */
+  /** Dressing cabins in the Artist Village yard: two rows beside Jack Clarke. */
+  cabins: [...row(246.2, 47.3, YARD_GRID, 4, 6, 2.6), ...row(250, 42, YARD_GRID, 4, 6, 2.6)] satisfies Ring[],
+  /** Artists' coaches parked along the yard's north side. */
+  coaches: [...row(254.5, 36.2, YARD_GRID, 2, 11, 3, 1.5)] satisfies Ring[],
+  /** Stock containers beside each control shed: on the lawn off Newman Drive, and in the track's west bend. */
+  stores: [
+    { x: 224, y: 112, w: 6, h: 2.4 },
+    { x: 224, y: 115.6, w: 6, h: 2.4 },
+    { x: 232, y: 112, w: 6, h: 2.4 },
+    { x: 47, y: 238, w: 6, h: 2.4 },
+    { x: 47, y: 241.6, w: 6, h: 2.4 },
+    { x: 55, y: 238, w: 6, h: 2.4 },
+  ] satisfies Box[],
+  /** Artist trailers in the compound, south of the Control Room. */
   trailers: [
-    { x: 193, y: 137, w: 7, h: 3 },
-    { x: 193, y: 143, w: 7, h: 3 },
-    { x: 204.5, y: 147, w: 5, h: 5 },
+    { x: 227, y: 132, w: 7, h: 3 },
+    { x: 227, y: 138, w: 7, h: 3 },
+    { x: 237, y: 133, w: 5, h: 5 },
   ] satisfies Box[],
 };
