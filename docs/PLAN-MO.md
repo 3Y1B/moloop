@@ -81,7 +81,7 @@ Two places, both short and factual, so Mo can understand things at a glance:
 - The server reads the world itself (`read()`). The client never sends the content.
 - It calls `generate()` (`src/server/models/index.ts`), so it uses OpenAI by default and the Spark first when that's turned on. The output schema is zod: `{ headline: string, points: { text, taskId?, teamSlug? }[] }`, with at most 3 points, English, facts only, and ids checked against the world before they're returned.
 - **Cache** in memory, keyed by scope plus the newest event id. Opening Tasks again costs nothing, and a new summary is generated only after something has happened. Debounce the shift summary to at most one regeneration every 60 s.
-- **Fails closed:** if the model is down or slow, the card shows plain counts built from the snapshot and no AI text.
+- **Fails closed:** if the model is down or slow, the server answers with plain counts and no AI text. The card hides them: Tasks already shows the counts on its filters and the task page its timeline.
 
 **Client:** add `summarize(scope)` to `Repo` (`src/data/repo.ts`, `src/data/supabase-repo.ts`); add a `useSummary(scope)` hook that refetches when the newest event id changes; add `src/components/mo/summary-card.tsx` with a sparkles icon, the headline, the points as tappable rows, and "Updated 1 min ago".
 
@@ -91,13 +91,17 @@ Two places, both short and factual, so Mo can understand things at a glance:
 
 Titles and summaries are already English (the intake AI writes them that way). What isn't: the reporter's own words (`reports.raw_text`), which the task sheet and task card label "translated from Spanish" while showing the original, and a guest's follow-up detail, which goes into the summary ("Update: …"), the log and the inbox as typed.
 
-- **Translate where the AI already reads the text.** The intake `create_task` tool returns `english` alongside `language`; the follow-up read (`DetailRead`) does the same. No extra model call.
-- **Store it:** an `english_text` column on `reports` (migration), and `english` on `Reporter`. Follow-ups use the English in the summary, the log and the inbox, with the original kept as the event note.
+- **Translate where the AI already reads the text.** The intake `create_task` tool returns `english` alongside `language`. The follow-up read on an open task is a probability classifier that can't translate, so a small text call translates it alongside, adding no wait.
+- **Store it:** in `reports.text_en`, the column the schema already had for staff translations (no migration), and `english` on `Reporter`. Follow-ups use the English in the summary, the log and the inbox, with the original kept as the event note.
 - **For all staff:** English first, labelled "Translated from Spanish"; tapping the label shows the original ("Original, Spanish"). Names and places that don't translate stay readable.
 - **Fails closed:** the heuristic fallback has no translation, so the original shows with no "translated" label. The label is only ever shown over a real translation.
 - **The fallback's own titles:** `heuristicTriage` uses the raw text as title and summary and always says `language: 'en'`, so a Thai report made while the AI was down reached Mo's Needs action with a Thai title (seen 2026-10-08). It should say the language is unknown rather than English, and the row should show that it's untranslated.
 
 **Done when:** a guest reports in Spanish, and Mo reads the quote in English on the task, can tap to see the Spanish, and a Spanish follow-up shows up in English in the summary and the inbox.
+
+## Status
+
+All six steps are built on the `moplan` branch: test-first at pure seams (`lib/crew`, `lib/team-pill`, `lib/task-log`, `lib/summary`, `server/summary-cache`, `lib/quote`, `heuristicTriage`, `guestAddDetail`) and checked in the web build at phone and laptop widths. The AI paths (summaries, translations) need the server deployed from this branch to be seen live.
 
 ## Order
 

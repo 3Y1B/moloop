@@ -201,15 +201,16 @@ A lead's app is **exactly the volunteer app**, plus a **My task / Team** switch 
 | `assign/[id].tsx` (formSheet) | **Pick a volunteer** for a task: suggested first (free, nearest, same team, skills), with why ("free · 120 m · first aid cert") |
 | `approve/[id].tsx` (formSheet) | **Approve**: the AI's proposal for a P1/P2 guest report, with a 30 s countdown; approve the suggestion or pick another. If nobody acts, the AI's top pick is assigned automatically |
 
-### Coordinator (Mo) — later
+### Coordinator (Mo)
 
-Mo's **logic** is built in Phase 1: escalations bumped to Mo, P1/P2 approvals with auto-assign, broadcasts, unassigned tasks. Mo's **screens** wait until that logic exists and Mo's job is clearer. Ideas so far:
+Mo has their own app (`src/app/(mo)/`, see `docs/PLAN-MO.md`): bottom tabs on a phone; on a laptop (1000 px and wider) the tabs keep to a 420 px column and the map stays beside them. Every tab is a flat, full-height list of compact two-line rows with priority bars on the left. Mo's duty chip, Tools and Inbox run along the top, with "Report something" pinned above the tab bar.
 
-- **Coverage heat map**: which areas are thin on volunteers, and where the big issues are.
-- **Needs you**: what leads didn't handle in time.
-- **Broadcast** to everyone, a team or a zone.
+- **Needs action** (lands here, badge on the tab): "Yours" when Mo has a task, then everything waiting on Mo, most urgent first (`NeedsRow`: Approve, Assign, Respond, Arrived). Nothing waiting: "All clear".
+- **Tasks**: the shift's log, newest activity first, filtered by the team pills and All / Open / Active / Done (with counts). Each row has priority, title and when it last moved, then its status, place and what happened last. An AI summary sits on top when the model is up. A row opens the task page, which has a small zone map, the task's own AI summary and the full timeline.
+- **Crew**: team pills (All, then each rostered team in its colour with how many are on shift). Under All, every team can be folded from its head; a folded team keeps its counts and shows a red dot if someone in it asked for help. With one team picked: who leads it and the shift as icon counts, then each person as one compact row wearing their map dot, with the task they're on as a small button, then the team's open tasks.
+- **Map**: the whole site with the same pills floating over it. The pill Mo picks is shared by Crew, Tasks and both maps, so the list and the map always agree.
 
-Until then, the dev panel can act as Mo: respond to bumped escalations and send broadcasts.
+Reporters' words show in English first for all staff, labelled "Translated from Spanish"; tap to see the original. Reports read while the AI was down say "Not translated".
 
 ### Shared
 
