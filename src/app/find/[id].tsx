@@ -17,15 +17,16 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import { useFinder } from '@/components/finder/use-finder';
 import { Icon } from '@/components/ui/icon';
 import type { Step, Trend } from '@/lib/finder';
 
 /*
- * Apple's Precision Finding "Nearby" screen, driven by Bluetooth: a cloud of dots that draws in as the other phone
- * gets closer, the step in big type, warmer/colder under it, and the whole screen green once you're there.
- * Bluetooth gives closeness, not direction, so there's no arrow.
+ * Apple's Precision Finding screen. Bluetooth (any two phones): a cloud of dots that draws in as the other phone gets
+ * closer, the step in big type, warmer/colder under it. UWB (two iPhones): the arrow, the distance and "to your right".
+ * Either way the whole screen goes green once you're there, or facing them.
  */
 
 const GREEN = '#30C759';
@@ -65,8 +66,12 @@ export default function FindScreen() {
   useKeepAwake();
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
   const insets = useSafeAreaInsets();
-  const { reading, error } = useFinder(id);
-  const { step } = reading;
+  const { reading, pointer, error } = useFinder(id);
+  // UWB saying "here" counts as here, even if Bluetooth hasn't caught up.
+  const step: Step = pointer?.kind === 'here' ? 'here' : reading.step;
+  const arrow = pointer?.kind === 'arrow' ? pointer : null;
+  // Apple's green: you're there, or you're facing them.
+  const green = step === 'here' || !!arrow?.facing;
 
   const spread = useSharedValue(SPREAD.searching);
   const found = useSharedValue(0);
@@ -76,11 +81,15 @@ export default function FindScreen() {
     clock.value = withRepeat(withTiming(1, { duration: 2400, easing: Easing.linear }), -1, false);
   }, [clock]);
 
+  useEffect(() => {
+    found.value = withTiming(green ? 1 : 0, { duration: 350 });
+    if (green && step !== 'here') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [green, step, found]);
+
   // Each step change: the cloud springs to its new size, and a tap you can feel, stronger the closer you are.
   const last = useRef<Step>('searching');
   useEffect(() => {
     spread.value = withSpring(SPREAD[step], { damping: 14, stiffness: 90 });
-    found.value = withTiming(step === 'here' ? 1 : 0, { duration: 450 });
     if (step === last.current) return;
     const closer = SPREAD[step] < SPREAD[last.current];
     last.current = step;
@@ -88,15 +97,21 @@ export default function FindScreen() {
     else if (step !== 'searching' && closer) {
       Haptics.impactAsync(step === 'very_close' ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Medium);
     }
-  }, [step, spread, found]);
+  }, [step, spread]);
 
   const background = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(found.value, [0, 1], [NIGHT, GREEN]) }));
   const disc = useAnimatedStyle(() => ({
-    opacity: found.value,
+    opacity: step === 'here' ? found.value : 0,
     transform: [{ scale: interpolate(found.value, [0, 1], [0.3, 1]) }],
   }));
 
   const trend = reading.trend ? TREND[reading.trend] : null;
+  // Big line and the one under it: UWB's distance when there is one, else the Bluetooth step.
+  const [big, small] =
+    step === 'here' ? [LABEL.here, HINT.here]
+      : arrow ? [arrow.distance, arrow.side === 'ahead' ? 'ahead' : `to your ${arrow.side}`]
+        : pointer?.kind === 'sweep' ? [pointer.distance, 'Move your iPhone around']
+          : [LABEL[step], trend ?? HINT[step]];
 
   return (
     <Animated.View style={[styles.screen, background, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 }]}>
@@ -112,18 +127,57 @@ export default function FindScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.stage} accessibilityLabel={LABEL[step]}>
-        {DOTS.map((d, i) => (
-          <Dot key={i} dot={d} spread={spread} clock={clock} found={found} searching={step === 'searching'} />
-        ))}
+      <View style={styles.stage} accessibilityLabel={`${big}, ${small}`}>
+        {arrow ? (
+          <Arrow angle={arrow.angle} />
+        ) : (
+          DOTS.map((d, i) => <Dot key={i} dot={d} spread={spread} clock={clock} found={found} searching={step === 'searching'} />)
+        )}
         <Animated.View style={[styles.disc, disc]} />
       </View>
 
       <View style={styles.bottom}>
-        <Animated.Text key={step} entering={FadeIn.duration(250)} style={styles.step}>{LABEL[step]}</Animated.Text>
-        <Text style={styles.hint}>{error ?? trend ?? HINT[step]}</Text>
+        <Animated.Text key={arrow || pointer?.kind === 'sweep' ? 'uwb' : step} entering={FadeIn.duration(250)} style={styles.step}>
+          {big}
+        </Animated.Text>
+        <Text style={styles.hint}>{error ?? small}</Text>
       </View>
     </Animated.View>
+  );
+}
+
+const ARC_R = 130;
+const ARC_BOX = ARC_R * 2 + 24;
+
+/**
+ * Apple's arrow: points at them, with an arc from "straight ahead" (the dot at the top) round to where they are, so
+ * you can see how far to turn. Springs between UWB updates so it glides rather than ticks.
+ */
+function Arrow({ angle }: { angle: number }) {
+  const turn = useSharedValue(angle);
+  useEffect(() => {
+    turn.value = withSpring(angle, { damping: 18, stiffness: 120 });
+  }, [angle, turn]);
+  const rotate = useAnimatedStyle(() => ({ transform: [{ rotate: `${turn.value}deg` }] }));
+
+  const c = ARC_BOX / 2;
+  const rad = (angle * Math.PI) / 180;
+  const end = { x: c + ARC_R * Math.sin(rad), y: c - ARC_R * Math.cos(rad) };
+  const arc = `M ${c} ${c - ARC_R} A ${ARC_R} ${ARC_R} 0 0 ${angle > 0 ? 1 : 0} ${end.x} ${end.y}`;
+
+  return (
+    <View style={styles.arrowBox}>
+      <Svg width={ARC_BOX} height={ARC_BOX} style={StyleSheet.absoluteFill}>
+        <Path d={arc} stroke="rgba(255,255,255,0.45)" strokeWidth={10} strokeLinecap="round" fill="none" />
+        <Circle cx={c} cy={c - ARC_R} r={7} fill="rgba(255,255,255,0.6)" />
+        <Circle cx={end.x} cy={end.y} r={7} fill="#FFFFFF" />
+      </Svg>
+      <Animated.View style={rotate}>
+        <Svg width={120} height={140} viewBox="-60 -70 120 140">
+          <Path d="M 0 55 L 0 -55 M -38 -17 L 0 -55 L 38 -17" stroke="#FFFFFF" strokeWidth={16} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </Svg>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -163,6 +217,7 @@ const styles = StyleSheet.create({
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   dot: { position: 'absolute', backgroundColor: '#FFFFFF' },
   disc: { position: 'absolute', width: 132, height: 132, borderRadius: 66, backgroundColor: '#FFFFFF' },
+  arrowBox: { width: ARC_BOX, height: ARC_BOX, alignItems: 'center', justifyContent: 'center' },
   bottom: { gap: 6 },
   step: { color: '#FFFFFF', fontSize: 40, fontWeight: '700', letterSpacing: -0.8 },
   hint: { color: 'rgba(255,255,255,0.7)', fontSize: 19, fontWeight: '500' },

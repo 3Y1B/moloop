@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { beaconUuid, readSignal } from './finder';
+import { beaconUuid, readPeer, readSignal } from './finder';
 
 const NOW = 1_800_000_000_000;
 
@@ -64,5 +64,37 @@ describe('readSignal: how close the other phone is', () => {
 
   it('goes back to searching when the other phone has been quiet for 5 seconds (walked off, or closed the app)', () => {
     expect(readSignal(steady(-50, NOW - 5000), NOW)).toEqual({ step: 'searching', trend: null, rssi: null });
+  });
+});
+
+describe('readPeer: the UWB arrow between two iPhones', () => {
+  it('has nothing to point at without a distance, so the Bluetooth dots stay', () => {
+    expect(readPeer({ distance: null, azimuth: null })).toBeNull();
+  });
+
+  it('knows how far but not which way yet: asks you to move the iPhone around, showing the distance', () => {
+    expect(readPeer({ distance: 4.06, azimuth: null })).toEqual({ kind: 'sweep', distance: '4.1 m' });
+  });
+
+  it('is “here” within half a metre, whichever way the phone points (an arrow that close just spins)', () => {
+    expect(readPeer({ distance: 0.3, azimuth: 1.2 })).toEqual({ kind: 'here' });
+    expect(readPeer({ distance: 0.4, azimuth: null })).toEqual({ kind: 'here' });
+  });
+
+  it('rounds to whole metres from 10 m out', () => {
+    expect(readPeer({ distance: 12.4, azimuth: 0.5236 })).toMatchObject({ distance: '12 m' });
+    expect(readPeer({ distance: 9.96, azimuth: null })).toEqual({ kind: 'sweep', distance: '10 m' });
+  });
+
+  it('points 30° right, 3.2 m, “to your right”, not yet facing them', () => {
+    expect(readPeer({ distance: 3.24, azimuth: 0.5236 })).toEqual({ kind: 'arrow', angle: 30, distance: '3.2 m', side: 'right', facing: false });
+  });
+
+  it.each([
+    [0.0873, 'ahead', true], // 5°: facing them, the screen goes green
+    [-0.2443, 'ahead', true], // −14°: still within the 15° cone
+    [-0.5236, 'left', false], // −30°
+  ] as const)('azimuth %f rad is %s (facing: %s)', (azimuth, side, facing) => {
+    expect(readPeer({ distance: 5, azimuth })).toMatchObject({ side, facing });
   });
 });

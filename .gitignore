@@ -44,3 +44,6 @@ example
 
 # Field-test cast: real names, emails and phones
 supabase/crew.json
+
+# Local Expo modules: Gradle output from building the app on this machine
+modules/*/android/build/

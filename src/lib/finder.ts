@@ -84,3 +84,35 @@ export function readSignal(samples: Sample[], now: number, previous?: Step): Rea
   const trend: Trend = change == null ? null : change >= FINDER.trendDb ? 'warmer' : change <= -FINDER.trendDb ? 'colder' : 'steady';
   return { step: steadyStep(rssi, previous), trend, rssi };
 }
+
+/*
+ * Two iPhones (11 or newer) also range each other by UWB, which gives a real distance and direction: Apple's arrow.
+ * `azimuth` is radians, positive to the right of where the phone points; null until the phone has a direction.
+ */
+export type Peer = { distance: number | null; azimuth: number | null };
+export type Pointer =
+  | { kind: 'arrow'; angle: number; distance: string; side: 'ahead' | 'left' | 'right'; facing: boolean }
+  /** A distance but no direction yet: camera assistance still finding its bearings, or they're behind you. */
+  | { kind: 'sweep'; distance: string }
+  | { kind: 'here' };
+
+/** Within this many degrees of straight ahead, you're facing them: "ahead", and the screen goes green. */
+const FACING_DEG = 15;
+/** Closer than this, in metres, you've found them. */
+const HERE_M = 0.5;
+
+/** "3.2 m" close up; whole metres from 10 m, where a decimal would claim more than UWB knows. */
+function metres(distance: number): string {
+  const tenths = Math.round(distance * 10) / 10;
+  return tenths >= 10 ? `${Math.round(distance)} m` : `${tenths.toFixed(1)} m`;
+}
+
+/** What the arrow screen shows, or null to keep the Bluetooth dots. */
+export function readPeer({ distance, azimuth }: Peer): Pointer | null {
+  if (distance == null) return null;
+  if (distance < HERE_M) return { kind: 'here' };
+  if (azimuth == null) return { kind: 'sweep', distance: metres(distance) };
+  const angle = Math.round((azimuth * 180) / Math.PI);
+  const facing = Math.abs(angle) <= FACING_DEG;
+  return { kind: 'arrow', angle, distance: metres(distance), side: facing ? 'ahead' : angle > 0 ? 'right' : 'left', facing };
+}
