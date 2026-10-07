@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { TeamRow } from '@/components/lead/team-list';
 import { LogRow } from '@/components/mo/log-row';
 import { MoPage } from '@/components/mo/mo-page';
+import { SummaryCard } from '@/components/mo/summary-card';
 import { TeamPills } from '@/components/mo/team-pills';
 import { Segmented } from '@/components/ui/segmented';
 import { Spacing, Type } from '@/constants/theme';
@@ -43,6 +44,7 @@ export default function TasksScreen() {
           />
         </View>
       }>
+      <SummaryCard style={styles.summary} />
       <View style={styles.list}>
         {rows.length === 0 ? (
           <TeamRow>
@@ -58,6 +60,7 @@ export default function TasksScreen() {
 
 const styles = StyleSheet.create({
   filters: { gap: Spacing.two, paddingBottom: Spacing.two },
+  summary: { marginTop: Spacing.two },
   list: { marginTop: Spacing.two },
   empty: { fontSize: Type.footnote },
 });

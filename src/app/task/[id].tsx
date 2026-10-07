@@ -4,11 +4,12 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenHeader } from '@/components/screen-header';
 import { TaskMap } from '@/components/lead/task-map';
+import { SummaryCard } from '@/components/mo/summary-card';
 import { ActiveTaskCard } from '@/components/task/active-task-card';
 import { Timeline } from '@/components/task/timeline';
 import { Avatar } from '@/components/ui/avatar';
 import { Card, Section, Separator } from '@/components/ui/card';
-import { useLookups, useSnapshot, useTask, useTaskEvents } from '@/data/hooks';
+import { useLookups, useRole, useSnapshot, useTask, useTaskEvents } from '@/data/hooks';
 import { Type } from '@/constants/theme';
 import { PRIORITY_LABEL } from '@/lib/format';
 import { isOnTask } from '@/lib/lifecycle';
@@ -25,6 +26,9 @@ export default function TaskDetailScreen() {
   const events = useTaskEvents(id);
   const { meId } = useSnapshot();
   const { volunteers, teams } = useLookups();
+  const role = useRole();
+  // The summary route is for leads and Mo.
+  const lead = role === 'team_lead' || role === 'coordinator';
 
   if (!task) {
     return (
@@ -48,6 +52,8 @@ export default function TaskDetailScreen() {
     <View style={[styles.flex, { backgroundColor: theme.background }]}>
       <ScreenHeader title={`${task.priority} · ${PRIORITY_LABEL[task.priority]}`} back />
       <ScrollView ref={scroll} contentContainerStyle={styles.content}>
+
+      {lead && <SummaryCard taskId={task.id} />}
 
       <ActiveTaskCard task={task} showReplies={onIt} showTimelineLink={false} defaultExpanded />
 
