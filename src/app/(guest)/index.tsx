@@ -47,6 +47,7 @@ export default function AskScreen() {
 
       <VoiceDock
         placeholder="Ask or report"
+        onMap
         onHeight={setStack}
         rest={requests.length > 0 && <RequestFold requests={requests} maxHeight={height * 0.4} />}
         onSend={async (text, clips) => {

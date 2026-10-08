@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming, type SharedValue } from 'react-native-reanimated';
+import Animated, {
+  FadeIn, interpolateColor, useAnimatedKeyboard, useAnimatedStyle, useSharedValue, withRepeat, withTiming, type SharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/ui/icon';
-import { useKeyboardLift } from '@/components/ui/keyboard';
+import { SHEET_RADIUS } from '@/components/ui/bottom-sheet';
 import { haptic, PRESSED_OPACITY } from '@/components/ui/pressable';
 import { Text } from '@/components/ui/text';
 import { Shadow, Spacing, Type } from '@/constants/theme';
@@ -24,23 +26,27 @@ type Phase =
 
 /** Every voice control is this tall: the hold button, Send, and the buttons beside them. */
 export const BAR = 56;
-/** The dock's padding around them; nested curves stay concentric. */
-const PAD = 6;
 const INNER_RADIUS = BAR / 2;
+/** Room above the controls inside the bar. */
+const PAD_TOP = 10;
+/** Between `rest` and the bar. */
 const GAP_ABOVE = 10;
 
 /** Height the dock covers at rest, so content can scroll clear of it. */
 export function useDockHeight() {
-  return GAP_ABOVE + BAR + PAD * 2 + Math.max(useSafeAreaInsets().bottom, 12);
+  return PAD_TOP + BAR + Math.max(useSafeAreaInsets().bottom, 12);
 }
 
 /**
- * The one voice input, pinned to the bottom of the screen: hold to talk, then Send, with what was heard above it like
- * a subtitle. The keyboard beside it switches to typing, and typed words go straight out: there's nothing to mishear.
- * Sending hands the words to the AI; a returned string is what it did, shown for a moment. `rest` shows above the dock
- * when nothing is being said.
+ * The one voice input, a bar across the bottom of the screen: hold to talk, then Send, with what was heard above it
+ * like a subtitle. The keyboard beside it switches to typing, and typed words go straight out: there's nothing to
+ * mishear. Sending hands the words to the AI; a returned string is what it did, shown for a moment. `rest` shows above
+ * the dock when nothing is being said.
+ *
+ * Over a sheet it is the sheet's own bottom: same surface, no edge. On a bare map (`onMap`), and whenever the keyboard
+ * lifts it off the sheet, it's a tray with rounded top corners sitting on whatever is under it.
  */
-export function VoiceDock({ placeholder, onSend, onDismiss, rest, onHeight }: {
+export function VoiceDock({ placeholder, onSend, onDismiss, rest, onHeight, onMap }: {
   placeholder: string;
   /** Send what was said, with the clips it was said in. Throws if it didn't go; a returned string is the confirmation. */
   onSend: (text: string, clips: string[]) => Promise<string | void>;
@@ -49,6 +55,8 @@ export function VoiceDock({ placeholder, onSend, onDismiss, rest, onHeight }: {
   rest?: ReactNode;
   /** Height the dock and whatever sits above it cover, so a map can frame what's left. */
   onHeight?: (h: number) => void;
+  /** Nothing under it but the map: always the tray. */
+  onMap?: boolean;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -67,7 +75,20 @@ export function VoiceDock({ placeholder, onSend, onDismiss, rest, onHeight }: {
     setPhaseState(p);
   };
 
-  const lift = useKeyboardLift();
+  // Rides the keyboard (less the home-indicator inset it already pads for), rounding into a tray as it leaves the sheet.
+  const keyboard = useAnimatedKeyboard();
+  const bottomPad = Math.max(insets.bottom, 12);
+  const lift = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.max(0, keyboard.height.get() - insets.bottom) }],
+  }));
+  const tray = useAnimatedStyle(() => {
+    const k = onMap ? 1 : Math.min(1, keyboard.height.get() / 80);
+    return {
+      borderTopLeftRadius: SHEET_RADIUS * k,
+      borderTopRightRadius: SHEET_RADIUS * k,
+      borderColor: interpolateColor(k, [0, 1], ['transparent', theme.border]),
+    };
+  });
 
   const say = (message: string) => {
     setNotice(message);
@@ -141,10 +162,11 @@ export function VoiceDock({ placeholder, onSend, onDismiss, rest, onHeight }: {
     <Animated.View
       pointerEvents="box-none"
       onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
-      style={[styles.stack, { paddingBottom: Math.max(insets.bottom, 12) }, lift]}>
-      {!speaking && rest}
+      style={[styles.stack, lift]}>
+      {!speaking && rest && <View style={styles.rest}>{rest}</View>}
 
-      <View style={[styles.dock, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <Animated.View
+        style={[styles.dock, { backgroundColor: theme.card, paddingBottom: bottomPad }, onMap && Shadow.sheet, tray]}>
         {speaking && (
           <Caption
             phase={phase}
@@ -195,7 +217,7 @@ export function VoiceDock({ placeholder, onSend, onDismiss, rest, onHeight }: {
             </SideButton>
           )}
         </View>
-      </View>
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -435,13 +457,14 @@ function LevelBar({ k, amp, color }: { k: number; amp: SharedValue<number>; colo
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  stack: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, gap: GAP_ABOVE },
+  stack: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  rest: { paddingHorizontal: 12, marginBottom: GAP_ABOVE },
   dock: {
-    padding: PAD,
-    borderRadius: INNER_RADIUS + PAD,
+    paddingHorizontal: 12,
+    paddingTop: PAD_TOP,
     borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
-    ...Shadow.floating,
+    borderBottomWidth: 0,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   bar: {

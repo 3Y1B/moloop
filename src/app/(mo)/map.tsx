@@ -27,7 +27,7 @@ export default function MapScreen() {
         <TeamPills overMap />
       </View>
       <TabInsets>
-        <TaskDock />
+        <TaskDock onMap />
       </TabInsets>
     </View>
   );
