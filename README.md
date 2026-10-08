@@ -71,14 +71,14 @@ class PG,RT,OA,SP store
 class G,V,M actor
 ```
 
-`decide` = typed decision with probabilities (OpenAI Decisions API; Spark first when `MODEL_PROVIDER=spark`, OpenAI after 4 s).
+`decide` = typed decision with probabilities (OpenAI Decisions API, gpt-6-luna).
 
 | Agent | Job | Model |
 |---|---|---|
 | Transcriber | Hold-to-talk audio → text, "Heard: …" | gpt-4o-mini-transcribe |
-| Classifier / gate | Team (1 of 8), P1/P2/P3, routine? | `decide` |
+| Classifier / gate | Routine? (nobody needs sending) | `decide` |
 | Answer writer | Answers routine guest questions in their language | gpt-6-luna |
-| Intake agent | Calls one tool: `create_task`, `escalate`, `answer_question` | gpt-6-luna tools |
+| Intake agent | Team, P1/P2/P3, and one tool: `create_task`, `escalate`, `answer_question` | gpt-6-luna tools |
 | Re-triage matcher | Is this about an open task nearby? Worse? | `decide` |
 | Reply interpreter | Accept / decline / done / need help / new report | `decide` |
 | Detail reader | Guest's "What's changed?" → worse or not | `decide` |
@@ -96,10 +96,10 @@ Rules, not models: scheduler, rule ranker (team → free → skill → nearest),
 
 <img src="docs/readme/request-routing.svg" width="880" alt="Routing: intake agent, re-triage, picker, approval or straight assign, push and TTS">
 
-- **Gate at 0.95:** the only value in a 336-case eval where nothing that needs a person got through.
-- **Priority merge:** agent P1 always wins; low classifier confidence rounds up.
+- **Gate at 0.8:** in a 336-case eval nothing that needs a person scores above 0.49; 87% of routine questions pass.
+- **Priority:** the intake agent's alone. The classifier only gates routine questions.
 - **Crew reports** skip approval and go to the first free teammate.
-- **Fails closed:** both providers down → a person gets it at P2. The AI never answers.
+- **Fails closed:** the intake agent down → a person gets it at P2. The AI never answers.
 
 ## Priority, classification and routing
 

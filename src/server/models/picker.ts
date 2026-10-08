@@ -5,8 +5,7 @@ import { choice, decide, decideModelId } from '.';
 import type { Judged, Run } from './interpreter';
 
 /**
- * Who should go to a P1/P2 task, and how many of them. Three steps, all on OpenAI's decisions (the Spark turns away
- * a burst this size):
+ * Who should go to a P1/P2 task, and how many of them. Three steps, all on OpenAI's decisions:
  *
  *  1. `rankQualified`: one choice over every free person's profile (team, certificates, languages, background; no
  *     distance), so it judges fit, not position. Asked three times in shuffled order and averaged, for a steady top 6.
@@ -68,11 +67,9 @@ export function describe({ candidate, volunteer: v }: Shortlisted, teams: Record
   return sentences([...head, `Now: ${candidate.rationale}${v.shiftEndsAt ? `, on shift till ${clockTime(v.shiftEndsAt)}` : ''}`, bio]);
 }
 
-const CLOUD = { cloud: true };
-
 const run = (over: Partial<Run>): Run => ({
   route: 'ai_resolved', reason: null, confidence: null, team: null, priority: null, rewrite: null,
-  models: { picker: decideModelId(CLOUD) }, latencyMs: 0, error: null, ...over,
+  models: { picker: decideModelId() }, latencyMs: 0, error: null, ...over,
 });
 
 /** How many times the qualified question is asked, each in a fresh order: one call's top 6 barely held from one to the next. */
@@ -92,12 +89,11 @@ export async function rankQualified(task: Task, people: Volunteer[], teams: Reco
   if (!people.length) return { value: null, run: log({ route: 'escalated_to_triage', reason: 'nobody free to rank' }) };
 
   const state = { task: `${task.title}. ${task.summary}`, reporter_said: task.reporter.quote };
-  const o = { urgent: task.priority === 'P1', ...CLOUD };
   const round = async (order: Volunteer[]) => {
     const labels = Object.fromEntries(order.map((v, n) => [`person_${n + 1}`, profile(v, teams)]));
     const d = await decide(state, {
       best: choice('Who is best qualified for this task: the certificates, team, languages and background it needs? Ignore where they are.', labels),
-    }, o);
+    });
     const p = d.best.probabilities as Record<string, number>;
     return { p: new Map(order.map((v, n) => [v.id, p[`person_${n + 1}`] ?? 0])), confidence: d.best.confidence };
   };
@@ -127,7 +123,6 @@ export async function pickCrew(task: Task, shortlist: Shortlisted[], teams: Reco
   const lang = speakerNeeded(task);
   const aid = firstAidNeeded(task);
   const about = { task: `${task.title}. ${task.summary}`, urgency: URGENCY[task.priority] };
-  const o = { urgent: task.priority === 'P1', ...CLOUD };
   try {
     // Two calls, side by side: asked beside a list of people, the model reads "how many" as "is the best one enough"
     // and says one. Asked about the task alone, it sizes the task. If only that one fails, one person goes.
@@ -137,9 +132,9 @@ export async function pickCrew(task: Task, shortlist: Shortlisted[], teams: Reco
         ...(lang ? { needs_someone_who_speaks: languageName(lang) } : {}),
         ...(aid ? { needs_first_aid: 'Someone there may need hands-on first aid' } : {}),
         volunteers: labels,
-      }, { best: choice('Who is best suited to go to this task?', labels) }, o),
+      }, { best: choice('Who is best suited to go to this task?', labels) }),
       most > 1
-        ? decide(about, { people: choice('How many volunteers should be sent to this task?', Object.fromEntries(Object.entries(PEOPLE).slice(0, most))) }, o)
+        ? decide(about, { people: choice('How many volunteers should be sent to this task?', Object.fromEntries(Object.entries(PEOPLE).slice(0, most))) })
           .catch(() => null)
         : null,
     ]);

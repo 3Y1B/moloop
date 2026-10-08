@@ -37,7 +37,7 @@ const Incident = {
   title: z.string().describe('English, at most 60 characters. What and where, e.g. "Collapsed person at Food Alley"'),
   summary: z.string().describe('English, at most two short sentences. Facts from the message only.'),
   team: z.enum(TEAM_SLUGS).describe('The team that will act on it'),
-  priority: z.enum(['P1', 'P2', 'P3']).describe('P1 life-threatening or many people at risk; P2 someone needs help within minutes; P3 routine'),
+  priority: z.enum(['P1', 'P2', 'P3']).describe('P1 a life or many people at risk now; P2 someone needs a person there within minutes; P3 it can wait'),
   category: IncidentCategory,
   zone: z.string().nullable().describe('Slug of the place named in the message, from the list, else null'),
   place: z.string().nullable().describe('The location as the person described it, else null'),
@@ -125,7 +125,10 @@ Otherwise call exactly one of these:
 Teams (pick the one that will act):
 ${Object.entries(TEAMS).map(([slug, d]) => `${slug}: ${d}`).join('\n')}
 
-Priority: P1 life-threatening or many people at risk; P2 someone needs help within minutes; P3 routine. If unsure between two, pick the more urgent.
+Priority decides who is interrupted and how many people go, so match it to what the message says, not to what could happen:
+- P1: a life is at risk now, or many people are: unconscious, not breathing, a seizure, chest pain, a severe allergic reaction, a missing young child, a weapon, a crush.
+- P2: someone needs a person there within minutes: an injury, fainting or heat illness, someone very drunk, spiked or distressed, a fight, someone harassed or unsafe, a child found on their own, a blocked exit.
+- P3: nothing gets worse if it waits a while: a question, lost property, a minor ailment like a blister, a long queue, a spill, a bin, a broken facility, a complaint.
 
 Write title and summary in English whatever language the message is in. Never invent facts.
 

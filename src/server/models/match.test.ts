@@ -63,12 +63,12 @@ describe('Interpreter.match: is a new report about a task already open?', () => 
   describe('the new priority', () => {
     const about = { task_1: 0.95, new: 0.05 };
 
-    it('a model that is not sure rounds up', async () => {
+    it('is the model\'s pick, not rounded up when it is unsure', async () => {
       replies.push(decided({ about, priority: { P1: 0.42, P2: 0.46, P3: 0.12 }, sorted: 0.01 }));
 
       const { value } = await new SparkInterpreter().match(heard('he looks really pale now', [collapsed]));
 
-      expect(value?.read.priority).toBe('P1');
+      expect(value?.read.priority).toBe('P2');
     });
   });
 

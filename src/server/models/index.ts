@@ -5,7 +5,6 @@ import type { Answers } from './decisions';
 import { ModelAuditError } from './errors';
 import type { ModelDiagnostic } from './http';
 import { withFallback, type Attempt } from './fallback';
-import { Jev } from './jev';
 import { LunaLlm, type Tool, type ToolCall } from './luna';
 import {
   MobilizationModelConfigurationError,
@@ -18,10 +17,7 @@ import {
   chatModelReadiness,
   hasOpenAi,
   mobilizationProviders,
-  onSpark,
   openai,
-  spark,
-  sparkLimiter,
   type ModelIdentity,
 } from './providers';
 
@@ -29,21 +25,16 @@ import {
  * The seams the interpreter decides with (providers.ts):
  *
  *  - `generate`: chat completions with JSON-schema output, validated with zod, one repair round. OpenAI only.
- *  - `decide`: typed questions answered with probabilities. Narrow questions, one thing each.
+ *  - `decide`: typed questions answered with probabilities, on OpenAI's Decisions API. Narrow questions, one thing each.
  *  - `callTool`: one step of a tool-using agent. OpenAI only: the Spark's tool calling is undocumented.
  *  - `generateWithReadTool`: Mobilization's audited /responses call, OpenAI only.
  *
- * If both the Spark and OpenAI fail, the error reaches the caller, which fails closed to a person.
+ * All four run on OpenAI. If it fails, the error reaches the caller, which fails closed to a person.
  */
 
-/**
- * `urgent` jumps the Spark's queue; `signal` bounds the whole call, fallback included; `cloud` skips the Spark.
- * The rest is Mobilization's.
- */
+/** `signal` bounds the whole call. The rest is Mobilization's. */
 export type CallOptions = {
-  urgent?: boolean;
   signal?: AbortSignal;
-  cloud?: boolean;
   timeoutMs?: number;
   maxTokens?: number;
   reasoningEffort?: string;
@@ -53,7 +44,7 @@ export type CallOptions = {
   onDiagnostic?: (diagnostic: ModelDiagnostic, identity: ModelIdentity) => void | Promise<void>;
 };
 
-// How long the Spark gets before OpenAI takes over, and how long the last resort gets.
+// How long each call gets (`primaryMs` only counts where something could take over).
 const LIMITS = {
   chat: { primaryMs: 5_000, lastMs: 15_000 },
   decide: { primaryMs: 4_000, lastMs: 10_000 },
@@ -68,23 +59,15 @@ const limits = (defaults: { primaryMs: number; lastMs: number }, options: CallOp
 // Built per call, not cached, so env and fetch changes (tests, scripts) take effect.
 const models = () => ({
   openaiChat: new LunaLlm({ ...openai(), model: 'gpt-6-luna' }),
-  jev: new Jev(spark()),
   decisions: new OpenAiDecisions(openai()),
 });
 
-/** A Spark call waits its turn in the shared queue; giving up while waiting frees the slot. */
-const queued = <R>(
-  id: string,
-  urgent: boolean | undefined,
-  call: (signal: AbortSignal) => Promise<R>,
-): Attempt<R> | null =>
-  onSpark() ? { id, call: (signal) => sparkLimiter().run(!!urgent, () => call(signal), signal) } : null;
 const cloud = <R>(id: string, call: (signal: AbortSignal) => Promise<R>): Attempt<R> | null =>
   hasOpenAi() ? { id, call } : null;
 
 /** The models answering first, for triage_runs. */
 export const chatModelId = () => models().openaiChat.id;
-export const decideModelId = (o: CallOptions = {}) => (onSpark() && !o.cloud ? models().jev : models().decisions).id;
+export const decideModelId = () => models().decisions.id;
 export const toolModelId = () => models().openaiChat.id;
 export { chatModelReadiness };
 export { MobilizationModelConfigurationError } from './mobilization-configuration';
@@ -239,7 +222,7 @@ export function decide<const Q extends Questions>(
 ): Promise<Answers<Q>> {
   const m = models();
   return withFallback(
-    o.cloud ? null : queued(m.jev.id, o.urgent, (signal) => m.jev.decide(state, questions, signal)),
+    null,
     cloud(m.decisions.id, (signal) => m.decisions.decide(state, questions, signal)),
     { ...LIMITS.decide, signal: o.signal },
   );
