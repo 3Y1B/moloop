@@ -71,7 +71,7 @@ function BackOnDuty() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   bar: { position: 'absolute', left: 0, right: 0 },
-  // The voice dock fades the 20pt above it into the sheet; the bottom padding keeps the buttons out of that fade.
+  // The bottom padding keeps the buttons clear of the floating voice dock's shadow.
   surface: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20, gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   text: { paddingHorizontal: 12 },
