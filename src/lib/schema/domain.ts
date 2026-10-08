@@ -92,7 +92,7 @@ export type Reporter = {
   english?: string;
   /** The festival playbook intake read it as ("kids getting crushed at the barrier" is a crowd surge), else null. */
   playbook?: string | null;
-  /** Legacy intake confidence annotation only; it never starts or approves a mobilization. */
+  /** Intake is sure of `playbook`: it may start a plan on its own (src/server/triggers.ts). */
   playbookSure?: boolean | null;
 };
 
@@ -329,7 +329,7 @@ export type MobilizationStep = {
 /** A measurement's value: a number, a flag or a status, as the observation catalog defines the key. */
 export type ReadingValue = number | boolean | string;
 
-/** Historical trigger evidence, retained to display older proposals after automatic triggers were retired. */
+/** One thing that set a plan off (src/server/triggers.ts), for the "why" lines on Mo's review. */
 export type MobilizationCause =
   | { kind: 'report'; taskId: string; title: string; zoneSlug: string | null; priority: Priority; at: number }
   | {
@@ -392,7 +392,7 @@ export type Mobilization = {
   analysisRunId?: string | null;
   /** Set when created from a playbook template. */
   playbookSlug: string | null;
-  /** Historical trigger identity only. New manually simulated analyses use analysisRunId. */
+  /** The playbook a trigger planned it from (src/server/triggers.ts); one plan per playbook and zone at a time. */
   triggerPlaybook?: string | null;
   /** What set it off, oldest first. Later triggers for the same playbook and zone add to it. */
   causes?: MobilizationCause[];

@@ -115,4 +115,19 @@ beforeSignOut(async () => {
   if (r) await r.repo.unregisterPush(r.token);
 });
 
-export { markPushRead } from './push-message';
+/**
+ * A push was tapped: mark its message read. Right after a cold start the message may not have arrived yet, so wait
+ * for it a little.
+ */
+export function markPushRead(repo: Repo, messageId: string, waitMs = 15_000) {
+  const has = () => repo.getSnapshot().messages.some((m) => m.id === messageId);
+  const mark = () => repo.markRead([messageId]).catch((e) => console.warn('[push] markRead', e));
+  if (has()) return void mark();
+  const timer = setTimeout(() => unsubscribe(), waitMs);
+  const unsubscribe = repo.subscribe(() => {
+    if (!has()) return;
+    clearTimeout(timer);
+    unsubscribe();
+    void mark();
+  });
+}

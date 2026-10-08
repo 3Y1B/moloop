@@ -1,22 +1,31 @@
+import * as Notifications from 'expo-notifications';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { DemoOverlay } from '@/components/demo-panel';
 import { FinderPrompt } from '@/components/finder/finder-prompt';
 import { LocationSharing } from '@/components/location-sharing';
-import { configurePushHandling, PushNotifications } from '@/components/push-notifications';
+import { PushNotifications } from '@/components/push-notifications';
 import { Colors } from '@/constants/theme';
 import { RepoProvider } from '@/data/provider';
-import { MobilizationAnalysisProvider } from '@/data/mobilization-analysis-provider';
 import { useThemeName } from '@/hooks/use-theme';
 
 SplashScreen.preventAutoHideAsync();
 
-// Platform-specific entry point: web never imports the native notification SDK.
-configurePushHandling();
+// A push that lands while the app is open: no banner, no sound. Realtime already shows it and the brief speaks it.
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: false,
+      shouldShowList: false,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 /** Sheets over the map: most of the screen first, drag up for the rest. */
 const SHEET = {
@@ -37,7 +46,6 @@ export default function RootLayout() {
     <GestureHandlerRootView style={StyleSheet.absoluteFill}>
     <ThemeProvider value={NAV_THEME[scheme]}>
       <RepoProvider>
-      <MobilizationAnalysisProvider>
         <AnimatedSplashOverlay />
         <LocationSharing />
         <PushNotifications />
@@ -71,13 +79,9 @@ export default function RootLayout() {
           <Stack.Screen name="assign/[id]" options={{ ...SHEET, title: 'Pick a volunteer' }} />
           <Stack.Screen name="approve/[id]" options={{ ...SHEET, sheetAllowedDetents: [0.6, 1], title: 'Approve' }} />
           <Stack.Screen name="mobilize/[id]" options={{ ...SHEET, title: "Mobilization" }} />
-          <Stack.Screen name="mobilize/simulate" options={{ headerShown: false, title: 'Test situation' }} />
-          <Stack.Screen name="playbooks/index" options={{ headerShown: false, title: 'Playbooks' }} />
-          <Stack.Screen name="playbooks/[id]" options={{ headerShown: false, title: 'Playbook' }} />
         </Stack>
         <FinderPrompt />
         <DemoOverlay />
-      </MobilizationAnalysisProvider>
       </RepoProvider>
     </ThemeProvider>
     </GestureHandlerRootView>

@@ -10,19 +10,6 @@ import { homeFor } from '@/lib/home';
 /** Taps already handled, kept across remounts so a response is never acted on twice. */
 const handled = new Set<string>();
 
-/** Realtime and spoken briefs already cover foreground messages; retain the native quiet-push policy. */
-export function configurePushHandling() {
-  if (Platform.OS === 'web') return;
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: false,
-      shouldShowList: false,
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-    }),
-  });
-}
-
 /**
  * Pushes for whoever is signed in. Renders nothing; iOS and Android only.
  *  - Registers silently when permission is already granted (existing installs pick up a token at launch).

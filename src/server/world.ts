@@ -369,7 +369,7 @@ export async function save(tx: TransactionSql, { world, ids }: Loaded, b: Batch,
       steps: json(m.steps),
       evidence: m.evidence == null ? null : json(m.evidence),
     };
-    // Historical trigger evidence stays unchanged when reviewing older proposals; no automatic trigger runs here.
+    // After the insert, causes belong to the triggers (src/server/triggers.ts), which add to them outside this lock.
     if (id in world.mobilizations) {
       await tx`update mobilizations set ${tx(row)} where id = ${id}`;
     } else {

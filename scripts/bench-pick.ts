@@ -17,18 +17,8 @@
  *
  * Prints the wall time, and the model's top 8 beside the rules'; for each and batch, the per-call times and fallbacks.
  */
-import { readFile } from 'node:fs/promises';
+import crew from '../supabase/crew.json' with { type: 'json' };
 import type { IncidentCategory, Priority, Task, Volunteer } from '../src/lib/schema';
-
-// Generated benchmark data is deliberately ignored; a fresh checkout must still typecheck.
-type Member = {
-  name: string; role: string; team: string | null; zone: string | null;
-  skills?: (string | { skill: string; expires: string })[];
-  languages?: string[]; bio?: string;
-  availability?: { windows: { from: string; to: string }[] };
-};
-const crew = JSON.parse(await readFile(new URL('../supabase/crew.json', import.meta.url), 'utf8')
-  .catch(() => { throw new Error('Generate the benchmark roster first: npm run db:crew'); })) as Member[];
 
 const { laneCandidates, rankCandidates, speakerNeeded } = await import('../src/lib/candidates');
 const { describe, pickCrew, rankQualified } = await import('../src/server/models/picker');
@@ -47,6 +37,7 @@ const BATCH = Number(process.env.BATCH ?? 10);
 
 // ── who's on: free at 3pm Saturday, a quarter busy ──
 
+type Member = (typeof crew)[number];
 // Saturday's first window opens at 10am Melbourne; 3pm is five hours on.
 const peak = Math.min(...(crew as Member[]).flatMap((m) => m.availability?.windows ?? []).map((w) => Date.parse(w.from))) + 5 * 3600_000;
 const today = new Date().toISOString().slice(0, 10);
