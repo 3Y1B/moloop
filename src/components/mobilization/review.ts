@@ -26,8 +26,8 @@ function readingValue(key: string, value: ReadingValue): string {
 }
 
 /**
- * One plain line per thing that set the plan off: "Wind 72 km/h at Oval Stage (limit 60 km/h), 2 min ago",
- * "3 reports at Oval Stage in 8 min". A reading shows only its latest value per place.
+ * One plain line per thing that set the plan off: "Wind 72 km/h at Lawn Stage (limit 60 km/h), 2 min ago",
+ * "3 reports at Lawn Stage in 8 min". A reading shows only its latest value per place.
  */
 export function causeLines(causes: readonly MobilizationCause[], now: number, place: PlaceName): string[] {
   const readings = new Map<string, Reading>();

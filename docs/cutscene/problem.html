@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Problem</title>
+<!--
+  The demo's opening cutscene: the venue, its crew, Mo, and what Mo's day sounds like. 1920×1080, scaled to the window.
+  The map and the crew come from the app's own data (venue.js, built by `bun scripts/cutscene-map.ts`).
+
+  Keys   Space / → / click  next beat        ←  previous beat     R  restart
+         M  sound on/off      W  words on/off   F  fullscreen
+  URL    ?theme=light   ?auto (plays through on its own)   ?beat=4 (start paused before beat 4)
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="venue.js"></script>
+<style>
+  /* Tokens from src/constants/theme.ts. */
+  :root, :root[data-theme="dark"] {
+    --bg: #0B0D10; --ground: #13161B; --text: #F3F4F6; --text2: #A1A7B3; --text3: #6B7280;
+    --card: #15181D; --element: #1C2027; --border: #252A32; --tint: #5B8DFF; --tint-soft: #18233D;
+    --danger: #FF6369; --warning: #FFA94D; --mist: #C9DCFF; --lost: #7A8190;
+    --card-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); --map-edge: #0B0D10;
+  }
+  :root[data-theme="light"] {
+    --bg: #F7F8FA; --ground: #F1F3F6; --text: #111827; --text2: #6B7280; --text3: #9CA3AF;
+    --card: #FFFFFF; --element: #F1F3F6; --border: #E7E9EE; --tint: #2F6BF5; --tint-soft: #EAF0FE;
+    --danger: #D92D20; --warning: #C26A00; --mist: #C9DCFF; --lost: #B4BAC4;
+    --card-shadow: 0 6px 24px rgba(17, 24, 39, 0.10); --map-edge: #F7F8FA;
+  }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { font-family: 'Spline Sans', Inter, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; cursor: none; }
+  body.cursor { cursor: default; }
+
+  #stage {
+    position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; overflow: hidden;
+    transform-origin: 0 0; background: radial-gradient(ellipse 70% 70% at 50% 50%, var(--ground), var(--bg));
+    color: var(--text);
+  }
+  #cam { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+  /* A soft vignette over the picture. */
+  #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 80% 80% at 50% 50%, transparent 60%, color-mix(in srgb, var(--bg) 70%, transparent) 100%); }
+
+  .vtext { font-family: 'Spline Sans', sans-serif; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: #fff; pointer-events: none; }
+  .wob.lost { animation: wander 2.6s ease-in-out infinite alternate; }
+  @keyframes wander {
+    0% { transform: translate(0, 0); } 25% { transform: translate(2.6px, -1.4px); } 50% { transform: translate(-1.8px, 2.2px); }
+    75% { transform: translate(1.2px, 2.8px); } 100% { transform: translate(-2.4px, -1px); }
+  }
+  .halo.on { animation: halo 2.2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+  .halo.fast { animation-duration: 0.7s; }
+  @keyframes halo { 0% { transform: scale(0.6); opacity: 0.55; } 100% { transform: scale(1.9); opacity: 0; } }
+
+  /* Words and numbers over the picture. */
+  .title { position: absolute; left: 80px; top: 72px; }
+  .title h1 { margin: 0; font-size: 44px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; }
+  .title p { margin: 10px 0 0; font-size: 21px; color: var(--text2); letter-spacing: 0.01em; }
+  #hud { position: absolute; left: 80px; bottom: 72px; display: flex; gap: 64px; align-items: flex-end; }
+  .stat { opacity: 0; }
+  .stat .num { font-size: 60px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .stat .num small { font-size: 26px; font-weight: 500; color: var(--text2); margin-left: 6px; letter-spacing: 0; }
+  .stat .label { margin-top: 12px; font-size: 15px; font-weight: 500; color: var(--text2); letter-spacing: 0.1em; text-transform: uppercase; }
+  .word { position: absolute; left: 80px; top: 72px; font-size: 64px; font-weight: 600; letter-spacing: -0.03em; opacity: 0; }
+  body.nowords .word { visibility: hidden; }
+
+  /* Messages: the app's cards. */
+  #feed { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+  /* Shade at the top and bottom, so words and numbers read over the map and the cards. */
+  .scrim { position: absolute; left: 0; right: 0; height: 300px; pointer-events: none; }
+  #scrimTop { top: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 88%, transparent), transparent); }
+  #scrimBottom { bottom: 0; background: linear-gradient(0deg, color-mix(in srgb, var(--bg) 88%, transparent), transparent); }
+  .card {
+    position: absolute; width: 420px; box-sizing: border-box; padding: 16px 18px 17px; border-radius: 18px;
+    background: var(--card); border: 1px solid var(--border); box-shadow: var(--card-shadow); opacity: 0;
+  }
+  .card .row { display: flex; align-items: center; gap: 12px; }
+  .av { width: 38px; height: 38px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; font-weight: 700; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.9); }
+  .av.call { background: var(--danger); box-shadow: none; }
+  .av.radio { background: var(--element); box-shadow: none; color: var(--text); }
+  .who { flex: 1; min-width: 0; line-height: 1.2; }
+  .who b { display: block; font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .who span { display: block; font-size: 15px; color: var(--text2); margin-top: 2px; }
+  .card time { font-size: 14px; color: var(--text3); align-self: flex-start; margin-top: 2px; }
+  .body { margin-top: 12px; font-size: 20px; line-height: 1.32; letter-spacing: -0.005em; }
+  .body.garbled { color: var(--text2); font-style: italic; }
+  .bars { display: inline-flex; gap: 3px; align-items: center; height: 22px; vertical-align: -4px; margin-right: 10px; }
+  .bars i { display: block; width: 3px; border-radius: 2px; background: var(--tint); height: 6px; animation: bar 0.6s ease-in-out infinite alternate; }
+  .bars i:nth-child(2n) { animation-delay: -0.2s; } .bars i:nth-child(3n) { animation-delay: -0.4s; }
+  @keyframes bar { to { height: 22px; } }
+  .play { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; background: var(--tint); align-items: center; justify-content: center; vertical-align: middle; margin-right: 12px; }
+  .shard { position: absolute; opacity: 0; }
+  .shard .card { position: relative; left: 0 !important; top: 0 !important; opacity: 1; }
+  .count { position: absolute; padding: 8px 16px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 26px; font-weight: 700; opacity: 0; font-variant-numeric: tabular-nums; }
+
+  /* The end: the wordmark. */
+  #end { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; }
+  .wordmark { display: flex; align-items: flex-end; font-size: 168px; font-weight: 700; letter-spacing: -0.04em; line-height: 1; }
+  .wordmark svg { width: 0.92em; margin: 0 0.02em 0.23em; overflow: visible; }
+  .spark { opacity: 0; }
+  .spark.on { opacity: 1; animation: lap 1.5s linear infinite; }
+  @keyframes lap { to { stroke-dashoffset: -257; } }
+
+  #hint { position: absolute; right: 48px; bottom: 40px; font-size: 15px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; transition: opacity 0.4s; }
+  #hint.gone { opacity: 0; }
+  #bars { position: fixed; inset: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <svg id="cam" xmlns="http://www.w3.org/2000/svg">
+    <defs id="defs">
+      <filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.6"/></filter>
+      <clipPath id="sweep"><rect id="sweepRect" x="0" y="-100" width="0" height="600"/></clipPath>
+    </defs>
+    <g id="mapwrap"><g id="map"></g></g>
+    <g id="measure">
+      <g clip-path="url(#sweep)"><path id="wash"/></g>
+      <path id="traceGlow" fill="none" filter="url(#glow)" stroke-linejoin="round" stroke-linecap="round"/>
+      <path id="trace" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle id="head" r="2.2"/>
+      <g id="dim"></g>
+    </g>
+    <g id="links"></g>
+    <g id="pings"></g>
+    <g id="vols"></g>
+    <g id="mo"></g>
+  </svg>
+  <div id="vignette"></div>
+
+  <div class="scrim" id="scrimBottom"></div>
+  <div id="hud">
+    <div class="stat" id="sArea"><div class="num"><span id="nArea">0.00</span><small>ha</small></div><div class="label">Site</div></div>
+    <div class="stat" id="sFence"><div class="num"><span id="nFence">0.0</span><small>km</small></div><div class="label">Fence</div></div>
+    <div class="stat" id="sVols"><div class="num" id="nVols">0</div><div class="label">Volunteers</div></div>
+    <div class="stat" id="sMo"><div class="num">1</div><div class="label">Safety coordinator</div></div>
+  </div>
+  <div id="feed"></div>
+  <div class="scrim" id="scrimTop"></div>
+  <div class="title" id="title"><h1>Riverside</h1><p>Birrarung Marr · Melbourne</p></div>
+  <div class="word" id="w1">Fragmented</div>
+  <div class="word" id="w2">Dropped</div>
+  <div class="word" id="w3">Repeated</div>
+  <div class="word" id="w4">Unsure</div>
+  <div id="end">
+    <div class="wordmark">
+      <span id="wmL">mol</span>
+      <svg viewBox="28 50 104 60" id="loop">
+        <path id="loopLine" d="M80 80 C92 54 124 54 124 80 C124 106 92 106 80 80 C68 54 36 54 36 80 C36 106 68 106 80 80 Z" fill="none" stroke-width="15" stroke-linejoin="round" stroke-dasharray="257 257" stroke-dashoffset="257"/>
+        <path id="loopSpark" class="spark" d="M80 80 C92 54 124 54 124 80 C124 106 92 106 80 80 C68 54 36 54 36 80 C36 106 68 106 80 80 Z" fill="none" stroke-width="15" stroke-linecap="round" stroke-dasharray="52 205"/>
+      </svg>
+      <span id="wmR">p</span>
+    </div>
+  </div>
+  <div id="hint">Space</div>
+</div>
+
+<script>
+(() => {
+  const V = window.VENUE;
+  const q = new URLSearchParams(location.search);
+  const theme = q.get('theme') === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = theme;
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const TINT = css('--tint'), DANGER = css('--danger'), LOST = css('--lost'), MIST = css('--mist'), TEXT = css('--text');
+  const $ = (id) => document.getElementById(id);
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs = {}, parent) => {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+
+  // Seeded, so every run is the same film.
+  let seed = 20261213;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const pick = (a) => a[Math.floor(rand() * a.length)];
+  const shuffle = (a) => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Fit the 1920×1080 stage to the window.
+  const stage = $('stage');
+  const fit = () => { const s = Math.min(innerWidth / 1920, innerHeight / 1080); stage.style.transform = `scale(${s}) translate(-50%, -50%)`; };
+  addEventListener('resize', fit); fit();
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // The camera: a viewBox in plan metres, always 16:9. Tweened through a setter, so seeking renders it too.
+  const svg = $('cam');
+  const cam = {
+    _x: V.view.x, _y: V.view.y, _w: V.view.w,
+    apply() { svg.setAttribute('viewBox', `${this._x.toFixed(3)} ${this._y.toFixed(3)} ${this._w.toFixed(3)} ${(this._w * 9 / 16).toFixed(3)}`); },
+    get x() { return this._x; }, set x(v) { this._x = v; this.apply(); },
+    get y() { return this._y; }, set y(v) { this._y = v; this.apply(); },
+    get w() { return this._w; }, set w(v) { this._w = v; this.apply(); },
+  };
+  /** Camera framing `w` metres across, centred on [cx, cy]. */
+  const shot = ([cx, cy], w) => ({ x: cx - w / 2, y: cy - (w * 9 / 16) / 2, w });
+  cam.apply();
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // The map.
+  // Drawn once into a bitmap: a couple of thousand shapes are too many to redraw every frame the camera moves.
+  // Sharp down to the closest shot (about 7 px a metre); its edges fade out into the night.
+  const PXM = 8;
+  const AREA = { x: V.view.x - 50, y: V.view.y - 40, w: V.view.w + 100, h: V.view.h + 80 };
+  (async () => {
+    const W = Math.round(AREA.w * PXM), H = Math.round(AREA.h * PXM);
+    const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="${AREA.x} ${AREA.y} ${AREA.w} ${AREA.h}"><defs>${V.defs}</defs>${V.art[theme]}${V.badges}</svg>`;
+    const img = new Image();
+    img.src = URL.createObjectURL(new Blob([src], { type: 'image/svg+xml' }));
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const g = canvas.getContext('2d');
+    g.drawImage(img, 0, 0, W, H);
+    g.globalCompositeOperation = 'destination-in';
+    const edge = 80 * PXM;
+    for (const [x0, y0, x1, y1, w, h] of [[0, 0, W, 0, W, 1], [0, 0, 0, H, 1, H]]) {
+      const grad = g.createLinearGradient(x0, y0, x1, y1);
+      const a = (x1 || y1) === W ? edge / W : edge / H;
+      grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(a, '#000'); grad.addColorStop(1 - a, '#000'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad; g.fillRect(0, 0, W, H);
+    }
+    const url = URL.createObjectURL(await new Promise((r) => canvas.toBlob(r)));
+    el('image', { href: url, x: AREA.x, y: AREA.y, width: AREA.w, height: AREA.h, preserveAspectRatio: 'none' }, $('map'));
+  })();
+
+  // The fence: traced, washed, measured.
+  const ring = V.fence;
+  const fenceD = 'M' + ring.map((p) => p.join(' ')).join('L') + 'Z';
+  for (const id of ['trace', 'traceGlow', 'wash']) $(id).setAttribute('d', fenceD);
+  $('trace').setAttribute('stroke', TINT); $('trace').setAttribute('stroke-width', '1.3');
+  $('traceGlow').setAttribute('stroke', TINT); $('traceGlow').setAttribute('stroke-width', '3.4'); $('traceGlow').setAttribute('opacity', '0.55');
+  $('wash').setAttribute('fill', TINT); $('wash').setAttribute('opacity', '0');
+  $('head').setAttribute('fill', TINT); $('head').setAttribute('stroke', '#fff'); $('head').setAttribute('stroke-width', '0.8');
+  const traceLen = $('trace').getTotalLength();
+  const xs = ring.map((p) => p[0]), ys = ring.map((p) => p[1]);
+  const box = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  $('sweepRect').setAttribute('x', box.x0 - 4);
+
+  const traced = {
+    _p: 0,
+    get p() { return this._p; },
+    set p(v) {
+      this._p = v;
+      const off = traceLen * (1 - v);
+      for (const id of ['trace', 'traceGlow']) { $(id).setAttribute('stroke-dasharray', `${traceLen} ${traceLen}`); $(id).setAttribute('stroke-dashoffset', off); }
+      const pt = $('trace').getPointAtLength(traceLen * v);
+      $('head').setAttribute('cx', pt.x); $('head').setAttribute('cy', pt.y);
+      $('nFence').textContent = (V.length / 1000 * v).toFixed(1);
+    },
+  };
+  const washed = { _p: 0, get p() { return this._p; }, set p(v) { this._p = v; $('sweepRect').setAttribute('width', (box.x1 - box.x0 + 8) * v); $('nArea').textContent = (V.area / 10000 * v).toFixed(2); } };
+
+  // The dimension line across the site's long side.
+  const dimY = box.y0 - 15;
+  const dim = $('dim');
+  const dimLine = el('path', { d: `M${box.x0} ${dimY}H${box.x1}`, stroke: TEXT, 'stroke-width': 0.45, opacity: 0.8 }, dim);
+  const dimTicks = el('path', { d: `M${box.x0} ${dimY - 3}V${dimY + 3}M${box.x1} ${dimY - 3}V${dimY + 3}`, stroke: TEXT, 'stroke-width': 0.45, opacity: 0 }, dim);
+  const dimLabel = el('text', { x: (box.x0 + box.x1) / 2, y: dimY - 4.5, 'font-size': 6, 'font-weight': 600, fill: TEXT, 'text-anchor': 'middle', 'font-family': 'Spline Sans, sans-serif', opacity: 0 }, dim);
+  dimLabel.textContent = `${V.span} m`;
+  gsap.set(dimLine, { scaleX: 0, transformOrigin: '50% 50%' });
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // The crew: a dot in their team's colour with their initials, as on the app's map.
+  const R = 3.3;
+  const dots = V.volunteers.map((v) => {
+    const g = el('g', { transform: `translate(${v.at[0]} ${v.at[1]})` }, $('vols'));
+    const wob = el('g', { class: 'wob', style: `animation-delay:${(-rand() * 2.6).toFixed(2)}s` }, g);
+    const pop = el('g', {}, wob);
+    el('circle', { r: R, fill: v.c, stroke: '#fff', 'stroke-width': 0.55 }, pop);
+    const grey = el('circle', { r: R, fill: LOST, stroke: '#fff', 'stroke-width': 0.55, opacity: 0 }, pop);
+    const ini = el('text', { class: 'vtext', 'font-size': 2.3 }, pop); ini.textContent = v.i;
+    const qm = el('text', { class: 'vtext', 'font-size': 3.4, opacity: 0 }, pop); qm.textContent = '?';
+    gsap.set(pop, { scale: 0, transformOrigin: '50% 50%' });
+    return { ...v, g, wob, pop, grey, ini, qm };
+  });
+  const popOrder = shuffle(dots);
+
+  // Mo: bigger, in the one accent, ringed by a halo.
+  const moG = el('g', { transform: `translate(${V.mo.at[0]} ${V.mo.at[1]})` }, $('mo'));
+  const moHalo = el('circle', { r: 9, fill: TINT, opacity: 0.25, class: 'halo' }, moG);
+  const moPop = el('g', {}, moG);
+  el('circle', { r: 5.4, fill: '#fff' }, moPop);
+  el('circle', { r: 4.5, fill: TINT }, moPop);
+  const moIni = el('text', { class: 'vtext', 'font-size': 3.3 }, moPop); moIni.textContent = 'Mo';
+  const badge = el('g', { transform: 'translate(4.6 -4.6)', opacity: 0 }, moPop);
+  const badgeBg = el('rect', { x: -3.2, y: -2.6, width: 6.4, height: 5.2, rx: 2.6, fill: DANGER, stroke: '#fff', 'stroke-width': 0.5 }, badge);
+  const badgeText = el('text', { class: 'vtext', 'font-size': 3 }, badge);
+  const unread = {
+    _v: 0, get v() { return this._v; },
+    set v(n) {
+      this._v = n; const s = n > 99 ? '99+' : String(Math.round(n)); badgeText.textContent = s;
+      const w = s.length === 1 ? 5.2 : s.length === 2 ? 6.6 : 8.6; badgeBg.setAttribute('width', w); badgeBg.setAttribute('x', -w / 2);
+    },
+  };
+  unread.v = 0;
+  const moLabel = el('g', { transform: 'translate(0 11)', opacity: 0 }, moG);
+  const moName = el('text', { stroke: css('--bg'), 'stroke-width': 0.9, 'paint-order': 'stroke', 'stroke-linejoin': 'round', 'font-size': 4.6, 'font-weight': 600, fill: TEXT, 'text-anchor': 'middle', 'font-family': 'Spline Sans, sans-serif' }, moLabel); moName.textContent = V.mo.name;
+  const moRole = el('text', { stroke: css('--bg'), 'stroke-width': 0.9, 'paint-order': 'stroke', 'stroke-linejoin': 'round', y: 5.4, 'font-size': 3.2, 'font-weight': 500, fill: css('--text2'), 'text-anchor': 'middle', 'font-family': 'Spline Sans, sans-serif' }, moLabel); moRole.textContent = 'Safety coordinator';
+  gsap.set(moPop, { scale: 0, transformOrigin: '50% 50%' });
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // What Mo hears in a day. Each comes from a person at a place, by radio, text or call.
+  const lead = Object.fromEntries(V.leads.map((l) => [l.name.split(' ')[0], l]));
+  const vol = (i) => V.volunteers[i];
+  const P = V.places;
+  const MSGS = [
+    { kind: 'text', from: lead.Theo, at: P['gate-b'], body: 'Gate B queue is past the bridge. Need more hands' },
+    { kind: 'radio', from: lead.Jordan, at: P['river-stage'], body: '…medic to the River Stage barrier… kshh…' },
+    { kind: 'text', from: lead.Georgia, at: P['lawn-stage'], body: 'Lost child at the Lawn Stage. Blue shirt, about 6' },
+    { kind: 'call', from: lead.Sam, at: P['supplies'] },
+    { kind: 'text', from: vol(12), at: vol(12).at, body: 'Where do I go after my break?' },
+    { kind: 'radio', from: lead.Sienna, at: P['backstage'], body: 'Mo, come in… kshh… Mo?' },
+    { kind: 'text', from: lead.Harry, at: P['food-alley'], body: 'Bins overflowing behind Food Alley' },
+    { kind: 'text', from: vol(40), at: P['river-stage'], body: 'Still need water at the River Stage' },
+    { kind: 'call', from: lead.Jordan, at: P['first-aid-hq'] },
+    { kind: 'text', from: lead.Yasmin, at: P['artist-gate'], body: 'Grove Stage running 20 min late' },
+    { kind: 'voice', from: lead.Sam, at: P['supplies'], body: '0:24' },
+    { kind: 'radio', from: lead.Theo, at: P['gate-b'], body: '…did anyone go to the barrier?' },
+    { kind: 'text', from: vol(77), at: P['water-2'], body: 'Is anyone covering Water 2?' },
+    { kind: 'text', from: vol(101), at: vol(101).at, body: 'Can someone relieve me? No break since 11' },
+    { kind: 'text', from: lead.Georgia, at: P['the-grove'], body: 'Has anyone seen Priya?' },
+    { kind: 'text', from: vol(150), at: P['river-stage'], body: 'Still need water at the River Stage' },
+    { kind: 'text', from: lead.Harry, at: P['gate-a'], body: 'Ice delivery came to the wrong gate' },
+    { kind: 'radio', from: lead.Eli, at: P['merch-lounge'], body: '…which channel is First Aid on?' },
+    { kind: 'text', from: vol(203), at: P['toilets-east'], body: 'Guest fainted near Toilets East' },
+    { kind: 'text', from: lead.Sienna, at: P['artist-gate'], body: "Artist Gate's open. Is it meant to be?" },
+    { kind: 'call', from: lead.Theo, at: P['gate-b'] },
+    { kind: 'text', from: vol(9), at: P['gate-a'], body: "What's the bag policy at the gate?" },
+    { kind: 'text', from: lead.Jordan, at: P['river-stage'], body: 'Repeat: medic to River Stage' },
+    { kind: 'text', from: vol(222), at: vol(222).at, body: "Who's my team lead?" },
+    { kind: 'radio', from: lead.Yasmin, at: P['grove-stage'], body: "…stage manager's asking for you…" },
+    { kind: 'text', from: lead.Harry, at: P['bar'], body: "Generator's down at the Bar" },
+    { kind: 'text', from: vol(61), at: vol(61).at, body: "Where's the First Aid tent?" },
+    { kind: 'text', from: lead.Georgia, at: P['info-tent'], body: "Lost child's mum is at Info" },
+    { kind: 'text', from: lead.Theo, at: P['gate-b'], body: 'Mo??' },
+  ];
+  // Then it just keeps coming: the same things, faster.
+  for (let i = 0; MSGS.length < 72; i++) {
+    const m = { ...MSGS[Math.floor(rand() * MSGS.length)] };
+    if (m.kind === 'text' && rand() < 0.4) { const v = vol(Math.floor(rand() * 300)); m.from = v; m.at = v.at; }
+    MSGS.push(m);
+  }
+
+  const nameOf = (p) => p.name;
+  const iniOf = (p) => p.initials ?? p.i;
+  const colourOf = (p) => p.color ?? p.c;
+  const PHONE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>';
+  const RADIO = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="12" height="13" rx="2"/><path d="M9 8V3M10 12h4M10 16h4"/></svg>';
+  const PLAY = '<svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><path d="M7 4l13 8-13 8z"/></svg>';
+  const bars = (n) => `<span class="bars">${'<i></i>'.repeat(n)}</span>`;
+  const clock = (k) => { const m = 14 * 60 + 2 + Math.floor(k * 0.7); return `${((Math.floor(m / 60) + 11) % 12) + 1}:${String(m % 60).padStart(2, '0')} pm`; };
+
+  function cardHTML(m, k) {
+    const time = `<time>${clock(k)}</time>`;
+    if (m.kind === 'call') return `<div class="row"><div class="av call">${PHONE}</div><div class="who"><b>Missed call</b><span>${nameOf(m.from)}</span></div>${time}</div>`;
+    if (m.kind === 'radio') return `<div class="row"><div class="av radio">${RADIO}</div><div class="who"><b>${nameOf(m.from)}</b><span>Radio · Ch ${1 + (k % 3)}</span></div>${time}</div><div class="body garbled">${bars(5)}${m.body}</div>`;
+    if (m.kind === 'voice') return `<div class="row"><div class="av" style="background:${colourOf(m.from)}">${iniOf(m.from)}</div><div class="who"><b>${nameOf(m.from)}</b><span>Voice message</span></div>${time}</div><div class="body"><span class="play">${PLAY}</span>${bars(14)} ${m.body}</div>`;
+    return `<div class="row"><div class="av" style="background:${colourOf(m.from)}">${iniOf(m.from)}</div><div class="who"><b>${nameOf(m.from)}</b><span>Message</span></div>${time}</div><div class="body">${m.body}</div>`;
+  }
+
+  // Where each card lands: spread round Mo at first, then anywhere, piling up. Never on Mo.
+  const feed = $('feed');
+  const KEEP = { x0: 700, x1: 1220, y0: 380, y1: 720 };
+  const slots = [[90, 150], [1410, 160], [120, 520], [1400, 560], [560, 90], [960, 840], [140, 820], [1380, 860], [980, 120], [520, 690], [1300, 380], [80, 330]];
+  const cards = MSGS.map((m, k) => {
+    const c = document.createElement('div');
+    c.className = 'card'; c.innerHTML = cardHTML(m, k);
+    let x, y;
+    if (k < slots.length) [x, y] = [slots[k][0] + (rand() - 0.5) * 60, slots[k][1] + (rand() - 0.5) * 50];
+    else {
+      do { x = 30 + rand() * 1470; y = 40 + rand() * 900; } while (x + 420 > KEEP.x0 && x < KEEP.x1 && y + 130 > KEEP.y0 && y < KEEP.y1);
+    }
+    c.style.left = `${x}px`; c.style.top = `${y}px`; c.style.zIndex = k + 1;
+    feed.appendChild(c);
+    return { m, c, x, y };
+  });
+
+  // Six survive long enough to break apart.
+  const SHARDS = ['polygon(0% 0%, 38% 0%, 30% 55%, 0% 62%)', 'polygon(38% 0%, 100% 0%, 100% 40%, 66% 52%, 30% 55%)', 'polygon(0% 62%, 30% 55%, 66% 52%, 100% 40%, 100% 100%, 0% 100%)'];
+  const DRIFT = [[-1, -0.6], [1, -0.8], [0.2, 1]];
+  const survivors = [0, 2, 6, 3, 9, 1].map((k) => cards[k]);
+  for (const s of survivors) {
+    s.shards = SHARDS.map((clip, i) => {
+      const d = document.createElement('div');
+      d.className = 'shard'; d.style.left = `${s.x}px`; d.style.top = `${s.y}px`; d.style.clipPath = clip; d.style.zIndex = 200;
+      d.innerHTML = `<div class="card">${s.c.innerHTML}</div>`;
+      feed.appendChild(d);
+      return { d, dir: DRIFT[i] };
+    });
+  }
+
+  // The same request, over and over.
+  const REPEAT = 12;
+  const repeatAt = { x: 1240, y: 250 };
+  const repeats = Array.from({ length: REPEAT }, (_, i) => {
+    const v = vol((i * 37 + 5) % 300);
+    const body = i % 4 === 3 ? 'Still need water at the River Stage' : 'Need water at the River Stage';
+    const c = document.createElement('div');
+    c.className = 'card'; c.innerHTML = cardHTML({ kind: 'text', from: v, body }, 40 + i * 5);
+    c.style.left = `${repeatAt.x}px`; c.style.top = `${repeatAt.y}px`; c.style.zIndex = 300 + i; c.style.transformOrigin = '50% 0%';
+    feed.appendChild(c);
+    return c;
+  });
+  const count = document.createElement('div');
+  count.className = 'count'; count.style.left = `${repeatAt.x + 360}px`; count.style.top = `${repeatAt.y - 26}px`; count.style.zIndex = 400;
+  feed.appendChild(count);
+  const counted = { _v: 0, get v() { return this._v; }, set v(n) { this._v = n; count.textContent = `×${Math.round(n)}`; } };
+  counted.v = 1;
+
+  // Pings on the map where a message came from, and its line to Mo.
+  const pings = MSGS.map((m) => {
+    const ring = el('circle', { cx: m.at[0], cy: m.at[1], r: 2, fill: 'none', stroke: colourOf(m.from) || TINT, 'stroke-width': 0.8, opacity: 0 }, $('pings'));
+    const [x0, y0] = m.at, [x1, y1] = V.mo.at;
+    const mx = (x0 + x1) / 2 + (y1 - y0) * 0.18, my = (y0 + y1) / 2 - (x1 - x0) * 0.18;
+    const line = el('path', { d: `M${x0} ${y0}Q${mx} ${my} ${x1} ${y1}`, fill: 'none', stroke: colourOf(m.from) || TINT, 'stroke-width': 0.6, 'stroke-linecap': 'round', opacity: 0 }, $('links'));
+    const len = line.getTotalLength();
+    line.setAttribute('stroke-dasharray', `${len} ${len}`); line.setAttribute('stroke-dashoffset', len);
+    return { ring, line, len };
+  });
+  const riverPings = Array.from({ length: REPEAT }, () => el('circle', { cx: P['river-stage'][0], cy: P['river-stage'][1], r: 2, fill: 'none', stroke: DANGER, 'stroke-width': 0.9, opacity: 0 }, $('pings')));
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Sound, made on the spot. Starts on the first key press.
+  const sfx = (() => {
+    let ctx, master, noise, bed, muted = q.has('mute');
+    const ensure = () => {
+      if (ctx) return true;
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
+      ctx = new AC();
+      const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 6; comp.connect(ctx.destination);
+      master = ctx.createGain(); master.gain.value = muted ? 0 : 0.7; master.connect(comp);
+      noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      return true;
+    };
+    const live = () => ctx && !muted && !document.hidden;
+    const env = (g, t, a, peak, dur) => { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); };
+    const tone = (type, f0, f1, dur, peak = 0.2, delay = 0, a = 0.005) => {
+      const t = ctx.currentTime + delay, o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.frequency.setValueAtTime(f0, t); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      env(g, t, a, peak, dur); o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.05);
+    };
+    const hiss = (type, f0, f1, dur, peak = 0.2, q = 1, delay = 0, a = 0.01) => {
+      const t = ctx.currentTime + delay, s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      s.buffer = noise; f.type = type; f.Q.value = q; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      env(g, t, a, peak, dur); s.connect(f).connect(g).connect(master); s.start(t, Math.random()); s.stop(t + dur + 0.05);
+    };
+    const api = {
+      ensure,
+      toggle() { muted = !muted; if (master) master.gain.setTargetAtTime(muted ? 0 : 0.7, ctx.currentTime, 0.05); },
+      whoosh() { if (live()) { hiss('bandpass', 260, 2400, 0.9, 0.22, 0.9, 0, 0.35); tone('sine', 90, 55, 0.9, 0.12, 0, 0.3); } },
+      trace(dur) { if (live()) { tone('sine', 330, 660, dur, 0.035, 0, 0.4); tone('triangle', 165, 330, dur, 0.02, 0, 0.4); } },
+      close() { if (live()) { tone('sine', 880, 880, 0.5, 0.08); tone('sine', 1320, 1320, 0.7, 0.05, 0.06); } },
+      tick() { if (live()) tone('square', 2200, 1800, 0.03, 0.025); },
+      pop(i = 0) { if (live()) tone('sine', 520 + (i % 7) * 70, 180, 0.09, 0.09); },
+      big() { if (live()) { tone('sine', 300, 120, 0.25, 0.25); tone('sine', 880, 660, 0.3, 0.06, 0.02); } },
+      ping(p = 0) { if (live()) { tone('sine', 1318 + p, 1318 + p, 0.16, 0.11); tone('sine', 1760 + p, 1760 + p, 0.24, 0.09, 0.08); } },
+      radio() {
+        if (!live()) return;
+        tone('square', 2400, 2400, 0.03, 0.05);
+        hiss('bandpass', 1900, 1500, 0.55, 0.18, 0.7, 0.02, 0.01);
+        for (let i = 0; i < 4; i++) tone('sawtooth', 180 + Math.random() * 160, 200 + Math.random() * 200, 0.08, 0.035, 0.06 + i * 0.1);
+        tone('square', 2000, 2000, 0.03, 0.04, 0.58);
+      },
+      ring() { if (live()) for (const d of [0, 0.4]) { tone('sine', 440, 440, 0.32, 0.06, d, 0.02); tone('sine', 480, 480, 0.32, 0.06, d, 0.02); } },
+      buzz() { if (live()) for (const d of [0, 0.22]) tone('sawtooth', 140, 120, 0.16, 0.05, d, 0.01); },
+      startBed(dur) {
+        if (!live()) return;
+        const t = ctx.currentTime, s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+        s.buffer = noise; s.loop = true; f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.5;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + dur);
+        s.connect(f).connect(g).connect(master); s.start(t); bed = { s, g };
+      },
+      cut() {
+        if (!ctx) return;
+        if (bed) { bed.g.gain.cancelScheduledValues(ctx.currentTime); bed.g.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.01); bed.s.stop(ctx.currentTime + 0.2); bed = null; }
+        if (live()) tone('sine', 70, 40, 0.8, 0.3);
+      },
+      stopBed() { if (bed && ctx) { bed.s.stop(); bed = null; } },
+      shatter() { if (live()) { hiss('highpass', 3000, 6000, 0.25, 0.14, 0.7); for (let i = 0; i < 5; i++) tone('triangle', 2000 + Math.random() * 2500, 1500, 0.05, 0.04, Math.random() * 0.15); } },
+      fall() { if (live()) tone('sine', 700 + Math.random() * 200, 160, 0.6, 0.03); },
+      sparkle() { if (live()) [880, 1175, 1568].forEach((f, i) => tone('sine', f, f, 0.9, 0.06, i * 0.09, 0.02)); },
+    };
+    return api;
+  })();
+  const say = (name, ...a) => () => sfx[name](...a);
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // The film: one timeline, paused before each beat.
+  // Nothing renders before its beat: every tween's start state is set up front instead.
+  const tl = gsap.timeline({ paused: true, defaults: { immediateRender: false } });
+  const beats = [];
+  const HOLD = [];
+  function beat(name, hold, build) {
+    tl.addPause('+=0.001', () => auto && setTimeout(() => next(), HOLD[current] * 1000));
+    tl.addLabel(name, '+=0.01');
+    beats.push(name); HOLD.push(hold);
+    build();
+  }
+  const FULL = shot([V.centre[0], V.centre[1] - 18], 660);
+  const T = (t) => `${beats[beats.length - 1]}+=${t}`;
+
+  // Start: just the dark.
+  gsap.set(['#mapwrap', '#measure', '#title', '#end'], { opacity: 0 });
+  gsap.set('#head', { opacity: 0 });
+  Object.assign(cam, shot(V.centre, 520));
+  traced.p = 0; washed.p = 0;
+
+  // 1. The venue: the map comes up, its fence is traced and measured.
+  beat('venue', 2, () => {
+    tl.call(say('whoosh'), [], T(0));
+    tl.fromTo('#mapwrap', { opacity: 0 }, { opacity: 1, duration: 1.2, ease: 'power2.out' }, T(0));
+    tl.fromTo('#map', { scale: 0.9, transformOrigin: '50% 50%' }, { scale: 1, duration: 1.6, ease: 'expo.out' }, T(0));
+    tl.to(cam, { ...FULL, duration: 7, ease: 'sine.inOut' }, T(0));
+    tl.fromTo('#title', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.9, ease: 'power3.out' }, T(0.5));
+    tl.set('#measure', { opacity: 1 }, T(1.4));
+    tl.fromTo('#head', { opacity: 0 }, { opacity: 1, duration: 0.2 }, T(1.4));
+    tl.call(say('trace', 3.2), [], T(1.4));
+    tl.fromTo('#sFence', { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5 }, T(1.4));
+    tl.fromTo(traced, { p: 0 }, { p: 1, duration: 3.2, ease: 'power1.inOut' }, T(1.4));
+    tl.to('#head', { opacity: 0, duration: 0.3 }, T(4.6));
+    tl.call(say('close'), [], T(4.6));
+    tl.fromTo('#trace', { attr: { 'stroke-width': 1.3 } }, { attr: { 'stroke-width': 2.2 }, duration: 0.25, yoyo: true, repeat: 1 }, T(4.6));
+    tl.set('#wash', { attr: { opacity: 0.16 } }, T(4.6));
+    tl.fromTo('#sArea', { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5 }, T(4.6));
+    tl.fromTo(washed, { p: 0 }, { p: 1, duration: 1.4, ease: 'power2.inOut' }, T(4.7));
+    for (let i = 0; i < 10; i++) tl.call(say('tick'), [], T(4.7 + i * 0.13));
+    tl.fromTo(dimLine, { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: 'power2.out' }, T(5.2));
+    tl.fromTo([dimTicks, dimLabel], { attr: { opacity: 0 } }, { attr: { opacity: 1 }, duration: 0.4 }, T(5.9));
+  });
+
+  // 2. A day here: 300 volunteers.
+  beat('crew', 2, () => {
+    const N = popOrder.length, AMOUNT = 3.2;
+    tl.to(['#dim'], { opacity: 0, duration: 0.6 }, T(0));
+    tl.to('#wash', { attr: { opacity: 0.07 }, duration: 0.8 }, T(0));
+    tl.to(['#trace', '#traceGlow'], { opacity: 0.45, duration: 0.8 }, T(0));
+    tl.fromTo('#sVols', { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5 }, T(0.2));
+    popOrder.forEach((d, i) => {
+      const at = 0.3 + AMOUNT * Math.pow(i / (N - 1), 1.8);
+      tl.fromTo(d.pop, { scale: 0 }, { scale: 1, duration: 0.42, ease: 'back.out(3)' }, T(at));
+      if (i % 3 === 0) tl.call(say('pop', i), [], T(at));
+    });
+    tl.fromTo('#nVols', { innerText: 0 }, { innerText: N, snap: { innerText: 1 }, duration: AMOUNT, ease: 'power1.in' }, T(0.3));
+  });
+
+  // 3. One safety coordinator.
+  beat('mo', 2, () => {
+    tl.to(dots.map((d) => d.g), { opacity: 0.3, duration: 0.8, ease: 'power2.out' }, T(0));
+    tl.to(['#trace', '#traceGlow', '#wash'], { opacity: 0.2, duration: 0.8 }, T(0));
+    tl.to(cam, { ...shot([V.mo.at[0], V.mo.at[1] + 10], 320), duration: 2.2, ease: 'power2.inOut' }, T(0));
+    tl.call(say('big'), [], T(0.9));
+    tl.fromTo(moPop, { scale: 0 }, { scale: 1, duration: 0.7, ease: 'back.out(2.2)' }, T(0.9));
+    tl.set(moHalo, { attr: { class: 'halo on' } }, T(1.1));
+    tl.fromTo(moLabel, { attr: { opacity: 0 } }, { attr: { opacity: 1 }, duration: 0.6 }, T(1.3));
+    tl.fromTo('#sMo', { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5 }, T(1.3));
+  });
+
+  // 4. What a day sounds like: everything, at Mo, at once.
+  beat('noise', 1, () => {
+    tl.to(['#title', '#hud'], { opacity: 0, duration: 0.6 }, T(0));
+    tl.to(dots.map((d) => d.g), { opacity: 0.85, duration: 0.8 }, T(0));
+    tl.to(moLabel, { attr: { opacity: 0 }, duration: 0.4 }, T(0));
+    tl.to(cam, { ...shot(V.mo.at, 300), duration: 1.4, ease: 'power2.inOut' }, T(0));
+    tl.to(cam, { ...shot(V.mo.at, 262), duration: 11, ease: 'none' }, T(1.4));
+    tl.call(() => sfx.startBed(10), [], T(0.6));
+    tl.set(badge, { attr: { opacity: 1 } }, T(0.8));
+    let t = 0.8, gap = 1.05;
+    cards.forEach((card, k) => {
+      const kind = card.m.kind, p = pings[k];
+      tl.call(kind === 'radio' ? say('radio') : kind === 'call' ? say('ring') : kind === 'voice' ? say('buzz') : say('ping', (k % 5) * 40), [], T(t));
+      tl.fromTo(card.c, { opacity: 0, scale: 0.92, y: 16 }, { opacity: 1, scale: 1, y: 0, duration: 0.32, ease: 'back.out(1.6)' }, T(t));
+      if (k >= 6) tl.to(cards[k - 6].c, { opacity: 0.55, duration: 0.5 }, T(t));
+      tl.fromTo(p.ring, { attr: { r: 2, opacity: 0.9 } }, { attr: { r: 16, opacity: 0 }, duration: 1, ease: 'power2.out' }, T(t));
+      tl.fromTo(p.line, { attr: { 'stroke-dashoffset': p.len, opacity: 0.85 } }, { attr: { 'stroke-dashoffset': 0 }, duration: 0.45, ease: 'power2.in' }, T(t));
+      tl.to(p.line, { attr: { opacity: 0 }, duration: 0.6 }, T(t + 0.45));
+      tl.set(unread, { v: k + 1 }, T(t + 0.45));
+      t += gap; gap = Math.max(0.075, gap * 0.86);
+    });
+    tl.set(moHalo, { attr: { class: 'halo on fast' } }, T(5));
+    tl.to(unread, { v: 140, duration: 0.6, ease: 'none', snap: { v: 1 } }, T(t + 0.5));
+    tl.to(moPop, { x: 0.7, duration: 0.05, yoyo: true, repeat: 15, ease: 'none' }, T(t - 1));
+  });
+
+  // 5. Fragmented: it all stops, and what's there breaks apart.
+  beat('fragmented', 1.6, () => {
+    tl.call(() => sfx.cut(), [], T(0));
+    tl.set(moHalo, { attr: { class: 'halo' } }, T(0));
+    tl.to(cards.filter((c) => !survivors.includes(c)).map((c) => c.c), { opacity: 0.05, duration: 0.5 }, T(0));
+    tl.to(survivors.map((s) => s.c), { opacity: 1, duration: 0.3 }, T(0));
+    tl.to(dots.map((d) => d.g), { opacity: 0.3, duration: 0.5 }, T(0));
+    tl.fromTo('#w1', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out' }, T(0.4));
+    tl.call(say('shatter'), [], T(0.7));
+    survivors.forEach((s, i) => {
+      tl.set(s.c, { opacity: 0 }, T(0.7 + i * 0.05));
+      s.shards.forEach(({ d, dir }, j) => {
+        const k = 30 + rand() * 40;
+        tl.set(d, { opacity: 1 }, T(0.7 + i * 0.05));
+        tl.fromTo(d, { x: 0, y: 0, rotation: 0 }, { x: dir[0] * k, y: dir[1] * k * 0.8, rotation: (rand() - 0.5) * 14, duration: 1.4, ease: 'expo.out' }, T(0.7 + i * 0.05));
+      });
+    });
+  });
+
+  // 6. Dropped: and falls away.
+  beat('dropped', 1.6, () => {
+    tl.to('#w1', { opacity: 0, duration: 0.3 }, T(0));
+    tl.fromTo('#w2', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out' }, T(0.2));
+    const falling = shuffle([...cards.filter((c) => !survivors.includes(c)).map((c) => c.c), ...survivors.flatMap((s) => s.shards.map((x) => x.d))]);
+    falling.forEach((e, i) => {
+      const at = 0.3 + Math.pow(i / falling.length, 0.8) * 1.8;
+      tl.to(e, { y: `+=${1250 + rand() * 300}`, rotation: (rand() - 0.5) * 70, opacity: 1, duration: 1 + rand() * 0.5, ease: 'power2.in' }, T(at));
+      if (i % 9 === 0) tl.call(say('fall'), [], T(at));
+    });
+  });
+
+  // 7. Repeated: the same request, again and again.
+  beat('repeated', 1.8, () => {
+    tl.to('#w2', { opacity: 0, duration: 0.3 }, T(0));
+    tl.fromTo('#w3', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out' }, T(0.2));
+    let t = 0.5, gap = 0.8;
+    repeats.forEach((c, i) => {
+      tl.call(say('ping'), [], T(t));
+      tl.fromTo(c, { opacity: 0, y: -18, scale: 1.02 }, { opacity: 1, y: 0, scale: 1, duration: 0.3, ease: 'power3.out' }, T(t));
+      tl.to(c, { opacity: 1, duration: 0.1 }, T(t));
+      // The ones underneath slide down and shrink back, a deck of the same card.
+      repeats.slice(0, i).forEach((under, j) => {
+        const depth = i - j;
+        tl.to(under, { y: Math.min(depth, 5) * 26, scale: 1 - Math.min(depth, 5) * 0.06, opacity: depth > 5 ? 0 : 1, filter: `brightness(${1 - Math.min(depth, 5) * 0.12})`, duration: 0.3, ease: 'power3.out' }, T(t));
+      });
+      tl.fromTo(riverPings[i], { attr: { r: 2, opacity: 1 } }, { attr: { r: 18, opacity: 0 }, duration: 1, ease: 'power2.out' }, T(t));
+      if (i === 1) tl.fromTo(count, { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(2)' }, T(t));
+      tl.set(counted, { v: i + 1 }, T(t));
+      t += gap; gap = Math.max(0.22, gap * 0.82);
+    });
+  });
+
+  // 8. Unsure: half the crew don't know what they're meant to be doing.
+  beat('unsure', 2.5, () => {
+    tl.to(['#w3', count, ...repeats], { opacity: 0, duration: 0.5 }, T(0));
+    tl.to(badge, { attr: { opacity: 0 }, duration: 0.4 }, T(0));
+    tl.to(cam, { ...shot([V.centre[0] - 20, V.centre[1] - 10], 540), duration: 2.2, ease: 'power2.inOut' }, T(0.2));
+    tl.to(dots.map((d) => d.g), { opacity: 1, duration: 0.8 }, T(0.2));
+    tl.to(moG, { opacity: 0.5, duration: 0.8 }, T(0.2));
+    tl.fromTo('#w4', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out' }, T(0.6));
+    const lost = shuffle(dots).slice(0, Math.floor(dots.length / 2));
+    lost.forEach((d, i) => {
+      const at = 1.2 + (i / lost.length) * 1.6;
+      tl.to(d.grey, { attr: { opacity: 1 }, duration: 0.3 }, T(at));
+      tl.to(d.ini, { attr: { opacity: 0 }, duration: 0.2 }, T(at));
+      tl.to(d.qm, { attr: { opacity: 1 }, duration: 0.3 }, T(at));
+      tl.to(d.pop, { scale: 1.25, duration: 0.15, yoyo: true, repeat: 1 }, T(at));
+      tl.set(d.wob, { attr: { class: 'wob lost' } }, T(at + 0.2));
+      if (i % 6 === 0) tl.call(say('pop', i + 3), [], T(at));
+    });
+  });
+
+  // 9. moloop.
+  beat('end', 0, () => {
+    tl.to(['#mapwrap', '#measure', '#vols', '#mo', '#pings', '#links', '#w4'], { opacity: 0, duration: 1.2, ease: 'power2.inOut' }, T(0));
+    tl.set('#end', { opacity: 1 }, T(1.2));
+    tl.set('#loopLine', { attr: { stroke: TINT } }, T(1.2));
+    tl.set('#loopSpark', { attr: { stroke: MIST } }, T(1.2));
+    tl.fromTo('#loopLine', { attr: { 'stroke-dashoffset': 257 } }, { attr: { 'stroke-dashoffset': 0 }, duration: 1.1, ease: 'power3.out' }, T(1.3));
+    tl.fromTo(['#wmL', '#wmR'], { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', stagger: 0.08 }, T(1.6));
+    tl.call(say('sparkle'), [], T(1.4));
+    tl.set('#loopSpark', { attr: { class: 'spark on' } }, T(2.3));
+  });
+  tl.addPause('+=0.001');
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Playing it.
+  let current = -1;
+  let auto = q.has('auto');
+  /** Just before a beat: past the pause in front of it, before anything in it, so its first sound still fires. */
+  const before = (i) => tl.labels[beats[i]] - 0.005;
+  /** Play beat i from its start. Pressing on before a beat has finished skips the rest of it. */
+  function go(i) {
+    current = Math.max(0, Math.min(beats.length - 1, i));
+    sfx.ensure(); sfx.stopBed();
+    tl.pause().seek(before(current), true).play();
+    $('hint').classList.add('gone');
+  }
+  function next() { if (current < beats.length - 1) go(current + 1); }
+  function prev() { if (current > 0) go(current - 1); else restart(); }
+  function restart() { current = -1; sfx.stopBed(); tl.pause().seek(0, true); $('hint').classList.remove('gone'); }
+
+  addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (e.key === ' ' || e.key === 'ArrowRight' || e.key === 'Enter' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); sfx.ensure(); prev(); }
+    else if (e.key === 'r' || e.key === 'R') restart();
+    else if (e.key === 'm' || e.key === 'M') { sfx.ensure(); sfx.toggle(); }
+    else if (e.key === 'w' || e.key === 'W') document.body.classList.toggle('nowords');
+    else if (e.key === 'f' || e.key === 'F') (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
+    else if (e.key === 'c' || e.key === 'C') document.body.classList.toggle('cursor');
+    else if (e.key === 'a' || e.key === 'A') { auto = !auto; if (auto && tl.paused()) next(); }
+  });
+  addEventListener('click', () => next());
+
+  // Expose for checking from the console.
+  window.cutscene = { tl, beats, go, next, prev, restart };
+  // ?beat=N: ready, paused, just before beat N (from 1), so the next press plays it.
+  const start = parseInt(q.get('beat') ?? '', 10);
+  if (start > 1 && start <= beats.length) { current = start - 2; tl.seek(before(start - 1), true); $('hint').classList.add('gone'); }
+  if (auto) setTimeout(next, 800);
+})();
+</script>
+</body>
+</html>

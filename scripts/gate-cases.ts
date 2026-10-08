@@ -15,13 +15,15 @@ import type { Zone } from '../src/server/models/venue';
 export type GateLabel = 'answer' | 'person' | 'either';
 export type GateCase = { id: string; group: string; label: GateLabel; text: string; zone?: string; hint?: string };
 
-/** The zones in supabase/seed.sql: what the classifier sees as "Places", without the database. */
+/** The zones in supabase/migrations/20261008185900_reference_data.sql: what the classifier sees as "Places", without the database. */
 export const ZONES: Zone[] = [
-  ['gate-a', 'VIP Gate'], ['gate-b', 'Main Entrance'], ['lawn-stage', 'Oval Stage'], ['river-stage', 'Track Stage'],
+  ['gate-a', 'North Gate'], ['gate-b', 'Main Entrance'], ['lawn-stage', 'Lawn Stage'], ['river-stage', 'River Stage'],
   ['water-1', 'Water 1'], ['water-2', 'Water 2'], ['first-aid-hq', 'First Aid'], ['food-alley', 'Food Alley'], ['info-tent', 'Info'],
-  ['artist-gate', 'Artist Gate'], ['artist-village', 'Artist Village'], ['backstage', 'Oval Backstage'], ['track-backstage', 'Track Backstage'],
-  ['toilets-west', 'Toilets West'], ['toilets-east', 'Toilets East'], ['the-grove', 'The Grove'], ['pavilion', 'Pavilion'],
-  ['ticket-office', 'Ticket Office'], ['merch-lounge', 'Merch & Lounge'], ['supplies', 'Supplies'], ['bar', 'Bar'],
+  ['artist-gate', 'Artist Gate'], ['artist-village', 'Artist Village'], ['backstage', 'Backstage'], ['track-backstage', 'River Backstage'],
+  ['toilets-west', 'Toilets West'], ['toilets-east', 'Toilets East'], ['the-grove', 'The Grove'], ['pavilion', 'ArtPlay'],
+  ['playground', 'Kids Playground'],
+  ['grove-stage', 'Grove Stage'], ['water-3', 'Water 3'],
+  ['ticket-office', 'Ticket Office'], ['merch-lounge', 'Merch & Lounge'], ['market', 'Market'], ['supplies', 'Supplies'], ['bar', 'Bar'],
 ].map(([slug, name]) => ({ slug, name, capacity: null })).sort((x, y) => x.name.localeCompare(y.name));
 
 type Opts = { zone?: string; hint?: string };
@@ -31,14 +33,14 @@ type Row = [GateLabel, string, Opts?];
 const convo = (...lines: string[]) => lines.map((l, n) => `${n % 2 ? 'You answered' : 'Festival-goer'}: ${l}`).join('\n');
 
 // What the AI would have told them, as the answer writer phrases it.
-const TOILETS = 'The nearest toilets to the Oval Stage are Toilets East, by the tennis courts. There are more at Toilets West, next to the Grove.';
-const WATER = 'Free water refills are at Water 1, in the Grove by the first aid tent, and Water 2 at the east end near the Oval Stage.';
-const LOST = 'Lost property is at Info, the tent just inside the Main Entrance, open until 11pm. Bring ID to collect.';
-const TIMES = 'Next up: Oval Stage at 5:30pm, Track Stage at 6:00pm. Full times are on the board at Info.';
-const INFO = 'Info is the tent just inside the Main Entrance, on the left.';
-const FAINT = 'Sit them down in the shade and give them water, and ask any volunteer in a hi-vis vest, or go to First Aid on the south walk.';
+const TOILETS = 'The nearest toilets to the Lawn Stage are Toilets East, on the riverside path near The Grove. There are more at Toilets West, next to ArtPlay.';
+const WATER = 'Free water refills are at Water 1 (upper terrace, west end), Water 2 (middle terrace, near the Lawn Stage) and Water 3 (in The Grove).';
+const LOST = 'Lost property is at Info, on the upper terrace by Food Alley, open until 11pm. Bring ID to collect.';
+const TIMES = 'Next up: Lawn Stage at 5:30pm, River Stage at 6:00pm, Grove Stage at 6:30pm. Full times are on the board at Info.';
+const INFO = 'Info is on the upper terrace, by Food Alley.';
+const FAINT = 'Sit them down in the shade and give them water, and ask any volunteer in a hi-vis vest, or go to First Aid on the middle terrace, near the Lawn Stage.';
 const HI = 'Hi! What do you need?';
-const FOOD = 'Food Alley runs between the oval and the track.';
+const FOOD = 'Food Alley is the food court on the upper terrace: rows of food trucks.';
 
 const A = (text: string, o?: Opts): Row => ['answer', text, o];
 const P = (text: string, o?: Opts): Row => ['person', text, o];
@@ -53,8 +55,8 @@ const GROUPS: Record<string, Row[]> = {
     A('where can I fill up my water bottle'),
     A('where is lost property?'),
     A('how does lost property work?'),
-    A("who's on next at the oval stage?"),
-    A('what time does the track stage start'),
+    A("who's on next at the lawn stage?"),
+    A('what time does the river stage start'),
     A('when is the next act on?'),
     A('where can I see the full set times'),
     A('where is the info tent'),
@@ -66,22 +68,29 @@ const GROUPS: Record<string, Row[]> = {
     A('how late is lost property open'),
     A('where is water 2'),
     A('which toilets are closest to the grove?'),
-    A('is there a water station near the oval stage?'),
+    A('is there a water station near the lawn stage?'),
     A('what do I need to collect something from lost property'),
     A('where is the main entrance'),
-    A('where are the toilets near the tennis courts'),
-    A("what's on at the track stage at 6"),
-    A('is food alley between the oval and the track?'),
+    A('where are the toilets near the federation bells'),
+    A("what's on at the river stage at 6"),
+    A('is food alley up on the top terrace?'),
     A('where do i go to find out set times'),
     A('where is the bar?'),
     A('where is the merch tent'),
-    A('how do I get to the track stage from here', { zone: 'lawn-stage' }),
+    A('how do I get to the river stage from here', { zone: 'lawn-stage' }),
     A('where is the grove'),
     A('is there anywhere to sit in the shade?'),
     A('where can I buy a drink'),
     A('where are toilets west?'),
     A('which way to water 1'),
     A('what time does lost property close tonight?'),
+    A("where's the grove stage"),
+    A("who's on at the grove stage"),
+    A('where is water 3'),
+    A('is there water in the grove?', { zone: 'the-grove' }),
+    A('which gate is closest to the MCG'),
+    A('can I walk over the bridge to the MCG'),
+    A('where do we go if it storms'),
   ],
 
   // ── questions the facts don't cover, nobody to send: Info or the agent says so ──
@@ -98,7 +107,7 @@ const GROUPS: Record<string, Row[]> = {
     A('is smoking allowed inside the festival'),
     A('who is headlining tonight?'),
     A('where can I buy a poster of the lineup'),
-    E('I use a wheelchair, is there an accessible viewing platform at the oval?'),
+    E('I use a wheelchair, is there an accessible viewing platform at the lawn stage?'),
     E('can I get a refund on my ticket, I have to go home'),
     E('my ticket QR code is not scanning', { zone: 'gate-b' }),
   ],
@@ -178,7 +187,7 @@ const GROUPS: Record<string, Row[]> = {
     A("Où est-ce qu'on peut remplir sa gourde ?"),
     A('Où sont les objets trouvés ?'),
     A('Wo sind die Toiletten?'),
-    A('Wann spielt die nächste Band auf der Oval Stage?'),
+    A('Wann spielt die nächste Band auf der Lawn Stage?'),
     A('Dove sono i bagni?'),
     A('Onde fica o achados e perdidos?'),
     A('トイレはどこですか？'),
@@ -193,7 +202,7 @@ const GROUPS: Record<string, Row[]> = {
   // ── someone needed, other languages ──
   'languages person': [
     P('Mi amiga se desmayó cerca del escenario, ayuda por favor', { zone: 'lawn-stage' }),
-    P('Hay una pelea cerca de la puerta A, ayuda'),
+    P('Hay una pelea cerca de la puerta norte, ayuda'),
     P('No encuentro a mi hijo de 6 años'),
     P('Bạn tôi bị ngất, không tỉnh lại', { zone: 'food-alley' }),
     P('Tôi bị lạc con, bé 4 tuổi mặc áo đỏ'),
@@ -227,13 +236,13 @@ const GROUPS: Record<string, Row[]> = {
     A(convo('hello', HI, 'hello hello')),
     A(convo('hi', HI, 'hi')),
     A(convo('hello?', HI, 'hello? hello?')),
-    A(convo('where is the info tent', INFO, "ok but which side, I'm at the entrance")),
+    A(convo('where is the info tent', INFO, "ok but which way, I'm at the main entrance")),
     A(convo('where is the info tent', INFO, 'thanks!')),
     A(convo('where can I get food', FOOD, 'Not solved')),
     A(convo('I lost my phone', LOST, 'what if nobody handed it in?')),
-    A(convo('where are the toilets?', TOILETS, 'which one is closer to the track stage?')),
+    A(convo('where are the toilets?', TOILETS, 'which one is closer to the river stage?')),
     A(convo('test', HI, 'test again')),
-    A(convo('¿Dónde están los baños?', 'Los baños más cercanos al Oval Stage son Toilets East, junto a las canchas de tenis.', 'No resuelto')),
+    A(convo('¿Dónde están los baños?', 'Los baños más cercanos al Lawn Stage son Toilets East, en el camino junto al río.', 'No resuelto')),
     A(convo('where are the toilets?', TOILETS, 'still need help', TOILETS, 'still need help')),
     A(convo('where is water', WATER, 'ok')),
     E(convo('where are the toilets?', TOILETS, 'the queue is huge, is there anywhere else?')),
@@ -247,12 +256,12 @@ const GROUPS: Record<string, Row[]> = {
     P(convo('where is lost property?', LOST, 'I need a real person')),
     P(convo('I need water', WATER, "I can't walk there, I feel really faint")),
     P(convo('where are the toilets?', TOILETS, 'the toilets east are flooded, water everywhere')),
-    P(convo('where is first aid?', 'First Aid is on the south walk.', 'my friend just collapsed, please send someone')),
+    P(convo('where is first aid?', 'First Aid is on the middle terrace, near the Lawn Stage.', 'my friend just collapsed, please send someone')),
     P(convo('hello', HI, 'someone is hurt here')),
     P(convo('hello', HI, 'theres a fight near the bar')),
     P(convo('hello?', HI, "I can't find my son")),
     P(convo('where is info', INFO, 'a man keeps grabbing me and wont leave me alone')),
-    P(convo('I lost my friend', 'You could meet at Info, the tent just inside the Main Entrance.', 'she texted she feels really sick and cant stand up')),
+    P(convo('I lost my friend', 'You could meet at Info, on the upper terrace by Food Alley.', 'she texted she feels really sick and cant stand up')),
     P(convo('my friend feels faint', FAINT, 'Not solved, she is getting worse and not answering')),
     P(convo('where are the toilets?', TOILETS, 'Still need help', TOILETS, 'please send a human')),
     P(convo('where is water', WATER, 'the water station is broken, its spraying everywhere')),
@@ -265,14 +274,15 @@ const GROUPS: Record<string, Row[]> = {
   // ── medical ──
   medical: [
     P("a guy just collapsed near the burger truck and he isn't moving", { zone: 'food-alley' }),
-    P('someone is not breathing at the front of the oval stage!!'),
+    P('someone is not breathing at the front of the lawn stage!!'),
     P('a girl is having a seizure by toilets east'),
     P('I feel really hot and dizzy and I think I might pass out', { zone: 'the-grove' }),
     P('my friend ate something with peanuts and her lips are swelling', { zone: 'food-alley' }),
     P('my mate took something and is acting really weird and sweating a lot', { zone: 'lawn-stage' }),
-    P('please call an ambulance, an older man is clutching his chest at gate A'),
+    P('please call an ambulance, an older man is clutching his chest at the north gate'),
     P('my friend is having an asthma attack and forgot her inhaler'),
     P('someone fell and hit their head, there is blood', { zone: 'river-stage' }),
+    P('someone just fell off the landing into the river', { zone: 'river-stage' }),
     P('I cut my hand on broken glass and it wont stop bleeding'),
     P('my friend is throwing up and cant stand'),
     P('i think i broke my ankle'),
@@ -293,22 +303,23 @@ const GROUPS: Record<string, Row[]> = {
 
   // ── security and safety ──
   security: [
-    P('two guys are fighting near gate B'),
-    P('someone just pulled out a knife in the crowd at the oval'),
+    P('two guys are fighting near the main entrance'),
+    P('someone just pulled out a knife in the crowd on the lawn'),
     P('someone stole my bag, they ran towards the bar'),
     P('there is an unattended backpack under the stage'),
     P('a man is threatening people with a broken bottle', { zone: 'bar' }),
     P('a bunch of people are climbing over the fence behind toilets west to get in for free'),
     P('a drunk guy keeps shoving people and trying to start fights', { zone: 'lawn-stage' }),
-    P('someone is selling drugs behind the pavilion'),
+    P('someone is selling drugs behind artplay'),
     P('I just saw someone pickpocket a girl near merch'),
     P('there is smoke coming from one of the food trucks', { zone: 'food-alley' }),
-    P('fire!! behind the track stage'),
+    P('fire!! behind the river stage'),
     P('someone let off a flare in the crowd'),
     P('a guy is filming people in the toilets'),
     P('my phone was just snatched out of my hand'),
     P('someone is trying to get backstage over the barrier', { zone: 'backstage' }),
     P('gas smell near the food stalls', { zone: 'food-alley' }),
+    P('people are climbing over the barricade onto the tanderrum bridge'),
     E('i think someone took my phone but im not sure, it was in my pocket'),
   ],
 
@@ -332,13 +343,15 @@ const GROUPS: Record<string, Row[]> = {
   crowd: [
     P("people are getting crushed against the barrier at the front, it's really bad", { zone: 'lawn-stage' }),
     P("it's too crowded at the front"),
-    P('the queue at gate B has been 45 minutes and is barely moving'),
-    P('the emergency exit next to the track stage is blocked by a stack of crates'),
+    P('the queue at the main entrance has been 45 minutes and is barely moving'),
+    P('the emergency exit next to the river stage is blocked by a stack of crates'),
     P('everyone is pushing at the main entrance, people are falling'),
+    P('the lower terrace is packed and people are being pushed towards the river edge'),
     P("there's a surge in the mosh pit and someone went down"),
-    P("way too many people at the grove, can't move at all", { zone: 'the-grove' }),
+    P("way too many people in the grove, can't move at all", { zone: 'the-grove' }),
     P('the gate is closed and people are stuck outside getting angry', { zone: 'gate-b' }),
     P('the walkway to food alley is completely jammed'),
+    P('too many people at the grove stage, people pushing at the front', { zone: 'grove-stage' }),
     E('the toilet queue is really long'),
     E('the bar line is insane, 30 minutes'),
   ],
@@ -347,7 +360,7 @@ const GROUPS: Record<string, Row[]> = {
   welfare: [
     P('a man has been following me around for the last hour and I feel unsafe'),
     P('I think my drink was spiked, I feel strange'),
-    P("there's a girl sitting alone at the grove crying and shaking, she won't talk to anyone"),
+    P("there's a girl sitting alone in the grove crying and shaking, she won't talk to anyone"),
     P('someone groped me in the crowd'),
     P('a guy keeps touching me and I asked him to stop'),
     P('I feel unsafe'),
@@ -368,16 +381,16 @@ const GROUPS: Record<string, Row[]> = {
     P('the toilets at toilets east are blocked and overflowing'),
     P('a toilet door is broken and wont lock', { zone: 'toilets-west' }),
     P('someone spilled a whole drink tray, the floor is really slippery', { zone: 'bar' }),
-    P('the bins by the grove are overflowing'),
+    P('the bins in the grove are overflowing'),
     P('the water tap at water 1 is broken'),
-    P('there are no lights on the path to the car park, its pitch black'),
+    P('there are no lights on the riverside path, its pitch black'),
     P('a cable is loose across the walkway, people are tripping'),
     P('the wind just knocked over a gazebo', { zone: 'food-alley' }),
     P('the shade tent roof is collapsing from the rain'),
     P('lightning nearby, should we be outside?'),
     P('a fence panel blew over onto the path'),
     P('the toilets have no water and no soap'),
-    P('broken glass all over the grass at the front of the oval'),
+    P('broken glass all over the grass at the front of the lawn stage'),
     P('a speaker stack is wobbling in the wind', { zone: 'river-stage' }),
     P('water is flooding near the stage, people are slipping in the mud'),
     P('the power went out at the food stalls'),
@@ -405,7 +418,7 @@ const GROUPS: Record<string, Row[]> = {
     P("lol my friend just fell off the barrier and isn't getting up"),
     P('HELP SOMEONE IS HURT'),
     P('PLEASE SEND SOMEONE NOW'),
-    P('🚑🚑 near oval stage'),
+    P('🚑🚑 near lawn stage'),
     P('ppl fightin near teh bar'),
     P('my freind colapsed pls'),
     P('i cant breath'),

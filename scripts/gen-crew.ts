@@ -3,7 +3,8 @@
  * has none, each with a team, certificates (with expiry dates, a few already lapsed), languages, a zone, a short
  * description for the picker to read, whether it's their first festival, and when they're free that weekend: what
  * they said ("Sat only sorry") and the times it means. Mostly students; nearly half first-timers.
- * Same seed, same roster. Then `bun scripts/seed.ts` loads it and `bun scripts/roster.ts` rosters it.
+ * Same seed, same roster. Then `bun scripts/crew-sql.ts` turns it and its roster into the crew migration, or
+ * `bun scripts/seed.ts` loads it and `bun scripts/roster.ts` rosters it through the API.
  *
  *   bun scripts/gen-crew.ts [count=300] [seed=1] [saturday=the coming one, YYYY-MM-DD]
  *
@@ -59,7 +60,7 @@ const TEAMS: Record<string, { share: number; skills: Record<string, number>; zon
   },
   welfare: {
     share: 0.11, skills: { wwcc: 0.95, 'mental-health-first-aid': 0.5, 'first-aid-cert': 0.3 },
-    zones: ['info-tent', 'the-grove', 'food-alley', 'lawn-stage', 'pavilion'],
+    zones: ['info-tent', 'the-grove', 'food-alley', 'lawn-stage', 'pavilion', 'playground'],
     backgrounds: [
       'Primary school teacher', 'Social work student', 'Youth worker', 'Childcare educator', 'Lifeline phone counsellor',
       'Psychology honours student', 'Disability support worker', 'Camp leader', 'Kindergarten assistant', 'Case manager',
@@ -67,7 +68,7 @@ const TEAMS: Record<string, { share: number; skills: Record<string, number>; zon
   },
   crowd: {
     share: 0.2, skills: { 'crowd-control': 0.7, 'radio-trained': 0.7, 'first-aid-cert': 0.2 },
-    zones: ['gate-a', 'gate-b', 'lawn-stage', 'river-stage', 'artist-gate'],
+    zones: ['gate-a', 'gate-b', 'lawn-stage', 'river-stage', 'artist-gate', 'market'],
     backgrounds: [
       'Stadium usher at the MCG', 'Event management student', 'Footy club steward', 'Concert crew', 'Retail floor manager',
       'Train station customer service', 'Scout leader', 'Gym instructor', 'Festival regular, fourth year on gates',
@@ -75,7 +76,7 @@ const TEAMS: Record<string, { share: number; skills: Record<string, number>; zon
   },
   security: {
     share: 0.08, skills: { 'security-licence': 0.85, 'crowd-control': 0.4, 'radio-trained': 0.8 },
-    zones: ['gate-a', 'gate-b', 'bar', 'backstage', 'artist-gate'],
+    zones: ['gate-a', 'gate-b', 'bar', 'backstage', 'artist-gate', 'market'],
     backgrounds: [
       'Licensed crowd controller', 'Ex-army reservist', 'Nightclub door staff', 'Criminology student', 'Corrections officer',
       'Venue security supervisor', 'Martial arts instructor', 'Loss prevention officer',
@@ -83,7 +84,7 @@ const TEAMS: Record<string, { share: number; skills: Record<string, number>; zon
   },
   info: {
     share: 0.13, skills: { wwcc: 0.3, 'first-aid-cert': 0.15 },
-    zones: ['info-tent', 'gate-b', 'ticket-office', 'merch-lounge', 'pavilion'],
+    zones: ['info-tent', 'gate-b', 'ticket-office', 'merch-lounge', 'pavilion', 'playground', 'market'],
     backgrounds: [
       'Tourism student', 'Library assistant', 'Hotel concierge', 'Auslan interpreter in training', 'Uni open day guide',
       'Call centre team lead', 'Museum visitor host', 'Occupational therapy student', 'Bookshop manager',
@@ -99,7 +100,7 @@ const TEAMS: Record<string, { share: number; skills: Record<string, number>; zon
   },
   vendors: {
     share: 0.08, skills: { 'food-safety': 0.7, rsa: 0.6 },
-    zones: ['food-alley', 'bar', 'merch-lounge'],
+    zones: ['food-alley', 'bar', 'merch-lounge', 'market'],
     backgrounds: [
       'Cafe manager', 'Chef apprentice', 'Food truck owner', 'Bartender', 'Environmental health student',
       'Catering coordinator', 'Market stallholder', 'Barista',

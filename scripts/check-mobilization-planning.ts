@@ -39,7 +39,7 @@ const input: SimulationInput = {
 };
 const context: SimulationContext = {
   zones: [
-    { slug: "lawn-stage", name: "Oval Stage", kind: "stage", capacity: 5000, isOpenAir: true },
+    { slug: "lawn-stage", name: "Lawn Stage", kind: "stage", capacity: 5000, isOpenAir: true },
     { slug: "water-2", name: "Water Station 2", kind: "water", capacity: null, isOpenAir: true },
   ],
   teams: [{ slug: "first-aid", name: "First Aid", description: "Medical attention" }, { slug: "ops", name: "Operations", description: "Facilities" }],

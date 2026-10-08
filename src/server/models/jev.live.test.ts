@@ -21,7 +21,7 @@ describe.skipIf(!process.env.SPARK_API_KEY)('Jev against the live Spark', () => 
   });
 
   it('routes an overflowing bin to ops', { timeout: 20_000 }, async () => {
-    const { team } = await jev.decide('the bins next to gate B are overflowing', {
+    const { team } = await jev.decide('the bins next to the main entrance are overflowing', {
       team: choice('Which team should handle this message?', {
         'first-aid': 'medical injury illness collapsed bleeding seizure unconscious breathing heat',
         security: 'fight theft weapon trespass drunk aggressive security',

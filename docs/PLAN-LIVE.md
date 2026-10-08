@@ -2,7 +2,7 @@
 
 The promo video is a real field test on the UniMelb University Oval and athletics track. It uses real phones, live GPS, and people talking into the mic. Spark transcribes what they say, the AI triages, assigns and re-triages as it happens, and Mo coordinates from a shed. We film from the volunteer side and the festival-goer side. Demo day runs in a hall, where the same backend is driven by simulated people (phase 8).
 
-Everything below is the gap between today and that video. The site plan is already on the oval and track (`src/data/venue.ts`), with the VIP Gate (Gate A) at the Tin Alley tunnel and the Main Entrance (Gate B) between the two sports centres.
+Everything below is the gap between today and that video, which was shot on the oval with the site plan of the time. The demo venue has since moved to Birrarung Marr, by the Yarra next to Fed Square (`src/data/venue.ts`): three stages (the Lawn Stage on the middle terrace, the River Stage on the lower terrace at the foot of Tanderrum Bridge, the covered Grove Stage in The Grove), the Main Entrance (Gate B) at the Fed Square end and the North Gate (Gate A) on Batman Ave. Both bridges are closed to the public: William Barak is the artists' and crew way in, Tanderrum is barricaded, emergency only. "The oval" below means the field test.
 
 ## Where we are
 
@@ -59,7 +59,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 
 ### 1. Supabase as the shared world
 
-- Local: `supabase start`, then `.env.local` from `supabase status -o env` (see `.env.example`). Hosted: create the project, `supabase link`, `supabase db push`, and `bun scripts/seed.ts` with the hosted keys.
+- Local: `supabase start`, then `.env.local` from `supabase status -o env` (see `.env.example`). Hosted: create the project, `supabase link`, `supabase db push`. The crew and their roster come with the migrations (`…_crew.sql`, written by `npm run db:crew-sql`); `bun scripts/seed.ts` is only for a different crew.json.
 - Local Supabase runs on Docker. Apple `container` needs the socktainer Docker-API shim, which can't yet bring up a full Supabase stack reliably, so stay on Docker (or OrbStack) for now.
 - Migration 2, adding what the domain types already have but the schema lacks:
   - `tasks`: `escalation jsonb`, `helper_ids uuid[]`, `resolution`, `request_id`
@@ -74,7 +74,7 @@ Phases are in dependency order. 1 → 2 → 3 is the critical path. 4, 5 and 6 c
 
 **Done when:** `supabase db reset && npm run db:seed` gives a working festival world, and `npm run db:check` passes (a signed-in volunteer reads their own tasks, a festival-goer only their own request and who is coming).
 
-**Status:** done locally. Migration `…_shared_world.sql`, `scripts/seed.ts` (zone coordinates from the site plan, crew from `supabase/crew.json`), `scripts/check-rls.ts`. The real cast goes in `supabase/crew.json` (gitignored; copy `crew.example.json`). Phone numbers and push tokens live in `profile_private`, which crew can read and festival-goers can't.
+**Status:** done locally. Migration `…_shared_world.sql`, `scripts/seed.ts` (zone coordinates from the site plan, crew from `supabase/crew.json`), `scripts/check-rls.ts`. The real cast goes in `supabase/crew.json` (gitignored; `bun scripts/gen-crew.ts 300 1 2026-10-10` writes the 300 the crew migration was made from). Phone numbers and push tokens live in `profile_private`, which crew can read and festival-goers can't.
 
 ### 2. `SupabaseRepo` and the server
 

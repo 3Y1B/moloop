@@ -51,14 +51,14 @@ describe('OpenAiDecisions.decide', () => {
   it('asks gpt-6-luna each question as a described choice, a yes/no one as yes or no', async () => {
     const { decisions, requests } = openai(decided('P1'));
 
-    await decisions.decide({ message: state, location: 'Gate A' }, questions);
+    await decisions.decide({ message: state, location: 'North Gate' }, questions);
 
     expect(requests).toHaveLength(1);
     expect(requests[0].url).toBe('https://openai.test/v1/decisions');
     expect(requests[0].headers.authorization).toBe('Bearer sk-test');
     expect(requests[0].json).toEqual({
       model: 'gpt-6-luna',
-      input: JSON.stringify({ message: state, location: 'Gate A' }),
+      input: JSON.stringify({ message: state, location: 'North Gate' }),
       questions: [
         {
           type: 'choice',

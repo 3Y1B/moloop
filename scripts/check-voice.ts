@@ -149,7 +149,7 @@ async function brief(who: Person, taskId: string, since: number) {
 try {
   // ── 1. A volunteer reports by voice ──
   section('volunteer reports by voice');
-  const fight = await rio.hear(await clip('There’s a fight starting by Gate B, two guys shoving each other.'));
+  const fight = await rio.hear(await clip('There’s a fight starting by the Main Entrance, two guys shoving each other.'));
   console.log(`     heard in ${fight.ms} ms: ${JSON.stringify(fight.body?.text)}`);
   expect('transcribed', fight.status === 200 && /fight/i.test(fight.body.text), fight);
   expect('clip kept under the speaker', typeof fight.body?.clip === 'string' && fight.body.clip.startsWith(`${rio.id}/`) && await kept(fight.body.clip), fight.body);

@@ -22,37 +22,37 @@ function snapshot(): PlanningSnapshot {
   const input: PlanningSnapshot = { schemaVersion: 1, evaluatedAt: at,
     scenario: { requestId: 'focused-input-test-0001',
       weather: { temperatureC: 41, trendCPerHour: null, condition: 'clear', warning: 'heat', warningInMinutes: 0 },
-      upcomingSets: [{ stageSlug: 'oval-stage', act: 'Test act', startsInMinutes: 10, durationMinutes: 60, expectedPeople: 2000 }],
-      crowdByZone: [{ zoneSlug: 'oval-stage', estimatedPeople: 0, trend: 'stable' }],
-      recentIncidents: [{ category: 'heat', zoneSlug: 'oval-stage', minutesAgo: 3, description: 'Reported dizziness', count: 1, openCount: 1 }],
+      upcomingSets: [{ stageSlug: 'lawn-stage', act: 'Test act', startsInMinutes: 10, durationMinutes: 60, expectedPeople: 2000 }],
+      crowdByZone: [{ zoneSlug: 'lawn-stage', estimatedPeople: 0, trend: 'stable' }],
+      recentIncidents: [{ category: 'heat', zoneSlug: 'lawn-stage', minutesAgo: 3, description: 'Reported dizziness', count: 1, openCount: 1 }],
       observations: [
         { key: 'weather.windSpeed', kind: 'number', zoneSlug: null, minutesAgo: 1, value: 0 },
-        { key: 'stageSafety.windLimitExceeded', kind: 'boolean', zoneSlug: 'oval-stage', minutesAgo: 0, value: false },
+        { key: 'stageSafety.windLimitExceeded', kind: 'boolean', zoneSlug: 'lawn-stage', minutesAgo: 0, value: false },
         { key: 'audienceByZone', kind: 'zone_counts', zoneSlug: null, minutesAgo: 2,
-          value: { coverage: 'partial', entries: [{ zoneSlug: 'oval-stage', count: 0 }] } },
+          value: { coverage: 'partial', entries: [{ zoneSlug: 'lawn-stage', count: 0 }] } },
         { key: 'approvedRoutes', kind: 'routes', zoneSlug: null, minutesAgo: 4,
-          value: [{ fromZoneSlug: 'oval-stage', toZoneSlug: 'water-point', status: 'restricted', approved: false }] },
-        { key: 'medicalHeatCases', kind: 'number', zoneSlug: 'oval-stage', minutesAgo: 0, value: null },
+          value: [{ fromZoneSlug: 'lawn-stage', toZoneSlug: 'water-point', status: 'restricted', approved: false }] },
+        { key: 'medicalHeatCases', kind: 'number', zoneSlug: 'lawn-stage', minutesAgo: 0, value: null },
       ] },
-    zones: [{ slug: 'oval-stage', name: 'Oval Stage', kind: 'stage', capacity: 2500, isOpenAir: true },
+    zones: [{ slug: 'lawn-stage', name: 'Lawn Stage', kind: 'stage', capacity: 2500, isOpenAir: true },
       { slug: 'water-point', name: 'Water Point', kind: 'water', capacity: null, isOpenAir: false }],
     teams: [{ slug: 'first-aid', name: 'First Aid', description: 'Assessment' },
       { slug: 'welfare', name: 'Welfare', description: 'Audience support' }],
     skills: [{ slug: 'medical-cert', name: 'Medical certified' }],
-    routes: [{ from: 'oval-stage', to: 'water-point', minutes: 3.5, meters: 140.25 }],
-    roster: [{ id: 'crew-one', name: 'Crew One', teamSlug: 'first-aid', zoneSlug: 'oval-stage',
+    routes: [{ from: 'lawn-stage', to: 'water-point', minutes: 3.5, meters: 140.25 }],
+    roster: [{ id: 'crew-one', name: 'Crew One', teamSlug: 'first-aid', zoneSlug: 'lawn-stage',
       duty: 'on_duty', skills: ['medical-cert'], free: true, shiftEndsAt: null },
       { id: 'crew-two', name: 'Crew Two', teamSlug: 'welfare', zoneSlug: 'water-point',
         duty: 'on_duty', skills: [], free: true, shiftEndsAt: 1791471600000 }],
     existingResponses: [{ id: 'response-one', title: 'Existing assessment', status: 'in_progress',
-      teamSlug: 'first-aid', zoneSlug: 'oval-stage', mobilizationId: 'mob-existing', requiredCount: 2 }],
+      teamSlug: 'first-aid', zoneSlug: 'lawn-stage', mobilizationId: 'mob-existing', requiredCount: 2 }],
     evidence: [], playbooks: [book()] };
   const fact = (ref: string, kind: string, zoneSlug: string | null, value: object,
     source: PlanningEvidence['source'] = 'manual_demo', observedAt = at): PlanningEvidence => ({
       ref, kind, zoneSlug, source, observedAt, value: structuredClone(value) as Record<string, unknown>,
     });
   input.evidence = [fact('weather', 'weather', null, input.scenario.weather),
-    fact('venue-oval', 'venue', 'oval-stage', input.zones[0], 'database'),
+    fact('venue-lawn', 'venue', 'lawn-stage', input.zones[0], 'database'),
     fact('roster-first-aid', 'roster', null, { teamSlug: 'first-aid', onDuty: 1, free: 1,
       freeBySkill: { 'medical-cert': 1 } }, 'database'),
     fact('roster-welfare', 'roster', null, { teamSlug: 'welfare', onDuty: 1, free: 1,
@@ -114,7 +114,7 @@ describe('focused experimental input projection (offline only)', () => {
     expect(focused.evidence.find((row) => row.ref === 'observation-0')?.value.value).toBe(0);
     expect(focused.evidence.find((row) => row.ref === 'observation-1')?.value.value).toBe(false);
     expect(focused.evidence.find((row) => row.ref === 'observation-2')?.value.value)
-      .toEqual({ coverage: 'partial', entries: [{ zoneSlug: 'oval-stage', count: 0 }] });
+      .toEqual({ coverage: 'partial', entries: [{ zoneSlug: 'lawn-stage', count: 0 }] });
     expect(focused.scenario?.crowdByZone?.[0].estimatedPeople).toBe(0);
     expect(focused.inputAvailability).not.toHaveProperty('medicalHeatCases');
     expect(focused.scenario?.observations).toContainEqual(input.scenario.observations!.at(-1));
@@ -128,8 +128,8 @@ describe('focused experimental input projection (offline only)', () => {
     expect(focused.evidence.find((row) => row.ref === 'observation-3')).toEqual(input.evidence.find((row) => row.ref === 'observation-3'));
     expect(focused.inputAvailability.approvedRoutes).toMatchObject({ available: true, completeness: 'partial' });
     expect(focused.evidence.find((row) => row.ref === 'observation-3')?.value.value)
-      .toEqual([{ fromZoneSlug: 'oval-stage', toZoneSlug: 'water-point', status: 'restricted', approved: false }]);
-    expect(input.routes).toEqual([{ from: 'oval-stage', to: 'water-point', minutes: 3.5, meters: 140.25 }]);
+      .toEqual([{ fromZoneSlug: 'lawn-stage', toZoneSlug: 'water-point', status: 'restricted', approved: false }]);
+    expect(input.routes).toEqual([{ from: 'lawn-stage', to: 'water-point', minutes: 3.5, meters: 140.25 }]);
   });
 
   it('retains the exact verified roster aggregates and their evidence provenance', () => {

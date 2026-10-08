@@ -46,13 +46,13 @@ if (!(await fetch(`${serverUrl}/health`).then((r) => r.ok).catch(() => false))) 
 section('rules');
 {
   const now = 1_000_000;
-  const pos = (at: number, p: Point = { x: 100, y: 100 }) => ({ a: { personId: 'a', ...p, accuracy: 5, heading: null, at } });
-  expect('fresh position is where to walk from', JSON.stringify(walkFrom(pos(now - 5_000), 'a', 'gate-a', now)) === '{"x":100,"y":100}');
+  const pos = (at: number, p: Point = { x: 250, y: 120 }) => ({ a: { personId: 'a', ...p, accuracy: 5, heading: null, at } });
+  expect('fresh position is where to walk from', JSON.stringify(walkFrom(pos(now - 5_000), 'a', 'gate-a', now)) === '{"x":250,"y":120}');
   expect('stale (a minute quiet) falls back to the zone', walkFrom(pos(now - PRESENCE.staleMs - 1), 'a', 'gate-a', now) === 'gate-a');
   expect('stale still draws, faded', placeOf(pos(now - PRESENCE.staleMs - 1), 'a', now)?.stale === true);
   expect('gone after ten minutes', placeOf(pos(now - PRESENCE.goneMs - 1), 'a', now) === null);
   expect('off the site says nothing', placeOf(pos(now, { x: 5_000, y: -3_000 }), 'a', now) === null);
-  const r = routeBetween({ x: 200, y: 100 }, 'first-aid-hq');
+  const r = routeBetween({ x: 130, y: 190 }, 'first-aid-hq');
   expect('routes start anywhere', !!r && r.meters > 200 && r.steps.at(-1)?.turn === 'arrive', r?.meters);
   expect('a few metres off is here', routeBetween({ x: NODES.fa.x + 5, y: NODES.fa.y }, 'first-aid-hq')?.here === true);
 }
@@ -130,7 +130,8 @@ const near = (s: Snapshot, who: string, p: Point, m = 0.5) => {
 try {
   const moUser = (await admin.auth.admin.listUsers({ perPage: 1000 })).data.users.find((u) => u.email === 'mo@moloop.test');
   if (!moUser) throw new Error('Seed the crew first: npm run db:seed');
-  // Ana is posted at Gate B and Ben at Food Alley, which is much nearer the Grove. Ana's phone says she's at the Grove.
+  // Ana is posted at the Main Entrance and Ben at Food Alley, which is much nearer the Grove. Ana's phone says she's
+  // in the Grove.
   const [mo, ana, ben] = await Promise.all([signIn('mo@moloop.test'), hire('ana', 'Ana Presence', 'gate-b'), hire('ben', 'Ben Presence', 'food-alley')]);
   const moRepo = repoFor(mo);
   const anaRepo = repoFor(ana.client);
@@ -138,8 +139,8 @@ try {
   await Promise.all([moRepo, anaRepo, benRepo].map((r) => waitFor(r, ready, 8_000)));
 
   section('a phone moves, Mo sees it');
-  const grove = NODES.grove;
-  const path: Point[] = [0, 1, 2, 3].map((i) => ({ x: grove.x + 40 - i * 10, y: grove.y + 4 }));
+  const corner = NODES.corner;
+  const path: Point[] = [0, 1, 2, 3].map((i) => ({ x: corner.x - 40 + i * 10, y: corner.y - 8 }));
   for (const [i, p] of path.entries()) {
     await anaRepo.sharePosition(fixAt(p));
     await within(`step ${i + 1}: Mo's map has Ana there`, moRepo, (s) => near(s, ana.id, p), 1_500);
@@ -175,7 +176,7 @@ try {
     return r ? guestStage(r, r.taskId ? s.tasks[r.taskId] : undefined, s, Date.now()) : undefined;
   };
   // The festival-goer shares while their request is open: a few metres into the Grove.
-  const person = { x: grove.x + 2, y: grove.y + 6 };
+  const person = { x: corner.x + 2, y: corner.y + 6 };
   await guestRepo.sharePosition(fixAt(person));
   await sleep(500);
   expect('before anyone is on it, they can\'t see the crew', !guestRepo.getSnapshot().positions[ana.id]);
@@ -187,10 +188,10 @@ try {
   expect('Ana\'s snapshot ties the task to the festival-goer', anaSnap.requests[requestId]?.guestId === anon.user!.id);
 
   // Ana walks back out and in again: the countdown follows her, then she's there.
-  await anaRepo.sharePosition(fixAt({ x: grove.x + 100, y: grove.y + 60 }));
+  await anaRepo.sharePosition(fixAt({ x: corner.x - 130, y: corner.y - 50 }));
   await within('walking away: "Ana is coming" with minutes', guestRepo, () => /^Ana is coming · [2-9] min$/.test(view()?.label ?? ''));
   const far = view()?.label;
-  await anaRepo.sharePosition(fixAt({ x: grove.x + 40, y: grove.y + 10 }));
+  await anaRepo.sharePosition(fixAt({ x: corner.x - 40, y: corner.y - 10 }));
   await within('closer: fewer minutes', guestRepo, () => view()?.label === 'Ana is coming · 1 min');
   console.log(`     ${far} → ${view()?.label}`);
   await anaRepo.sharePosition(fixAt({ x: person.x + 4, y: person.y }));

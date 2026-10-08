@@ -25,8 +25,11 @@ export const PRESENCE = {
 /** A fix from the phone's GPS, before it's on the plan. */
 export type Fix = { lat: number; lng: number; accuracy: number | null; heading: number | null; at: number };
 
-/** Off the site by more than this and the position isn't used: someone testing at home, or GPS gone wrong. */
-const OFF_SITE_M = 40;
+/**
+ * Off the plan by more than this and the position isn't used: someone testing at home, or GPS gone wrong. The plan
+ * already reaches 30 m past the fence; this takes in the forecourt at Fed Square and the bridges' far ends.
+ */
+const OFF_SITE_M = 60;
 
 export function onSite(p: Point): boolean {
   return p.x > -OFF_SITE_M && p.y > -OFF_SITE_M && p.x < VENUE.width + OFF_SITE_M && p.y < VENUE.height + OFF_SITE_M;
@@ -50,8 +53,11 @@ export function walkFrom(positions: Record<string, Position> | undefined, id: st
   return place && !place.stale ? place.at : zoneSlug;
 }
 
-/** A festival-goer this far from where they reported is reporting for somewhere else: help goes to the zone, not to them. */
-const WITH_IT_M = 60;
+/**
+ * A festival-goer this far from where they reported is reporting for somewhere else: help goes to the zone, not to
+ * them. Wide enough for the back of the Lawn Stage's crowd, which runs 80 m out from the stage.
+ */
+const WITH_IT_M = 80;
 
 /**
  * Where help should walk to: the festival-goer, if their phone puts them at (or near) what they reported, so the

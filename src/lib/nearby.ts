@@ -3,10 +3,11 @@ import type { Task } from '@/lib/schema';
 
 /**
  * Open tasks a new report might be about, before it becomes a task of its own (re-triage, docs/PLAN-LIVE.md phase 6).
- * Nearby means the same zone or a short walk away: neighbouring zones on the oval are 25 to 100 m apart.
+ * Nearby means the same zone or a short walk away: neighbouring zones along the park are 40 to 150 m apart, and it's
+ * 500 m from one end to the other.
  */
 
-const NEAR_M = 100;
+const NEAR_M = 150;
 const RECENT_MS = 20 * 60_000;
 const MAX = 5;
 

@@ -20,6 +20,10 @@ export const MAP_ICONS = {
   control: require('@/assets/images/map/control.png'),
   bar: require('@/assets/images/map/bar.png'),
   medic: require('@/assets/images/map/medic.png'),
+  photo: require('@/assets/images/map/photo.png'),
+  ride: require('@/assets/images/map/ride.png'),
+  disco: require('@/assets/images/map/disco.png'),
+  games: require('@/assets/images/map/games.png'),
   /** A gate's way in (green, up) and way out. */
   way: require('@/assets/images/map/way.png'),
 } as const;

@@ -24,8 +24,8 @@ describe('nearbyOpenTasks: what a new report might be about', () => {
   it('is the open tasks in the same zone or a short walk away, not across the site', () => {
     const tasks = [
       task('here'),
-      task('next-door', { zoneSlug: 'river-stage' }), // 53 m
-      task('far', { zoneSlug: 'pavilion' }), // 132 m
+      task('next-door', { zoneSlug: 'river-stage' }), // 97 m, down on the lower terrace below the Federation Bells
+      task('far', { zoneSlug: 'pavilion' }), // 172 m, ArtPlay at the Fed Square end
     ];
 
     expect(ids(nearbyOpenTasks(tasks, 'food-alley', NOW))).toEqual(['here', 'next-door']);
@@ -45,11 +45,11 @@ describe('nearbyOpenTasks: what a new report might be about', () => {
 
   it('puts the nearest first and stops at five', () => {
     const tasks = [
-      task('63m', { zoneSlug: 'water-1' }),
-      task('53m', { zoneSlug: 'river-stage' }),
+      task('97m', { zoneSlug: 'river-stage' }),
+      task('83m', { zoneSlug: 'water-1' }),
       ...['a', 'b', 'c', 'd'].map((id) => task(id)),
     ];
 
-    expect(ids(nearbyOpenTasks(tasks, 'food-alley', NOW))).toEqual(['a', 'b', 'c', 'd', '53m']);
+    expect(ids(nearbyOpenTasks(tasks, 'food-alley', NOW))).toEqual(['a', 'b', 'c', 'd', '83m']);
   });
 });

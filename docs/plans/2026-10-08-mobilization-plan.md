@@ -90,7 +90,7 @@ Replace the 24,000-character review with:
 - **Approve** and **Dismiss**. Nothing else on the first screen.
 
 Crew asked for is capped at the free people on that team. Volunteers and Mo never see ids, "Sources: …", raw JSON or
-ISO times. Places use the app's names (VIP Gate, not "Gate A").
+ISO times. Places use the app's names (North Gate, not "Gate A").
 
 ## After approval
 

@@ -52,8 +52,8 @@ const { data: request } = await admin.from('guest_requests')
   .insert({ guest_id: guestId, heard: 'rls check', task_id: byTitle['rls: tom'] }).select('id').single();
 await admin.from('tasks').update({ request_id: request!.id }).eq('id', byTitle['rls: tom']);
 await admin.from('presence').upsert([
-  { person_id: tom, lat: -37.795, lng: 144.962 },
-  { person_id: linh, lat: -37.796, lng: 144.961 },
+  { person_id: tom, lat: -37.8186, lng: 144.9735 },
+  { person_id: linh, lat: -37.8188, lng: 144.9726 },
 ]);
 
 try {
@@ -67,7 +67,7 @@ try {
   expect('volunteer sees no proposals', ((await p.from('agent_actions').select('id')).data ?? []).length === 0);
   const write = await p.from('tasks').update({ title: 'hacked' }).eq('id', byTitle['rls: priya']).select();
   expect('volunteer cannot write tasks', !!write.error || (write.data ?? []).length === 0, write.error?.message);
-  const pres = await p.from('presence').upsert({ person_id: priya, lat: -37.794, lng: 144.963 }).select('at');
+  const pres = await p.from('presence').upsert({ person_id: priya, lat: -37.8184, lng: 144.9742 }).select('at');
   expect('volunteer upserts own presence', !pres.error, pres.error?.message);
   const spoof = await p.from('presence').upsert({ person_id: tom, lat: 0, lng: 0 });
   expect('volunteer cannot move someone else', !!spoof.error);
@@ -94,7 +94,7 @@ try {
   expect('guest sees only their helper\'s dot', gpres.length === 1 && gpres[0].person_id === tom, gpres);
   expect('guest cannot read phone numbers', ((await guest.from('profile_private').select('id')).data ?? []).length === 0);
   expect('guest reads zones', ((await guest.from('zones').select('slug')).data ?? []).length >= 13);
-  const gpost = await guest.from('presence').upsert({ person_id: guestId, lat: -37.795, lng: 144.9625 });
+  const gpost = await guest.from('presence').upsert({ person_id: guestId, lat: -37.8187, lng: 144.9731 });
   expect('guest upserts own presence', !gpost.error, gpost.error?.message);
   const tseesGuest = (await t.from('presence').select('person_id').eq('person_id', guestId)).data ?? [];
   expect('helper sees the guest they are helping', tseesGuest.length === 1);

@@ -19,6 +19,7 @@
     "db:crew": "bun scripts/gen-crew.ts",
     "db:roster": "bun scripts/roster.ts",
     "db:seed": "bun scripts/seed.ts",
+    "db:crew-sql": "bun scripts/crew-sql.ts",
     "db:check": "bun scripts/check-rls.ts",
     "repo:check": "bun scripts/check-repo.ts",
     "commands:check": "bun scripts/check-commands.ts",

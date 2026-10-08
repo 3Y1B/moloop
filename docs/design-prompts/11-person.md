@@ -10,7 +10,7 @@ Use the /frontend-design:frontend-design skill.
 
 ## The app
 
-Moloop runs the help side of a music festival (live test: University Oval, University of Melbourne). Festival-goers ask questions or report problems by voice; an AI understands them, answers what it can, and dispatches a volunteer for the rest. Volunteers do one task at a time, mostly hands-free. Team leads watch their team and handle escalations. Every main screen today is the same shape: **the venue map full-screen, a sheet over it, and a voice pill pinned to the bottom.** No tab bar.
+Moloop runs the help side of a music festival (demo venue: Birrarung Marr, Melbourne). Festival-goers ask questions or report problems by voice; an AI understands them, answers what it can, and dispatches a volunteer for the rest. Volunteers do one task at a time, mostly hands-free. Team leads watch their team and handle escalations. Every main screen today is the same shape: **the venue map full-screen, a sheet over it, and a voice pill pinned to the bottom.** No tab bar.
 
 It’s an Expo SDK 57 / React Native app with Expo Router, running on iOS, Android and the web. Read `AGENTS.md` and `docs/SCREENS.md` before anything else.
 
@@ -66,7 +66,7 @@ Things only Moloop has to design for (use these, not generic app ideas):
 - One hand, often walking, through a crowd. Thumb reach. Glance, don’t read.
 - Loud. Voice is primary, hold-to-talk is the core gesture, and the screen confirms what was heard.
 - Real stakes: some tasks are a person collapsing. Tone (neutral, tint, warning, danger, success) must read instantly, without alarm fatigue.
-- The venue map is the real site (University Oval and the athletics track), drawn as an illustrated festival map with stages, tents, trucks and toilets.
+- The venue map is the real site (Birrarung Marr, the terraced riverside park by the Yarra next to Fed Square), drawn as an illustrated festival map with stages, tents, trucks and toilets.
 
 Copy rules:
 - State the action only. No narrating hints, no leading questions, no explanations ("Hold to keep talking", not "Cut off? Hold to keep talking").

@@ -378,7 +378,7 @@ export function capSteps(steps: MobilizationStep[], b: Pick<Batch, "volunteers" 
   return asked.map((step, i) => ({ ...step, peopleNeeded: Math.max(1, free[i]) }));
 }
 
-/** "Severe storm, Oval Stage". */
+/** "Severe storm, Lawn Stage". */
 const titleFor = (playbook: PlaybookSlug, zoneName: string | undefined) =>
   zoneName ? `${PLAYBOOK_NAMES[playbook]}, ${zoneName}` : PLAYBOOK_NAMES[playbook];
 

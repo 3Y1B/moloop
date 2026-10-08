@@ -44,7 +44,7 @@ function store() {
 let n = 0;
 const report = (over: Partial<Task> = {}, reporter: Partial<Task['reporter']> = {}): Task => ({
   id: `task-${++n}`, title: 'Kids crushed at the barrier', summary: 'Crush at the front barrier', category: 'crowding',
-  priority: 'P1', teamSlug: 'crowd', zoneSlug: 'oval-stage', locationHint: null, status: 'open', assigneeId: null,
+  priority: 'P1', teamSlug: 'crowd', zoneSlug: 'river-stage', locationHint: null, status: 'open', assigneeId: null,
   reporter: { kind: 'volunteer', quote: 'kids getting crushed at the barrier', language: 'en',
     playbook: 'crowd-crush-main-stage', playbookSure: true, ...reporter },
   handledBy: 'human', createdAt: at, assignedAt: null, etaAt: null, lastActivityAt: at, nudgeCount: 0,
@@ -60,7 +60,7 @@ describe('T1 and T4: a report that names a playbook plans once per playbook and 
     const s = store();
     expect(await onReport(report(), false, s.withPlans)).toBe('run-1');
     expect(s.plans).toHaveLength(1);
-    expect(s.plans[0]).toMatchObject({ playbook: 'crowd-crush-main-stage', zoneSlug: 'oval-stage' });
+    expect(s.plans[0]).toMatchObject({ playbook: 'crowd-crush-main-stage', zoneSlug: 'river-stage' });
     expect(s.plans[0].causes).toEqual([expect.objectContaining({ kind: 'report', priority: 'P1', at })]);
     await settle();
     expect(planMobilization).toHaveBeenCalledExactlyOnceWith('run-1');
@@ -83,7 +83,7 @@ describe('T1 and T4: a report that names a playbook plans once per playbook and 
     await onReport(report({ zoneSlug: 'lawn-stage' }), false, s.withPlans);
     await onReport(report({}, { playbook: 'severe-weather-main-stage' }), false, s.withPlans);
     expect(s.plans.map((p) => `${p.playbook} ${p.zoneSlug}`)).toEqual([
-      'crowd-crush-main-stage oval-stage', 'crowd-crush-main-stage lawn-stage', 'severe-weather-main-stage oval-stage',
+      'crowd-crush-main-stage river-stage', 'crowd-crush-main-stage lawn-stage', 'severe-weather-main-stage river-stage',
     ]);
   });
 

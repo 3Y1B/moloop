@@ -108,7 +108,7 @@ async function call(p: NonNullable<ReturnType<typeof qwen>>, path: string, init:
 }
 
 /**
- * What someone said. `vocabulary` is a hint for names and places the recogniser wouldn't guess ("Tin Alley").
+ * What someone said. `vocabulary` is a hint for names and places the recogniser wouldn't guess ("Federation Bells").
  * Always urgent: someone is standing there waiting for "Heard".
  */
 export async function transcribe(audio: Blob, filename: string, vocabulary?: string): Promise<{ text: string; latencyMs: number }> {

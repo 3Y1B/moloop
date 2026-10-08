@@ -51,11 +51,11 @@ const asks: [
     (u) => u.kind === "task" && u.team === "first-aid" && u.priority === "P1",
   ],
   [
-    "my 6 year old son is missing, last seen near the oval stage",
+    "my 6 year old son is missing, last seen near the lawn stage",
     (u) => u.kind === "task" && u.team === "welfare" && u.priority !== "P3",
   ],
   [
-    "two men are fighting near gate B",
+    "two men are fighting near the main entrance",
     (u) => u.kind === "task" && u.team === "security" && u.priority !== "P3",
   ],
   [
@@ -63,7 +63,7 @@ const asks: [
     (u) => u.kind === "task" && u.team === "first-aid" && u.priority !== "P3",
   ],
   ["The band in the green room needs more water", (u) => u.kind === "task" && u.team === "artist"],
-  ["the bins by the grove are overflowing", (u) => u.kind === "task" && u.team === "ops"],
+  ["the bins in the grove are overflowing", (u) => u.kind === "task" && u.team === "ops"],
   [
     "Hay una pelea cerca de la puerta A, ayuda",
     (u) => u.kind === "task" && u.language === "es" && u.priority !== "P3",
@@ -82,12 +82,12 @@ for (const [text, ok] of asks) {
 // ── intake: create_task or escalate ──
 
 const routed: [string, (t: Awaited<ReturnType<typeof interpreter.triage>>['value']) => boolean][] = [
-  ['the PA at the Oval Stage is sparking, stop the set', (t) => t.escalate?.level === 'coordinator'],
-  ['someone is threatening people with a knife and we need police at gate A', (t) => t.escalate?.level === 'coordinator' && t.priority === 'P1'],
+  ['the PA at the Lawn Stage is sparking, stop the set', (t) => t.escalate?.level === 'coordinator'],
+  ['someone is threatening people with a knife and we need police at the north gate', (t) => t.escalate?.level === 'coordinator' && t.priority === 'P1'],
   ['the headliner wants to swap set times with the support act', (t) => !!t.escalate],
   ['a vendor is demanding a refund for their stall fee', (t) => !!t.escalate],
   ['there is a photographer from a newspaper backstage without a pass', (t) => !!t.escalate],
-  ["guy collapsed at the Oval Stage, he isn't moving", (t) => t.team === 'first-aid' && t.priority === 'P1'],
+  ["guy collapsed at the Lawn Stage, he isn't moving", (t) => t.team === 'first-aid' && t.priority === 'P1'],
   ['bin overflowing at Food Alley', (t) => !t.escalate && t.priority === 'P3'],
   ['the band in the green room ran out of ice', (t) => !t.escalate],
 ];
@@ -101,9 +101,9 @@ const volunteer = { kind: 'staff' as const, role: 'volunteer', teamSlug: 'ops' a
 const senders: [string, Parameters<typeof interpreter.triage>[0], (t: Awaited<ReturnType<typeof interpreter.triage>>['value']) => boolean][] = [
   ['volunteer at Food Alley: "spill over here"', { text: 'big spill over here, someone could slip', zoneSlug: 'food-alley', locationHint: null, from: volunteer },
     (t) => t.zoneSlug === 'food-alley' && t.team === 'ops' && !t.escalate],
-  ['Mo: "stop the set at the Oval Stage, the PA is sparking"', { text: 'stop the set at the Oval Stage, the PA is sparking', zoneSlug: null, locationHint: null, from: { kind: 'staff', role: 'coordinator', teamSlug: null } },
+  ['Mo: "stop the set at the Lawn Stage, the PA is sparking"', { text: 'stop the set at the Lawn Stage, the PA is sparking', zoneSlug: null, locationHint: null, from: { kind: 'staff', role: 'coordinator', teamSlug: null } },
     (t) => !t.escalate],
-  ['ops lead: "we need to evacuate the oval, the stage roof is failing"', { text: 'we need to evacuate the oval, the stage roof is failing', zoneSlug: null, locationHint: null, from: { kind: 'staff', role: 'team_lead', teamSlug: 'ops' } },
+  ['ops lead: "we need to evacuate the lawn, the stage roof is failing"', { text: 'we need to evacuate the lawn, the stage roof is failing', zoneSlug: null, locationHint: null, from: { kind: 'staff', role: 'team_lead', teamSlug: 'ops' } },
     (t) => t.escalate?.level === 'coordinator'],
 ];
 for (const [label, heard, ok] of senders) {

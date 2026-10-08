@@ -588,7 +588,7 @@ export class SupabaseRepo implements Repo {
       console.warn('[SupabaseRepo] hydrate failed', e);
       this.hydrating = false;
       if (this.state.status !== 'ready') this.set({ status: 'error' });
-      // Try again shortly: a flaky connection on the oval shouldn't strand the app on "error".
+      // Try again shortly: a flaky connection in the park shouldn't strand the app on "error".
       if (this.hydrateTimer) clearTimeout(this.hydrateTimer);
       this.hydrateTimer = setTimeout(() => {
         this.hydrateTimer = null;

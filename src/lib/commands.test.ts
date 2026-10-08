@@ -344,7 +344,7 @@ describe('updateTask: a new report about an incident already open', () => {
 
 describe('the intake agent escalates a new report', () => {
   const triaged = (over: Partial<Triage> = {}): Triage => ({
-    team: 'first-aid', priority: 'P3', category: 'medical', title: 'Wants the set stopped at the Oval', summary: 'Asks to stop the set.',
+    team: 'first-aid', priority: 'P3', category: 'medical', title: 'Wants the set stopped at the Lawn Stage', summary: 'Asks to stop the set.',
     zoneSlug: 'food-alley', locationHint: null, language: 'en', speakerNeeded: null, firstAidNeeded: false, escalate: { level: 'lead', reason: 'Asks to stop a performance' }, ...over,
   });
   const fromGuest = (t: Triage) => {
@@ -429,7 +429,7 @@ describe('the intake agent escalates a new report', () => {
 });
 
 describe('"Problem solved?" No on an AI answer', () => {
-  const answer = { kind: 'answer' as const, answer: 'Toilets are behind the Oval stage.', language: 'en' };
+  const answer = { kind: 'answer' as const, answer: 'Toilets are behind the Lawn Stage.', language: 'en' };
   const answered = () => {
     const b = festival([], [{ ...asked, heard: 'where are the toilets' }]);
     C.understand(b, 'asked', answer);
@@ -464,7 +464,7 @@ describe('"Problem solved?" No on an AI answer', () => {
 });
 
 describe('"Problem solved?" on an AI answer', () => {
-  const answer = { kind: 'answer' as const, answer: 'Toilets are behind the Oval stage.', language: 'en' };
+  const answer = { kind: 'answer' as const, answer: 'Toilets are behind the Lawn Stage.', language: 'en' };
   const answered = () => {
     const b = festival([], [{ ...asked, heard: 'where are the toilets', thread: [{ from: 'guest', text: 'where are the toilets', at: NOW }] }]);
     C.understand(b, 'asked', answer);
@@ -612,7 +612,7 @@ describe('guestAddDetail: a festival-goer adds detail in their own language', ()
 
 describe('a mobilization step stays staffed (audit D1-D6, S1)', () => {
   const plan = (peopleNeeded: number): Mobilization => ({
-    id: 'storm', title: 'Severe storm, Oval Stage', status: 'proposed', rationale: 'Wind over the limit', relatedPlaybooks: [],
+    id: 'storm', title: 'Severe storm, Lawn Stage', status: 'proposed', rationale: 'Wind over the limit', relatedPlaybooks: [],
     urgency: 'P1', zoneSlug: 'food-alley', evidence: null, analysisRunId: null, playbookSlug: null, createdAt: NOW,
     decidedById: null, decidedAt: null,
     steps: [{ stepKey: 'cover', teamSlug: 'first-aid', peopleNeeded, reason: 'Ready for injuries', candidates: [], title: 'Stand by at the stage' }],

@@ -42,18 +42,18 @@ function snapshot(): PlanningSnapshot {
     scenario: {
       requestId: 'private-idempotency-request-0001',
       weather: { temperatureC: 41, trendCPerHour: 2, condition: 'clear', warning: 'heat', warningInMinutes: 0 },
-      upcomingSets: [{ stageSlug: 'oval-stage', act: 'The Volunteers', startsInMinutes: 10, durationMinutes: 60, expectedPeople: 2000 }],
-      crowdByZone: [{ zoneSlug: 'oval-stage', estimatedPeople: 1800, trend: 'growing' }],
-      recentIncidents: [{ category: 'heat', zoneSlug: 'oval-stage', minutesAgo: 4, description: 'Three people dizzy in a hot queue.', count: 3, openCount: 2 }],
+      upcomingSets: [{ stageSlug: 'lawn-stage', act: 'The Volunteers', startsInMinutes: 10, durationMinutes: 60, expectedPeople: 2000 }],
+      crowdByZone: [{ zoneSlug: 'lawn-stage', estimatedPeople: 1800, trend: 'growing' }],
+      recentIncidents: [{ category: 'heat', zoneSlug: 'lawn-stage', minutesAgo: 4, description: 'Three people dizzy in a hot queue.', count: 3, openCount: 2 }],
       observations: [
-        { key: 'stageSafety.windLimitExceeded', kind: 'boolean', zoneSlug: 'oval-stage', minutesAgo: 0, value: false },
+        { key: 'stageSafety.windLimitExceeded', kind: 'boolean', zoneSlug: 'lawn-stage', minutesAgo: 0, value: false },
         { key: 'weather.windSpeed', kind: 'number', zoneSlug: null, minutesAgo: 1, value: 0 },
         { key: 'approvedRoutes', kind: 'routes', zoneSlug: null, minutesAgo: 2,
-          value: [{ fromZoneSlug: 'oval-stage', toZoneSlug: 'water-point', status: 'restricted', approved: false }] },
+          value: [{ fromZoneSlug: 'lawn-stage', toZoneSlug: 'water-point', status: 'restricted', approved: false }] },
       ],
     },
     zones: [
-      { slug: 'oval-stage', name: 'Oval Stage', kind: 'stage', capacity: 2500, isOpenAir: true },
+      { slug: 'lawn-stage', name: 'Lawn Stage', kind: 'stage', capacity: 2500, isOpenAir: true },
       { slug: 'water-point', name: 'Water Point', kind: 'water', capacity: null, isOpenAir: false },
     ],
     teams: [
@@ -62,17 +62,17 @@ function snapshot(): PlanningSnapshot {
     ],
     skills: [{ slug: 'medical-cert', name: 'First aid certified' }, { slug: 'crowd-cert', name: 'Crowd guidance trained' }],
     routes: [
-      { from: 'oval-stage', to: 'water-point', minutes: 3.5, meters: 120.25 },
-      { from: 'water-point', to: 'oval-stage', minutes: 4, meters: 126 },
+      { from: 'lawn-stage', to: 'water-point', minutes: 3.5, meters: 120.25 },
+      { from: 'water-point', to: 'lawn-stage', minutes: 4, meters: 126 },
     ],
     roster: [
-      { id: 'volunteer-a', name: 'Alice', teamSlug: 'first-aid', zoneSlug: 'oval-stage', duty: 'on_duty', skills: ['medical-cert'], free: true, shiftEndsAt: 1791469800000 },
+      { id: 'volunteer-a', name: 'Alice', teamSlug: 'first-aid', zoneSlug: 'lawn-stage', duty: 'on_duty', skills: ['medical-cert'], free: true, shiftEndsAt: 1791469800000 },
       { id: 'volunteer-b', name: 'Bob', teamSlug: 'first-aid', zoneSlug: 'water-point', duty: 'on_duty', skills: ['crowd-cert'], free: true, shiftEndsAt: 1791469800000 },
       { id: 'volunteer-c', name: 'Charlie', teamSlug: 'welfare', zoneSlug: 'water-point', duty: 'on_duty', skills: [], free: true, shiftEndsAt: null },
-      { id: 'lead-d', name: 'Dana', teamSlug: 'welfare', zoneSlug: 'oval-stage', duty: 'on_duty', skills: ['medical-cert'], free: false, shiftEndsAt: null },
+      { id: 'lead-d', name: 'Dana', teamSlug: 'welfare', zoneSlug: 'lawn-stage', duty: 'on_duty', skills: ['medical-cert'], free: false, shiftEndsAt: null },
     ],
     existingResponses: [{ id: 'task-one', title: 'Open medical response', status: 'in_progress', teamSlug: 'first-aid',
-      zoneSlug: 'oval-stage', mobilizationId: 'mobilization-existing', requiredCount: 2 }],
+      zoneSlug: 'lawn-stage', mobilizationId: 'mobilization-existing', requiredCount: 2 }],
     evidence: [], playbooks: [book(), book('storm-response', 7)],
   };
   const fact = (ref: string, kind: string, zoneSlug: string | null, source: PlanningEvidence['source'],
@@ -210,18 +210,18 @@ describe('compactPlanningInput', () => {
     const input = snapshot();
     const projected = compactPlanningInput(input);
     expect(projected.zones).toEqual([
-      { slug: 'oval-stage', evidenceRef: 'venue-oval-stage' },
+      { slug: 'lawn-stage', evidenceRef: 'venue-lawn-stage' },
       { slug: 'water-point', evidenceRef: 'venue-water-point' },
     ]);
     expect(projected.evidence).toEqual(input.evidence);
-    expect(projected.evidence.find((fact) => fact.ref === 'venue-oval-stage')).toMatchObject({
+    expect(projected.evidence.find((fact) => fact.ref === 'venue-lawn-stage')).toMatchObject({
       source: 'database', observedAt: evaluatedAt, value: input.zones[0],
     });
   });
 
   it.each(['capacity', 'kind', 'provenance', 'missing'] as const)('retains the full venue when %s cannot be deduplicated safely', (reason) => {
     const input = snapshot();
-    const index = input.evidence.findIndex((fact) => fact.ref === 'venue-oval-stage');
+    const index = input.evidence.findIndex((fact) => fact.ref === 'venue-lawn-stage');
     if (reason === 'capacity') input.evidence[index].value.capacity = 2499;
     if (reason === 'kind') input.evidence[index].value.kind = 'shelter';
     if (reason === 'provenance') input.evidence[index].source = 'manual_demo';
@@ -240,7 +240,7 @@ describe('compactPlanningInput', () => {
     });
     expect(projected.evidence.find((fact) => fact.ref === 'observation-2')).toMatchObject({
       source: 'manual_demo', observedAt: atMinutesAgo(2), value: { scope: 'site', unit: null, approvalRequired: true,
-        value: [{ fromZoneSlug: 'oval-stage', toZoneSlug: 'water-point', status: 'restricted', approved: false }] },
+        value: [{ fromZoneSlug: 'lawn-stage', toZoneSlug: 'water-point', status: 'restricted', approved: false }] },
     });
     expect(JSON.stringify(projected)).not.toContain(input.scenario.requestId);
   });
@@ -248,7 +248,7 @@ describe('compactPlanningInput', () => {
   it('keeps false and zero explicit facts, but retains null and empty observations as unknown', () => {
     const input = snapshot();
     input.scenario.observations?.push(
-      { key: 'medicalHeatCases', kind: 'number', zoneSlug: 'oval-stage', minutesAgo: 0, value: null },
+      { key: 'medicalHeatCases', kind: 'number', zoneSlug: 'lawn-stage', minutesAgo: 0, value: null },
       { key: 'medicalReports', kind: 'text', zoneSlug: null, minutesAgo: 0, value: '' },
       { key: 'approvedShelterZones', kind: 'locations', zoneSlug: null, minutesAgo: 0, value: [] },
     );
@@ -282,14 +282,14 @@ describe('compactPlanningInput', () => {
   it('preserves structured partial evidence and distinguishes it from all-venue coverage', () => {
     const input = snapshot();
     input.scenario.observations?.push({ key: 'audienceByZone', kind: 'zone_counts', zoneSlug: null, minutesAgo: 0,
-      value: { coverage: 'partial', entries: [{ zoneSlug: 'oval-stage', count: 0 }] } });
+      value: { coverage: 'partial', entries: [{ zoneSlug: 'lawn-stage', count: 0 }] } });
     input.evidence.push({ ref: 'audience-sample', kind: 'observation', zoneSlug: null, source: 'manual_demo', observedAt: evaluatedAt,
-      value: { key: 'audienceByZone', kind: 'zone_counts', value: { coverage: 'partial', entries: [{ zoneSlug: 'oval-stage', count: 0 }] },
+      value: { key: 'audienceByZone', kind: 'zone_counts', value: { coverage: 'partial', entries: [{ zoneSlug: 'lawn-stage', count: 0 }] },
         unit: 'people', scope: 'site', approvalRequired: false } });
     const projected = compactPlanningInput(input);
     expect(projected).not.toHaveProperty('scenario');
     expect(projected.inputAvailability.audienceByZone).toMatchObject({ available: true, completeness: 'partial' });
-    expect(projected.evidence.at(-1)?.value.value).toEqual({ coverage: 'partial', entries: [{ zoneSlug: 'oval-stage', count: 0 }] });
+    expect(projected.evidence.at(-1)?.value.value).toEqual({ coverage: 'partial', entries: [{ zoneSlug: 'lawn-stage', count: 0 }] });
   });
 
   it('preserves availability for every required/catalog key and explicit aliases without redundant catalog labels', () => {
@@ -380,10 +380,10 @@ describe('compactRoutes', () => {
     expect(table.columns).toEqual(['from', 'to', 'minutes', 'meters']);
     expect(table.kind).toBe('ordinary_walking_distances_not_emergency_authorizations');
     expect(table.values.map(([from, to, minutes, meters]) => ({ from, to, minutes, meters }))).toEqual(routes);
-    expect(table.values[0]).toEqual(['oval-stage', 'water-point', 3.5, 120.25]);
-    expect(table.values[1]).toEqual(['water-point', 'oval-stage', 4, 126]);
+    expect(table.values[0]).toEqual(['lawn-stage', 'water-point', 3.5, 120.25]);
+    expect(table.values[1]).toEqual(['water-point', 'lawn-stage', 4, 126]);
     table.values[0][0] = 'changed';
-    expect(routes[0].from).toBe('oval-stage');
+    expect(routes[0].from).toBe('lawn-stage');
   });
 
   it('supports an empty route result without inventing connectivity', () => {

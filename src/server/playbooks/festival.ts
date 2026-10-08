@@ -543,7 +543,7 @@ export const FESTIVAL_PLAYBOOKS: (z.input<typeof PlaybookContentSchema> & { trig
   }
 ];
 
-/** What Mo reads as a plan's title, before the place: "Severe storm, Oval Stage". */
+/** What Mo reads as a plan's title, before the place: "Severe storm, Lawn Stage". */
 export const PLAYBOOK_NAMES: Record<PlaybookSlug, string> = {
   "severe-weather-main-stage": "Severe storm",
   "crowd-crush-main-stage": "Crowd surge",

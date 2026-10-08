@@ -13,8 +13,8 @@ import { useTheme } from '@/hooks/use-theme';
 
 /** The places a festival-goer would say they're at, in the order they'd look for them. */
 const PICKABLE = [
-  'lawn-stage', 'river-stage', 'water-1', 'water-2', 'bar', 'food-alley', 'toilets-east', 'toilets-west',
-  'first-aid-hq', 'info-tent', 'the-grove', 'pavilion', 'gate-b', 'gate-a', 'merch-lounge', 'ticket-office',
+  'lawn-stage', 'river-stage', 'grove-stage', 'the-grove', 'pavilion', 'playground', 'food-alley', 'bar', 'market', 'water-1', 'water-2', 'water-3',
+  'toilets-west', 'toilets-east', 'first-aid-hq', 'info-tent', 'gate-b', 'gate-a', 'merch-lounge', 'ticket-office',
 ].filter((s) => VENUE_ZONES[s]);
 
 /**

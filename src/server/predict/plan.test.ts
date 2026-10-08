@@ -7,7 +7,7 @@ import { capSteps, planMobilization, playbookSteps } from './plan';
 
 const at = Date.parse('2026-10-08T10:00:00Z');
 const person = (id: string, over: Partial<Volunteer> = {}): Volunteer => ({
-  id, name: id, role: 'volunteer', teamSlug: 'crowd', skills: [], languages: ['en'], zoneSlug: 'oval-stage',
+  id, name: id, role: 'volunteer', teamSlug: 'crowd', skills: [], languages: ['en'], zoneSlug: 'lawn-stage',
   duty: 'on_duty', shiftEndsAt: null, phone: null, ...over,
 });
 const world = (): World => ({
@@ -21,13 +21,13 @@ const { db, calls, models, request } = vi.hoisted(() => {
   const calls: { sql: string; values: unknown[] }[] = [];
   const answer = (sql: string): unknown[] => {
     if (sql.includes('select * from mobilization_runs')) return [{ id: 'run-1', request_id: 'request-0123456789',
-      status: 'running', playbook: 'crowd-crush-main-stage', zone_slug: 'oval-stage', causes: [] }];
-    if (sql.includes('select name from zones')) return [{ name: 'Oval Stage' }];
-    if (sql.includes('from zones order by name')) return [{ slug: 'oval-stage', name: 'Oval Stage', kind: 'stage',
+      status: 'running', playbook: 'crowd-crush-main-stage', zone_slug: 'lawn-stage', causes: [] }];
+    if (sql.includes('select name from zones')) return [{ name: 'Lawn Stage' }];
+    if (sql.includes('from zones order by name')) return [{ slug: 'lawn-stage', name: 'Lawn Stage', kind: 'stage',
       capacity: 5000, isOpenAir: true }];
     if (sql.includes('from teams')) return [{ slug: 'crowd', name: 'Crowd', description: 'Crowd' }];
     if (sql.includes('from tasks t join reports')) return [{ id: 'task-1', report_id: 'report-1', title: 'Crush',
-      summary: 'Crush at the barrier', category: 'crowd', status: 'open', zone_slug: 'oval-stage',
+      summary: 'Crush at the barrier', category: 'crowd', status: 'open', zone_slug: 'lawn-stage',
       created_at: new Date(Date.now() - 60_000).toISOString() }];
     if (sql.includes('set raw_responses')) return [{ status: 'running' }];
     if (sql.includes('for update')) return [{ causes: [{ kind: 'report', taskId: 'task-1' }, { kind: 'report',
@@ -72,11 +72,11 @@ let lastBatch: Batch;
 
 const BOOK = 'crowd-crush-main-stage';
 const ref = (actionId: string) => ({ slug: BOOK, version: 1, actionId });
-const required = playbookSteps(BOOK, 'oval-stage');
+const required = playbookSteps(BOOK, 'lawn-stage');
 type ModelTask = MobilizationOutput['mobilizations'][number]['tasks'][number];
 const task = (over: Partial<ModelTask> = {}): ModelTask => ({
   key: 'freeze-inflow', title: 'Stop entry to the front', instructions: 'Hold the lanes', teamSlug: 'crowd',
-  zoneSlug: 'oval-stage', peopleNeeded: 6, reason: 'Crush reported', requiredSkills: [],
+  zoneSlug: 'lawn-stage', peopleNeeded: 6, reason: 'Crush reported', requiredSkills: [],
   completionCriteria: 'Lanes held', addressesFindingIds: ['crush'], evidenceRefs: ['incident-task-1'],
   playbookRefs: [ref('freeze-inflow')], ...over,
 });
@@ -113,8 +113,8 @@ describe('the planner always gives Mo a plan', () => {
     models.generatePlan.mockResolvedValue(output());
     expect(await planMobilization('run-1')).toEqual(['mobilization-1']);
     const plan = proposed();
-    expect(plan).toMatchObject({ title: 'Crowd surge, Oval Stage', analysisRunId: 'run-1',
-      triggerPlaybook: BOOK, zoneSlug: 'oval-stage' });
+    expect(plan).toMatchObject({ title: 'Crowd surge, Lawn Stage', analysisRunId: 'run-1',
+      triggerPlaybook: BOOK, zoneSlug: 'lawn-stage' });
     // The model's own step first, as written; every other required action straight from the playbook.
     expect(plan.steps.map((s) => s.stepKey)).toEqual(required.map((s) => s.stepKey));
     expect(plan.steps[0]).toMatchObject({ title: 'Stop entry to the front', peopleNeeded: 2 });
@@ -124,7 +124,7 @@ describe('the planner always gives Mo a plan', () => {
       .toEqual(required.slice(1).map((s) => s.completionCriteria));
     expect(plan.steps.flatMap((s) => s.playbookRefs!.map((r) => r.actionId)))
       .toEqual(required.map((s) => s.stepKey));
-    expect(plan.steps.every((s) => s.zoneSlug === 'oval-stage' && s.peopleNeeded >= 1 &&
+    expect(plan.steps.every((s) => s.zoneSlug === 'lawn-stage' && s.peopleNeeded >= 1 &&
       s.addressesFindingIds?.[0] === 'crush' && s.evidenceRefs?.[0] === 'incident-task-1')).toBe(true);
     // Approval checks the steps against the saved result, so it's the completed, capped plan, with no gaps left.
     const saved = finished();
@@ -147,14 +147,14 @@ describe('the planner always gives Mo a plan', () => {
 
   it('gives Mo and volunteers plain words: no refs, ids, sources, JSON or timestamps', async () => {
     models.generatePlan.mockResolvedValue(output([task({
-      title: 'Stop entry at oval-stage (incident-task-1)',
+      title: 'Stop entry at lawn-stage (incident-task-1)',
       instructions: 'Hold the lanes until 2026-10-08T10:30:00Z; report to 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed. '
         + 'Sources: incident-task-1, roster-crowd',
       reason: 'Density {"value": 5, "unit": "p/m2"} at the barrier [evidence refs: incident-task-1]',
     })]));
     await planMobilization('run-1');
     const step = proposed().steps[0];
-    expect(step.title).toBe('Stop entry at Oval Stage');
+    expect(step.title).toBe('Stop entry at Lawn Stage');
     expect(step.instructions).toBe('Hold the lanes until 9:30 pm; report to.');
     expect(step.reason).toBe('Density at the barrier');
     expect(finished().result?.mobilizations[0].tasks[0].instructions).toBe(step.instructions);
@@ -173,10 +173,10 @@ describe('the planner always gives Mo a plan', () => {
     expect(await planMobilization('run-1')).toEqual(['mobilization-1']);
     const plan = proposed();
     expect(plan.analysisRunId).toBeNull();
-    expect(plan.title).toBe('Crowd surge, Oval Stage');
+    expect(plan.title).toBe('Crowd surge, Lawn Stage');
     expect(plan.steps.map((s) => s.stepKey)).toEqual(
-      playbookSteps('crowd-crush-main-stage', 'oval-stage').map((s) => s.stepKey));
-    expect(plan.steps.every((s) => s.zoneSlug === 'oval-stage' && s.peopleNeeded >= 1)).toBe(true);
+      playbookSteps('crowd-crush-main-stage', 'lawn-stage').map((s) => s.stepKey));
+    expect(plan.steps.every((s) => s.zoneSlug === 'lawn-stage' && s.peopleNeeded >= 1)).toBe(true);
     expect(finished()).toMatchObject({ status: 'failed', error: 'Model provider returned HTTP 500',
       mobilizationIds: ['mobilization-1'] });
   });
@@ -223,7 +223,7 @@ describe('capSteps', () => {
     ({ teamSlug, peopleNeeded, reason: '', candidates: [], requiredSkills });
   const busyWith = (assigneeId: string): Task => ({
     id: `task-${assigneeId}`, title: 'Spill', summary: 'Spill', category: 'facilities', priority: 'P3', teamSlug: 'crowd',
-    zoneSlug: 'oval-stage', locationHint: null, status: 'accepted', assigneeId,
+    zoneSlug: 'lawn-stage', locationHint: null, status: 'accepted', assigneeId,
     reporter: { kind: 'volunteer', quote: 'spill', language: 'en' }, handledBy: 'human', createdAt: at, assignedAt: at,
     etaAt: null, lastActivityAt: at, nudgeCount: 0, lastNudgeAt: null, leadAlertedAt: null, resolvedAt: null,
     escalation: null, requiredCount: 1, helpers: [], mobilizationId: null, resolution: null, requestId: null,

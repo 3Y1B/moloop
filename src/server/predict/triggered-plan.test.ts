@@ -18,8 +18,8 @@ function snapshot(): PlanningSnapshot {
     scenario: { requestId: "triggered-plan-test-01",
       weather: { temperatureC: null, trendCPerHour: null, condition: null, warning: null, warningInMinutes: null },
       upcomingSets: [], crowdByZone: [], recentIncidents: [], observations: [] },
-    zones: [{ slug: "lawn-stage", name: "Oval Stage", kind: "stage", capacity: 8000, isOpenAir: true },
-      { slug: "backstage", name: "Oval Backstage", kind: "area", capacity: null, isOpenAir: true }],
+    zones: [{ slug: "lawn-stage", name: "Lawn Stage", kind: "stage", capacity: 8000, isOpenAir: true },
+      { slug: "backstage", name: "Backstage", kind: "area", capacity: null, isOpenAir: true }],
     teams: teams.map((slug) => ({ slug, name: slug, description: slug })),
     skills: [], routes: [], roster: [], existingResponses: [],
     evidence: [
@@ -98,7 +98,7 @@ describe("a triggered plan reaches Mo with every required action", () => {
 describe("plain text for people", () => {
   const plain = plainTextFor(snapshot());
   it("names places, and leaves ordinary words alone", () => {
-    expect(plain("Clear lawn-stage; brief backstage crew")).toBe("Clear Oval Stage; brief backstage crew");
+    expect(plain("Clear lawn-stage; brief backstage crew")).toBe("Clear Lawn Stage; brief backstage crew");
   });
   it("drops refs and sources, keeps the sentence", () => {
     expect(plain("Hold the barrier (Sources: incident-t1, roster-crowd).")).toBe("Hold the barrier.");

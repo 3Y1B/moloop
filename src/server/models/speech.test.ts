@@ -27,14 +27,14 @@ describe('SpeechToText.transcribe', () => {
   it('uploads the clip with the model and vocabulary hint, and returns the text', async () => {
     const { transcriber, requests } = stt({ json: { text: 'man down by the food stalls' } });
 
-    await expect(transcriber.transcribe(clip, { prompt: 'Vocabulary: Gate A, food alley' })).resolves.toEqual({ text: 'man down by the food stalls' });
+    await expect(transcriber.transcribe(clip, { prompt: 'Vocabulary: North Gate, food alley' })).resolves.toEqual({ text: 'man down by the food stalls' });
 
     expect(requests).toHaveLength(1);
     const { url, headers, form } = requests[0];
     expect(url).toBe('https://asr.test/v1/audio/transcriptions');
     expect(headers.authorization).toBe('Bearer k');
     expect(form?.get('model')).toBe('qwen3-asr-1.7b');
-    expect(form?.get('prompt')).toBe('Vocabulary: Gate A, food alley');
+    expect(form?.get('prompt')).toBe('Vocabulary: North Gate, food alley');
     expect(form?.get('file')).toBeInstanceOf(Blob);
   });
 });

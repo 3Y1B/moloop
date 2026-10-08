@@ -35,7 +35,7 @@ export function VenueMap(props: VenueMapProps) {
   // had loaded yanked it back while the person was already dragging.
   const [initial, setInitial] = useState(camera);
   if (camera && !initial) setInitial(camera);
-  // The library stringifies an object style on every render, and the site art makes it ~330 KB; do it once.
+  // The library stringifies an object style on every render, and the site art makes it ~480 KB; do it once.
   const styleJSON = useMemo(() => (mapStyle ? JSON.stringify(mapStyle) : null), [mapStyle]);
   const cameraRef = useRef<CameraRef>(null);
 

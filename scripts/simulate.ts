@@ -1,7 +1,7 @@
 /**
  * Demo-day simulator (docs/PLAN-LIVE.md phase 8): drives the real server as simulated sensors and people.
  *
- * The storm at the Oval Stage (docs/plans/2026-10-08-mobilization-plan.md, "The demo"): the stage's wind sensor reads
+ * The storm at the Lawn Stage (docs/plans/2026-10-08-mobilization-plan.md, "The demo"): the stage's wind sensor reads
  * 35, 45, 55 km/h, two volunteers posted at the stage report the storm, then the wind goes over the 60 km/h limit.
  * The triggers and the planner do the rest (src/server/triggers.ts); Mo's phone shows the storm plan.
  *
@@ -41,8 +41,8 @@ const SCRIPT: Step[] = [
   { wind: 35 },
   { wind: 45 },
   { wind: 55 },
-  { says: "Wind's ripping through the Oval Stage now, the banners on the front truss are flapping hard and the crowd at the barrier keeps backing away from the lighting rig." },
-  { says: "Storm's hitting the Oval Stage, heavy rain and big gusts, hundreds of people at the front are scared and trying to get away from the stage, and the lighting truss is swaying." },
+  { says: "Wind's ripping across the Lawn Stage now, the banners on the front truss are flapping hard and the crowd at the barrier keeps backing away from the lighting rig." },
+  { says: "Storm's hitting the Lawn Stage, heavy rain and big gusts, hundreds of people at the front are scared and trying to get away from the stage, and the lighting truss is swaying." },
   { wind: 72 },
 ];
 

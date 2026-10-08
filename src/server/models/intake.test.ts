@@ -6,9 +6,9 @@ import { SparkInterpreter } from './interpreter';
 vi.mock('./venue', () => ({
   zones: async () => [
     { slug: 'food-alley', name: 'Food Alley' },
-    { slug: 'oval-stage', name: 'Oval Stage' },
+    { slug: 'lawn-stage', name: 'Lawn Stage' },
   ],
-  venueFacts: () => '- Toilets East are by the tennis courts.',
+  venueFacts: () => '- Toilets East are on the riverside path near The Grove.',
 }));
 
 /** The agent's step, in OpenAI's chat completions shape. */
@@ -26,19 +26,19 @@ const called = (name: 'create_task' | 'escalate', over: Record<string, unknown> 
               function: {
                 name,
                 arguments: JSON.stringify({
-                  title: 'Asks to stop the set at the Oval',
+                  title: 'Asks to stop the set at the Lawn Stage',
                   summary: 'Wants the set stopped.',
                   team: 'ops',
                   priority: 'P3',
                   category: 'facilities',
-                  zone: 'oval-stage',
+                  zone: 'lawn-stage',
                   place: null,
                   language: 'en',
                   speaker_needed: null,
                   first_aid_needed: false,
                   playbook: 'none',
                   playbook_sure: false,
-                  english: 'Stop the set at the Oval',
+                  english: 'Stop the set at the Lawn Stage',
                   ...(name === 'escalate' ? { level: 'lead', reason: 'Needs a decision' } : {}),
                   ...over,
                 }),
@@ -145,7 +145,7 @@ describe('intake: the agent picks create_task or escalate, code has the last wor
     expect(value).toMatchObject({
       team: 'ops',
       priority: 'P3',
-      zoneSlug: 'oval-stage',
+      zoneSlug: 'lawn-stage',
       escalate: { level: 'lead', reason: 'Artist wants to change their set time' },
     });
     expect(run.team).toMatchObject({ tool: 'escalate' });
@@ -217,7 +217,7 @@ describe('intake: the agent picks create_task or escalate, code has the last wor
     );
     queue.decisions.push(decided('crowd', 'P1', 0.1), decided('ops', 'P3', 0.1));
 
-    const crush = await ai.triage(heard('kids getting crushed at the barrier at the oval'));
+    const crush = await ai.triage(heard('kids getting crushed at the barrier at the lawn stage'));
     const spill = await ai.triage(heard('spill by the bar'));
 
     expect(crush.value.playbook).toBe('crowd-crush-main-stage');
@@ -288,12 +288,12 @@ describe('a festival-goer: the classifier is the gate', () => {
   it('keeps it routine when the classifier leans P3 but isn’t sure: no step up to P2', async () => {
     const unsure = () => decided('ops', 'P3', 0.97, { P3: 0.53, P2: 0.29, P1: 0.18 });
     queue.decisions.push(unsure(), unsure());
-    queue.chat.push(wrote('Free refills at Water 1, in the Grove.', 'en'), called('create_task'));
+    queue.chat.push(wrote('Free refills at Water 1, on the upper terrace.', 'en'), called('create_task'));
 
     const water = await ai.understand(heard('I need water'));
     const report = await ai.triage(heard('the water station tap is leaking'));
 
-    expect(water.value).toMatchObject({ kind: 'answer', answer: 'Free refills at Water 1, in the Grove.' });
+    expect(water.value).toMatchObject({ kind: 'answer', answer: 'Free refills at Water 1, on the upper terrace.' });
     expect(report.value.priority).toBe('P2');
   });
 
@@ -310,11 +310,11 @@ describe('a festival-goer: the classifier is the gate', () => {
 
   it('leaves anything under ROUTINE_AT to the agent, which may still answer it', async () => {
     queue.decisions.push(decided('info', 'P3', 0.9));
-    queue.chat.push(answers('Toilets East are by the tennis courts.', 'en'));
+    queue.chat.push(answers('Toilets East are on the riverside path near The Grove.', 'en'));
 
     const { value } = await ai.understand(heard('where are the toilets?'));
 
-    expect(value).toMatchObject({ kind: 'answer', answer: 'Toilets East are by the tennis courts.' });
+    expect(value).toMatchObject({ kind: 'answer', answer: 'Toilets East are on the riverside path near The Grove.' });
     expect(sent[0].tools.map((t: any) => t.function.name)).toContain('answer_question');
   });
 
@@ -330,7 +330,7 @@ describe('a festival-goer: the classifier is the gate', () => {
 
   it('never lets the agent answer what the classifier reads as life-threatening', async () => {
     queue.decisions.push(decided('first-aid', 'P1', 0.0));
-    queue.chat.push(answers('First Aid is on the south walk.', 'en'));
+    queue.chat.push(answers('First Aid is on the middle terrace, near the Lawn Stage.', 'en'));
 
     const { value } = await ai.understand(heard('my friend collapsed and isn’t breathing'));
 
@@ -392,7 +392,7 @@ describe('who sent it', () => {
     queue.decisions.push(decided('ops', 'P3', 0.1), decided('ops', 'P2', 0.1));
 
     const own = await ai.triage({ ...heard('need a call on moving the bins'), from: staff('team_lead') });
-    const up = await ai.triage({ ...heard('need a call on closing the oval'), from: staff('team_lead') });
+    const up = await ai.triage({ ...heard('need a call on closing the lawn'), from: staff('team_lead') });
 
     expect(own.value.escalate).toBeNull();
     expect(up.value.escalate?.level).toBe('coordinator');

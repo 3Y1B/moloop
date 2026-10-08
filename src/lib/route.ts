@@ -1,13 +1,16 @@
-import { FENCE, NODES, VENUE_ZONES, truckSpots, type Point } from '@/data/venue';
-import { ARTIST_BUILDINGS, CONTROL_SHEDS, DECOR, GRANDSTAND } from '@/data/venue-features';
+import { FENCE, NODES, VENUE_ZONES, foodCourt, type Point } from '@/data/venue';
+import { ARTIST_TENTS, ATTRACTIONS, BARRICADES, BRIDGES, CONTROL_SHEDS, DECOR, MARKET, smooth } from '@/data/venue-features';
 
 /*
- * Walking routes across open ground. Inside the fence you can walk anywhere (grass, the track, the
- * turf, the road) except through what's built on it: stages, tents, truck rows, toilets, the
- * grandstand, the Pavilion, backstage. The shortest way round those only ever bends at their
- * corners, so the route is a shortest path over a visibility graph: every corner (pushed out a
- * little, so routes pass beside things rather than scrape them) joined to every other corner it
- * can see.
+ * Walking routes across open ground. Inside the fence you can walk anywhere (the lawns, the paths,
+ * the slopes between the terraces) except through what's built on it: stages, tents, truck rows,
+ * toilets, ArtPlay, the cabins. The fence runs along the top of the river bank, so no route goes
+ * near the water. Both bridges are inside one barricaded crew area (restrictedArea in data/venue.ts): Tanderrum Bridge
+ * is closed, and William Barak Bridge is the crew's and artists' way in from the Artist Village. A festival-goer's
+ * route goes round it; only routes to or from the crew's side go in. The shortest way round what's
+ * built only ever bends at its corners, so the route is a shortest path over a visibility graph:
+ * every corner (pushed out a little, so routes pass beside things rather than scrape them) joined
+ * to every other corner it can see.
  */
 
 /** Festival walking pace through a crowd, metres per minute. */
@@ -49,28 +52,28 @@ function obstacles(): Obstacle[] {
     if (s.kind === 'stage' || s.kind === 'tent' || s.kind === 'toilets') out.push({ ring: boxRing(s), name: named(z.node) });
     else if (s.kind === 'building') out.push({ ring: s.ring.map(pt), name: named(z.node) });
     else if (s.kind === 'trucks') {
-      // One block per unbroken run of trucks, so the gap left in the row is a way through.
+      // Each block of four trucks, so routes walk the aisles between them.
       // Unnamed: the nearest landmark ("the west end of Food Alley") says more.
-      const spots = truckSpots(s);
-      let from = spots[0];
-      spots.forEach((x, i) => {
-        const next = spots[i + 1];
-        if (next != null && next - x < 8) return;
-        out.push({ ring: boxRing({ x: from, y: s.y, w: x + 6 - from, h: s.h }) });
-        from = next;
-      });
+      for (const b of foodCourt(s).blocks) out.push({ ring: boxRing(b) });
     }
   }
-  out.push({ ring: GRANDSTAND.map(pt), name: 'the grandstand' });
   for (const b of DECOR.medics) out.push({ ring: boxRing(b), name: 'the medic tent' });
   for (const b of DECOR.foh) out.push({ ring: boxRing(b), name: 'the sound desk' });
   out.push({ ring: boxRing(DECOR.bar), name: 'the bar' });
   for (const b of DECOR.security) out.push({ ring: boxRing(b), name: 'bag check' });
-  for (const b of ARTIST_BUILDINGS) out.push({ ring: b.ring.map(pt), name: `the ${b.name}` });
+  for (const t of ARTIST_TENTS) out.push({ ring: boxRing(t.box), name: `the ${t.name}` });
   for (const ring of CONTROL_SHEDS) out.push({ ring: ring.map(pt), name: 'the Control Room' });
   for (const b of DECOR.stores) out.push({ ring: boxRing(b), name: 'the stock containers' });
   for (const ring of DECOR.cabins) out.push({ ring: ring.map(pt), name: 'the dressing cabins' });
-  for (const ring of DECOR.coaches) out.push({ ring: ring.map(pt), name: 'the artists’ coaches' });
+  for (const ring of DECOR.vans) out.push({ ring: ring.map(pt), name: 'the artists’ vans' });
+  for (const b of DECOR.trailers) out.push({ ring: boxRing(b), name: 'the artists’ trailers' });
+  // The Market's gazebos, its lockers and charging bar, the photo booths, the swing ride's fence and the silent disco.
+  for (const ring of [...MARKET.stalls, MARKET.glitter]) out.push({ ring: ring.map(pt), name: 'the market stalls' });
+  out.push({ ring: MARKET.lockers.map(pt), name: 'the lockers' }, { ring: MARKET.charging.map(pt), name: 'the charging bar' });
+  for (const b of ATTRACTIONS.booths) out.push({ ring: boxRing(b), name: 'the photo booths' });
+  const { at: [sx, sy], fence } = ATTRACTIONS.swings;
+  out.push({ ring: Array.from({ length: 12 }, (_, i) => ({ x: sx + fence * Math.cos((i * Math.PI) / 6), y: sy + fence * Math.sin((i * Math.PI) / 6) })), name: 'the swing ride' });
+  out.push({ ring: boxRing(ATTRACTIONS.disco), name: 'the silent disco' });
   return out;
 }
 
@@ -134,6 +137,14 @@ function crosses(p1: Point, p2: Point, q1: Point, q2: Point): boolean {
   return d1 * d2 < 0 && d3 * d4 < 0;
 }
 
+/** a→b passes through v (a bend in a line p, v, q) from one side of the line to the other. */
+function through(a: Point, b: Point, p: Point, v: Point, q: Point): boolean {
+  const l = dist(a, b);
+  if (Math.abs(cross(a, b, v)) > 1e-6 * l) return false;
+  const t = ((v.x - a.x) * (b.x - a.x) + (v.y - a.y) * (b.y - a.y)) / (l * l);
+  return t > 1e-9 && t < 1 - 1e-9 && cross(a, b, p) * cross(a, b, q) < 0;
+}
+
 type Wall = { pts: Point[]; closed: boolean; box: Box };
 type Corner = Point & { name?: string };
 
@@ -145,22 +156,76 @@ const bounds = (pts: Point[]): Box => {
 /** Everything a route can't pass through, and the corners it can turn at. Built on first use. */
 let world: { walls: Wall[]; corners: Corner[]; seen: number[][] } | null = null;
 
+/** A line run on `d` metres past each end, so a barricade meeting the fence (or a stage) leaves no gap to slip through. */
+function overrun(line: Point[], d: number): Point[] {
+  const ext = (p: Point, q: Point) => {
+    const l = dist(p, q) || 1;
+    return { x: p.x + ((p.x - q.x) / l) * d, y: p.y + ((p.y - q.y) / l) * d };
+  };
+  return [ext(line[0], line[1]), ...line, ext(line[line.length - 1], line[line.length - 2])];
+}
+
+/**
+ * The crew's way over William Barak Bridge: down the middle of the deck from the Artist Village to the Artist Gate,
+ * and a step past it into the compound. Off the site, so these are added as corners as they are.
+ */
+function deckCorners(): Corner[] {
+  const deck = BRIDGES[0].line.slice(0, 5).map(pt).reverse(); // from out past the edge, down to the landing
+  const [a, b] = deck.slice(-2);
+  const l = dist(a, b) || 1;
+  return [...deck, { x: b.x + ((b.x - a.x) / l) * 4, y: b.y + ((b.y - a.y) / l) * 4 }].map((p) => ({ ...p, name: 'the William Barak Bridge' }));
+}
+
+/**
+ * The bridge's rails, from where the fence meets the deck out past the Artist Village's landmark: the crew's way off
+ * the site is along the deck, not round the outside of the fence.
+ */
+function deckRails(): Point[][] {
+  const deck = BRIDGES[0].line.slice(1, 6).map(pt);
+  const end = deck.length - 1;
+  const t = 60 / dist(deck[end - 1], deck[end]); // 60 m on along the last stretch is well past the landmark
+  deck[end] = { x: deck[end - 1].x + (deck[end].x - deck[end - 1].x) * t, y: deck[end - 1].y + (deck[end].y - deck[end - 1].y) * t };
+  const side = (s: number) =>
+    deck.map((p, i) => {
+      const a = deck[Math.max(0, i - 1)], b = deck[Math.min(end, i + 1)], l = dist(a, b) || 1;
+      return { x: p.x - ((b.y - a.y) / l) * 2.5 * s, y: p.y + ((b.x - a.x) / l) * 2.5 * s };
+    });
+  // Each rail starts at the fence post where that side of the deck comes in, about 50 m up from the landing.
+  const [l0, l1] = BRIDGES[0].line.map(pt);
+  const u = { x: (l1.x - l0.x) / dist(l0, l1), y: (l1.y - l0.y) / dist(l0, l1) };
+  const posts = FENCE.flat().map(pt);
+  return [1, -1].map((s) => {
+    const rail = side(s);
+    const at = { x: l0.x + u.x * 50 - u.y * 2.5 * s, y: l0.y + u.y * 50 + u.x * 2.5 * s };
+    const post = posts.reduce((best, p) => (dist(p, at) < dist(best, at) ? p : best));
+    return [post, ...rail];
+  });
+}
+
 function build() {
   const things = obstacles().map((o) => ({ ...o, hull: hull(o.ring) }));
+  const pens = BARRICADES.filter((b) => b.closed).map((b) => ({ ring: smooth(b.line, true).map(pt), name: b.name }));
+  const runs = BARRICADES.filter((b) => !b.closed).map((b) => smooth(b.line).map(pt));
   const walls: Wall[] = [
-    ...things.map((o) => {
+    ...[...things, ...pens.map((p) => ({ ...p, hull: hull(p.ring) }))].map((o) => {
       const pts = grow(o.hull, WALL);
       return { pts, closed: true, box: bounds(pts) };
     }),
-    ...[...FENCE.map((l) => l.map(pt)), ...DECOR.barriers.map((l) => l.map(pt))].map((pts) => ({ pts, closed: false, box: bounds(pts) })),
+    ...[...FENCE.map((l) => l.map(pt)), ...DECOR.barriers.map((l) => l.map(pt)), ...runs.map((l) => overrun(l, 2)), ...deckRails()].map((pts) => ({ pts, closed: false, box: bounds(pts) })),
   ];
   // The site, with its gates closed off: routes only turn inside it.
   const site = FENCE.flat().map(pt);
   const candidates: Corner[] = [
-    ...things.flatMap((o) => grow(o.hull, CLEARANCE).map((p) => ({ ...p, name: o.name }))),
+    ...[...things, ...pens.map((p) => ({ ...p, hull: hull(p.ring) }))].flatMap((o) => grow(o.hull, CLEARANCE).map((p) => ({ ...p, name: o.name }))),
     ...FENCE.flatMap((l) => lineCorners(l.map(pt), CLEARANCE)),
+    // Every third stretch of a barricade's curve is plenty to get round it. Taken mid-stretch, so the way between
+    // the two corners either side crosses the barricade outright rather than through one of its bends.
+    ...runs.flatMap((l) => lineCorners(l.slice(0, -1).flatMap((p, i) => (i % 3 ? [] : [{ x: (p.x + l[i + 1].x) / 2, y: (p.y + l[i + 1].y) / 2 }])), CLEARANCE)),
   ];
-  const corners = candidates.filter((p) => inside(p, site) && !walls.some((w) => w.closed && inside(p, w.pts)));
+  const corners = [
+    ...candidates.filter((p) => inside(p, site) && !walls.some((w) => w.closed && inside(p, w.pts))),
+    ...deckCorners(),
+  ];
   const seen = corners.map(() => [] as number[]);
   for (let i = 0; i < corners.length; i++) {
     for (let j = i + 1; j < corners.length; j++) {
@@ -181,6 +246,8 @@ function clear(a: Point, b: Point, walls: Wall[], skip?: Set<Wall>): boolean {
     if (skip?.has(w) || x1 < w.box.x || x0 > w.box.x + w.box.w || y1 < w.box.y || y0 > w.box.y + w.box.h) continue;
     const n = w.pts.length;
     for (let i = 0; i < (w.closed ? n : n - 1); i++) if (crosses(a, b, w.pts[i], w.pts[(i + 1) % n])) return false;
+    // Straight through one of a line's bends crosses neither stretch outright, but it's still through the line.
+    if (!w.closed) for (let i = 1; i < n - 1; i++) if (through(a, b, w.pts[i - 1], w.pts[i], w.pts[i + 1])) return false;
     // Corner to corner across a single wall's inside crosses none of its edges.
     if (w.closed && inside(mid, w.pts)) return false;
   }

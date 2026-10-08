@@ -5,7 +5,7 @@ import { causeLines, shortfall } from './review';
 
 const MIN = 60_000;
 const now = 100 * MIN;
-const place = (slug: string | null | undefined) => (slug === 'lawn-stage' ? 'Oval Stage' : null);
+const place = (slug: string | null | undefined) => (slug === 'lawn-stage' ? 'Lawn Stage' : null);
 
 describe('causeLines', () => {
   it('says a reading in plain words, latest value only', () => {
@@ -14,7 +14,7 @@ describe('causeLines', () => {
       line: 'limit 60 km/h', source: 'simulated', at,
     });
     expect(causeLines([reading(55, now - 6 * MIN), reading(72, now - 2 * MIN)], now, place)).toEqual([
-      'Wind 72 km/h at Oval Stage (limit 60 km/h), 2 min ago',
+      'Wind 72 km/h at Lawn Stage (limit 60 km/h), 2 min ago',
     ]);
   });
 
@@ -27,7 +27,7 @@ describe('causeLines', () => {
       report(2, 'lawn-stage', now - 5 * MIN),
       report(3, 'lawn-stage', now - 2 * MIN),
       report(4, null, now - 3 * MIN),
-    ], now, place)).toEqual(['3 reports at Oval Stage in 8 min', 'Crush at the barrier 4, 3 min ago']);
+    ], now, place)).toEqual(['3 reports at Lawn Stage in 8 min', 'Crush at the barrier 4, 3 min ago']);
   });
 });
 

@@ -7,7 +7,7 @@ const helper = (volunteerId: string, status: HelperAssignment['status']): Helper
   ({ volunteerId, status, assignedAt: 0, respondedAt: status === 'accepted' ? 0 : null });
 
 const task = (helpers: HelperAssignment[]): Task => ({
-  id: 'task', title: 'Carry water', summary: 'Water to the Oval', category: 'other', priority: 'P3', teamSlug: 'ops',
+  id: 'task', title: 'Carry water', summary: 'Water to the Lawn Stage', category: 'other', priority: 'P3', teamSlug: 'ops',
   zoneSlug: null, locationHint: null, status: 'accepted', assigneeId: 'owner', reporter: { kind: 'system', quote: 'Test', language: 'en' },
   handledBy: 'human', createdAt: 0, assignedAt: 0, etaAt: null, lastActivityAt: 0, nudgeCount: 0, lastNudgeAt: null,
   leadAlertedAt: null, resolvedAt: null, escalation: null, requiredCount: 1 + helpers.length, helpers,

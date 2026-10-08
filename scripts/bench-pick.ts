@@ -235,8 +235,8 @@ if (mode === 'cases' || mode === 'stability') {
   const at = (zoneSlug: string, teamSlug: Task['teamSlug'], category: IncidentCategory, priority: Priority, title: string, summary: string, quote: string, language = 'en') =>
     task({ zoneSlug, teamSlug, category, priority, title, summary, reporter: { kind: 'festivalgoer', quote, language } });
   const CASES: Case[] = [
-    { id: 'panic attack', want: ['mental-health-first-aid'], speaker: null, aid: false, task: at('the-grove', 'welfare', 'other', 'P2', 'Panic attack at the Grove',
-      'Young woman hyperventilating and crying by the Grove toilets; her friends can\'t calm her down.', 'my friend is having a really bad panic attack she cant breathe properly') },
+    { id: 'panic attack', want: ['mental-health-first-aid'], speaker: null, aid: false, task: at('the-grove', 'welfare', 'other', 'P2', 'Panic attack in The Grove',
+      'Young woman hyperventilating and crying under the elms in The Grove; her friends can\'t calm her down.', 'my friend is having a really bad panic attack she cant breathe properly') },
     { id: 'drunk at the bar', want: ['first-aid-cert'], speaker: null, aid: true, task: at('bar', 'first-aid', 'medical', 'P2', 'Very drunk man at the bar',
       'Man can barely stand at the bar, mates keep buying him shots and the bar is still serving him.', 'this guy is absolutely gone and they keep serving him') },
     { id: 'lost and hurt', want: ['first-aid-cert'], speaker: null, aid: true, task: at('river-stage', 'welfare', 'lost_child', 'P1', 'Lost boy with a cut knee',
@@ -244,8 +244,8 @@ if (mode === 'cases' || mode === 'stability') {
     { id: 'lost child', want: ['wwcc'], speaker: null, aid: false, task: TASKS.lost_child },
     { id: 'spiked drink', want: ['first-aid-cert', 'mental-health-first-aid'], speaker: null, aid: true, task: at('lawn-stage', 'first-aid', 'medical', 'P1', 'Woman thinks her drink was spiked',
       'Woman at the Lawn Stage says her drink was spiked; she is dizzy, confused and very frightened.', 'i think someone put something in my drink i feel so weird and scared') },
-    { id: 'mandarin chest pain', want: ['first-aid-cert', 'zh'], speaker: 'zh', aid: true, task: at('gate-b', 'first-aid', 'medical', 'P1', 'Older man with chest pain at Gate B',
-      'Older man clutching his chest at Gate B; his wife only speaks Mandarin and is panicking.', 'old man chest pain at gate b, his wife only speaks mandarin') },
+    { id: 'mandarin chest pain', want: ['first-aid-cert', 'zh'], speaker: 'zh', aid: true, task: at('gate-b', 'first-aid', 'medical', 'P1', 'Older man with chest pain at the Main Entrance',
+      'Older man clutching his chest at the Main Entrance; his wife only speaks Mandarin and is panicking.', 'old man chest pain at main entrance, his wife only speaks mandarin') },
     { id: 'korean fall', want: ['first-aid-cert', 'ko'], speaker: 'ko', aid: true, task: TASKS.korean },
     { id: 'vietnamese collapse', want: ['first-aid-cert', 'vi'], speaker: 'vi', aid: true, task: TASKS.medical },
     { id: 'lost japanese tourist', want: ['ja'], speaker: 'ja', aid: false, task: at('info-tent', 'info', 'other', 'P2', 'Lost tourist at the Info Tent',

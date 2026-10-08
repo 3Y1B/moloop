@@ -88,15 +88,17 @@ export function cameraFor(box: Box, width: number): Camera {
 }
 
 /**
- * As far out as the map goes: the whole site in the part nothing covers, or the screen's own framing if
- * that's further out (me standing outside).
+ * As far out as the map goes: a little past the whole site in the part nothing covers, so the river and the city
+ * round it have room, or the screen's own framing if that's further out (me standing outside).
  */
 export function minZoomFor(size: { width: number; height: number }, frame: VenueMapProps['frame'], auto: Camera | null): number {
-  const site = cameraFor(frameBox({ route: null, me: null, fit: 'site', frame }, size), size.width).zoom;
+  const site = cameraFor(frameBox({ route: null, me: null, fit: 'site', frame }, size), size.width).zoom - ZOOM_OUT;
   return Math.min(site, auto?.zoom ?? site);
 }
-/** How far past the plan's edge the map can be dragged, in metres. */
-const SLACK = 10;
+/** How much further out than the whole site the map can go, in zoom levels (0.6 is about 1.5 times as wide). */
+const ZOOM_OUT = 0.6;
+/** How far past the plan's edge the map can be dragged, in metres: across the river and out along the bridges. */
+const SLACK = 100;
 
 /** Plan metres per point at a zoom; the inverse of cameraFor's zoom. */
 function metresPerPoint(zoom: number): number {
@@ -203,15 +205,21 @@ export function liveLayers(gradient: readonly string[]): LayerSpecification[] {
 }
 
 /** Bounding box of the points, padded and stretched to the container's aspect ratio. */
+/**
+ * The whole site: the fence with room round it for the names at its ends (the Main Entrance's at the west tip, Toilets
+ * East's at the east one), which are wider than what they name at this zoom.
+ */
+const SITE_FRAME: Box = { x: -30, y: -5, w: 660, h: 315 };
+
 function viewBoxFor(points: Point[], aspect: number): Box {
-  if (points.length === 0) return fitAspect({ x: 0, y: 0, w: VENUE.width, h: VENUE.height }, aspect);
+  if (points.length === 0) return fitAspect(SITE_FRAME, aspect);
   const xs = points.map((p) => p.x), ys = points.map((p) => p.y);
-  const pad = 14;
+  const pad = 22;
   // Never closer than a couple of zones across, so there's always something to get your bearings by.
-  const w = Math.max(Math.max(...xs) - Math.min(...xs) + pad * 2, 90);
-  const h = Math.max(Math.max(...ys) - Math.min(...ys) + pad * 2 + 8, 64); // extra headroom for the pin
+  const w = Math.max(Math.max(...xs) - Math.min(...xs) + pad * 2, 150);
+  const h = Math.max(Math.max(...ys) - Math.min(...ys) + pad * 2 + 10, 100); // extra headroom for the pin
   // Centre on the points, so a lone marker sits mid-map rather than hugging the left edge.
-  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2 - 4;
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2 - 5;
   return fitAspect({ x: cx - w / 2, y: cy - h / 2, w, h }, aspect);
 }
 

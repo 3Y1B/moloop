@@ -186,9 +186,9 @@ describe('LunaLlm.callTool', () => {
   });
 
   it('returns plain text when the model answers without a tool', async () => {
-    const { llm } = agent(said('Toilets are by the tennis courts.'));
+    const { llm } = agent(said('Toilets are past The Grove.'));
 
-    await expect(llm.callTool(ask)).resolves.toEqual({ text: 'Toilets are by the tennis courts.' });
+    await expect(llm.callTool(ask)).resolves.toEqual({ text: 'Toilets are past The Grove.' });
   });
 
   it('sends a bad call back as the tool result once, then takes the corrected call', async () => {
