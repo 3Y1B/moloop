@@ -7,6 +7,7 @@ import { CandidateRow } from '@/components/lead/candidate-row';
 import { attempt, Sheet } from '@/components/lead/sheet';
 import { TaskHead } from '@/components/lead/task-head';
 import { useLiveNow } from '@/components/lead/use-live-now';
+import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, Separator } from '@/components/ui/card';
 import { StatusLine } from '@/components/ui/status-line';
@@ -148,7 +149,7 @@ function Pending({
           totalMs={POLICY.autoAssignMs}
           color={theme.tint}
         >
-          {lead && <Text style={styles.face}>{initials(lead.name)}</Text>}
+          {lead && <Face v={lead} />}
         </ApproveRing>
         <View style={styles.who}>
           {lead ? (
@@ -229,7 +230,7 @@ function Decided({ proposal, task }: { proposal: Proposal; task: Task }) {
           color={auto ? theme.text : theme.tint}
         >
           {v ? (
-            <Text style={styles.face}>{initials(v.name)}</Text>
+            <Face v={v} />
           ) : (
             <Text variant="callout" tone="secondary" style={styles.centered}>{how}</Text>
           )}
@@ -253,6 +254,11 @@ function Decided({ proposal, task }: { proposal: Proposal; task: Task }) {
       />
     </>
   );
+}
+
+/** The pick, large inside the ring: their face, or their initials. */
+function Face({ v }: { v: Volunteer }) {
+  return v.avatar ? <Avatar name={v.name} face={v.avatar} size={RING - 40} /> : <Text style={styles.face}>{initials(v.name)}</Text>;
 }
 
 const styles = StyleSheet.create({

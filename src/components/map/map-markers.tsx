@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
+import { Avatar } from '@/components/ui/avatar';
 import { NODES, VENUE_ZONES, type Point } from '@/data/venue';
 import { usePriorityColors, useTheme } from '@/hooks/use-theme';
 import { DOT, PIN, spread, type MapMarker, type VenueMapProps } from './map-model';
@@ -18,7 +19,7 @@ export function useOverlays(p: VenueMapProps, metresPerPoint: number): Overlay[]
   const out: Overlay[] = [];
 
   for (const person of p.people ?? []) {
-    out.push({ key: `p-${person.id}`, at: person.at, anchor: 'center', view: <Dot color={person.color} initials={person.initials} /> });
+    out.push({ key: `p-${person.id}`, at: person.at, anchor: 'center', view: <Dot color={person.color} initials={person.initials} face={person.face} /> });
   }
   for (const m of spread(p.markers ?? [], metresPerPoint)) {
     const onPress = p.onMarkerPress ? () => p.onMarkerPress!(m) : undefined;
@@ -34,22 +35,32 @@ function markerView(m: MapMarker, danger: string, priorityColor: Record<string, 
   const help = m.kind === 'volunteer' && m.needsHelp;
   const ring = m.kind === 'volunteer' && (m.onTask || m.needsHelp);
   const stale = m.kind === 'volunteer' && m.stale;
-  return { anchor: 'center', view: <Dot color={help ? danger : m.color} initials={m.initials} ring={ring} stale={stale} /> };
+  const face = m.kind === 'volunteer' ? m.face : null;
+  return { anchor: 'center', view: <Dot color={help ? danger : m.color} initials={m.initials} ring={ring} stale={stale} face={face} /> };
 }
 
 /**
  * A person: a dot in their colour with initials, ringed when busy, faded where they were last seen. Mo's crew list
- * wears the same dot, so a person reads the same in the list as on the map.
+ * wears the same dot, so a person reads the same in the list as on the map. Their `face` when they have one, edged in
+ * the dot's colour.
  */
-export function Dot({ color, initials, ring, stale }: { color: string; initials?: string; ring?: boolean; stale?: boolean }) {
+export function Dot({ color, initials, ring, stale, face }: {
+  color: string; initials?: string; ring?: boolean; stale?: boolean; face?: string | null;
+}) {
   const theme = useTheme();
   // An ink dot (the crew) inverts with the scheme, so its initials take the background colour.
   const ink = color === theme.text ? theme.background : theme.onTint;
   return (
-    <View style={[styles.ringBox, ring && { borderColor: color }, stale && styles.stale]}>
-      <View style={[styles.dot, { backgroundColor: color }]}>
-        {!!initials && <Text style={[styles.initials, { color: ink }]}>{initials}</Text>}
-      </View>
+    <View style={[styles.ringBox, face && styles.faceBox, ring && { borderColor: color }, stale && styles.stale]}>
+      {face ? (
+        <View style={[styles.face, { backgroundColor: color }]}>
+          <Avatar name={initials} face={face} size={DOT + 2} />
+        </View>
+      ) : (
+        <View style={[styles.dot, { backgroundColor: color }]}>
+          {!!initials && <Text style={[styles.initials, { color: ink }]}>{initials}</Text>}
+        </View>
+      )}
     </View>
   );
 }
@@ -82,6 +93,9 @@ const styles = StyleSheet.create({
   ringBox: { width: DOT + 8, height: DOT + 8, borderRadius: (DOT + 8) / 2, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   dot: { width: DOT, height: DOT, borderRadius: DOT / 2, borderWidth: 1.5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   initials: { fontSize: 9, fontWeight: '700' },
+  // A face is a little bigger than a dot, so it reads; its edge sits just inside the ring.
+  faceBox: { width: DOT + 12, height: DOT + 12, borderRadius: (DOT + 12) / 2 },
+  face: { padding: 2, borderRadius: DOT },
   stale: { opacity: 0.45 },
   meBox: { width: ME, height: ME, alignItems: 'center', justifyContent: 'center' },
   meHalo: { position: 'absolute', width: ME, height: ME, borderRadius: ME / 2, borderWidth: StyleSheet.hairlineWidth },

@@ -35,7 +35,7 @@ export function DutyChip({ open, onToggle, flat = false }: { open: boolean; onTo
         flat ? { borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border } : Shadow.floating,
         { backgroundColor: theme.card },
       ]}>
-      <Avatar name={me.name} color={team?.color} dot={onDuty ? theme.success : theme.warning} />
+      <Avatar name={me.name} face={me.avatar} color={team?.color} dot={onDuty ? theme.success : theme.warning} />
       <View>
         <Text variant="label" tone="primary" numberOfLines={1}>{me.name.split(' ')[0]}</Text>
         <Text tone={onDuty ? 'success' : 'warning'} style={styles.chipSub}>{onDuty ? 'On duty' : 'On break'}</Text>

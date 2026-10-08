@@ -1,13 +1,13 @@
 import type { Batch } from '@/lib/batch';
 import { eligible, laneCandidates } from '@/lib/candidates';
-import { isBusy } from '@/lib/lifecycle';
+import { isBusy, needsApproval } from '@/lib/lifecycle';
 import * as C from '@/lib/commands';
 import { pickCrew, rankQualified } from './models/picker';
 import { read, transact } from './world';
 
 /**
- * The picker step of a P1/P2 proposal, run after it's saved so the lead's approve sheet is up straight away with the
- * rules' order. Outside the world lock, like every model call: from one snapshot, the model ranks everyone free by
+ * The picker step of a proposal, run after it's saved so the lead's approve sheet is up straight away with the
+ * rules' order. A P3 has nobody approving: the pick is assigned as soon as it's in, or the rules' top pick if it failed. Outside the world lock, like every model call: from one snapshot, the model ranks everyone free by
  * profile (no distance), the two lanes make the shortlist (lib/candidates.ts) with the language intake said is needed,
  * the model picks from it, and its answer goes in as one command, which does nothing if someone has decided meanwhile.
  * Both runs are logged on the task's report. If the ranking fails, the qualified lane is the rules' order.
@@ -40,6 +40,7 @@ export async function pickFor(proposalId: string) {
     const byId = new Map(shortlist.map((s) => [s.candidate.volunteerId, s.candidate]));
     await transact({ proposalIds: [proposalId], taskIds: [task.id] }, (b) => {
       if (value) C.rerank(b, proposalId, value.order.slice(0, PROPOSED).map((id) => byId.get(id)!), value.people);
+      if (!needsApproval(task.priority)) C.autoAssign(b, proposalId, value ? 'picked by profile' : undefined);
     }, { run: { ...run, taskId: task.id }, before: [qualified.run] });
   } finally {
     inFlight.delete(proposalId);

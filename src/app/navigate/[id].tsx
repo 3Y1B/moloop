@@ -53,7 +53,7 @@ export default function NavigateScreen() {
     .filter((v) => v.id !== me?.id && v.teamSlug === me?.teamSlug && v.duty === 'on_duty')
     .flatMap((v) => {
       const place = personSpot(positions, v.id, now, () => spot(v.zoneSlug));
-      return place ? [{ id: v.id, initials: initials(v.name), color: theme.textTertiary, at: place.at }] : [];
+      return place ? [{ id: v.id, initials: initials(v.name), face: v.avatar, color: theme.textTertiary, at: place.at }] : [];
     });
 
   const mine = task.assigneeId === me?.id;

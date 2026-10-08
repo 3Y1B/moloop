@@ -14,13 +14,15 @@ import { VenueMap } from './venue-map';
 type Crew = { members: TeamMember[]; openTasks: Task[] };
 
 /**
- * How a person is drawn, on the map and in Mo's crew list. Ink, not team colours: colour means help (red) or a task's
- * priority. Ringed when on a task (owning or helping), grey on a break.
+ * How a person is drawn, on the map and in Mo's crew list. In their status line's colour, not their team's: green
+ * free, orange quiet, red asked for help, blue helping; ink on a task of their own, grey on a break. Ringed when on a
+ * task (owning or helping).
  */
 export function personMarker(m: TeamMember, theme: ReturnType<typeof useTheme>) {
   const v = m.volunteer;
+  const tone = { success: theme.success, warning: theme.warning, danger: theme.danger, tint: theme.tint, neutral: null }[m.status.tone];
   return {
-    color: v.duty === 'on_break' ? theme.textTertiary : theme.text,
+    color: tone ?? (v.duty === 'on_duty' ? theme.text : theme.textTertiary),
     initials: initials(v.name),
     onTask: !!m.task || !!m.helping,
     needsHelp: !!m.task && needsResponse(m.task),

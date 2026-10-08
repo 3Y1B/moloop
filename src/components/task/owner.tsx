@@ -16,7 +16,7 @@ export function Owner({ task }: { task: Task }) {
   if (!owner) return null;
   return (
     <View style={styles.owner}>
-      <Avatar name={owner.name} size={22} />
+      <Avatar name={owner.name} face={owner.avatar} size={22} />
       <Text variant="footnote" style={styles.name} numberOfLines={1}>
         {owner.name}
       </Text>

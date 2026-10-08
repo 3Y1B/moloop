@@ -104,14 +104,14 @@ export default function TaskDetailScreen() {
         <Section title="Assigned to">
           <Card>
             <ListRow
-              leading={<Avatar name={assignee?.name} placeholder={!assignee} />}
+              leading={<Avatar name={assignee?.name} face={assignee?.avatar} placeholder={!assignee} />}
               title={assignee ? nameOf(assignee) : 'Nobody yet'}
             />
             {helpers.map((v) => (
               <Fragment key={v.id}>
                 <Separator inset={PERSON_INSET} />
                 <ListRow
-                  leading={<Avatar name={v.name} />}
+                  leading={<Avatar name={v.name} face={v.avatar} />}
                   title={nameOf(v)}
                   trailing={<Text variant="footnote" tone="tertiary">Backup</Text>}
                 />

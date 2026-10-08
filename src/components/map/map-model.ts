@@ -11,7 +11,7 @@ import { zoneFootprint } from './map-art';
  * Everything is worked out in plan metres (see data/venue.ts) and only turned into lng/lat at the end.
  */
 
-export type MapPerson = { id: string; initials: string; color: string; at: Point };
+export type MapPerson = { id: string; initials: string; face?: string | null; color: string; at: Point };
 
 /**
  * Things drawn on top of the site plan for leads and festival-goers.
@@ -21,7 +21,7 @@ export type MapPerson = { id: string; initials: string; color: string; at: Point
  * For a two-person route (volunteer → reporter), pass `route` plus a volunteer and a person marker, and `me={null}`.
  */
 export type MapMarker =
-  | { kind: 'volunteer'; id: string; at: Point; color: string; initials?: string; onTask?: boolean; needsHelp?: boolean; stale?: boolean }
+  | { kind: 'volunteer'; id: string; at: Point; color: string; initials?: string; face?: string | null; onTask?: boolean; needsHelp?: boolean; stale?: boolean }
   | { kind: 'task'; id: string; at: Point; priority: Priority }
   | { kind: 'person'; id: string; at: Point; color: string; initials?: string };
 
@@ -32,7 +32,7 @@ export type VenueMapProps = {
   /** Destination zone slug, highlighted with a pin. */
   target?: string | null;
   targetColor?: string;
-  /** Teammates to show as small initials. */
+  /** Teammates to show as small faces (initials when they have none). */
   people?: MapPerson[];
   /** Volunteers, task pins and people (see MapMarker). */
   markers?: MapMarker[];

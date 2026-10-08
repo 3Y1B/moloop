@@ -377,10 +377,16 @@ describe('the intake agent escalates a new report', () => {
     expect(b.messages).toContainEqual(expect.objectContaining({ recipientId: 'lee', body: expect.stringMatching(/Needs your call/) }));
   });
 
-  it('leaves a plain create_task to the allocator, which sends a volunteer', () => {
-    const { made } = fromGuest(triaged({ escalate: null }));
+  it('leaves a plain P3 create_task to the picker: nobody asked to approve, its pick sent straight away', () => {
+    const { b, made } = fromGuest(triaged({ escalate: null }));
+    const [p] = Object.values(b.proposals);
 
-    expect(made).toMatchObject({ status: 'assigned', assigneeId: 'priya', escalation: null });
+    expect(made).toMatchObject({ status: 'open', assigneeId: null, escalation: null });
+    expect(p).toMatchObject({ taskId: made.id, status: 'pending' });
+    expect(b.messages.some((m) => /Approve/.test(m.body))).toBe(false);
+    C.autoAssign(b, p.id, 'picked by profile');
+    expect(b.tasks[made.id]).toMatchObject({ status: 'assigned', assigneeId: 'priya' });
+    expect(b.proposals[p.id].status).toBe('auto_assigned');
   });
 
   it('holds a volunteer’s own report too, and tells them who has it', () => {

@@ -140,7 +140,7 @@ export async function loadWorld(q: Q, spec: Load = {}): Promise<Loaded> {
     q<{ id: string; slug: string; name: string }[]>`select id, slug, name from teams`,
     q<{ id: string; slug: string }[]>`select id, slug from zones`,
     q<VolunteerRow[]>`
-      select p.id, p.full_name, p.role, p.team_id, p.status, p.languages, p.last_known_zone, pp.phone, pp.bio,
+      select p.id, p.full_name, p.role, p.team_id, p.status, p.languages, p.last_known_zone, p.avatar, pp.phone, pp.bio,
         coalesce(array_agg(s.slug order by s.slug) filter (where s.slug is not null), '{}') as skills
       from profiles p
       left join profile_private pp on pp.id = p.id

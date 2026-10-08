@@ -32,7 +32,7 @@ export function PersonRow({ member, trailing }: { member: TeamMember; trailing?:
         onPress={() => router.push({ pathname: '/person/[id]', params: { id: v.id } })}
         style={styles.person}>
         {/* As on the map: red when they asked for help, ringed while on a task, faded off shift. */}
-        <Dot color={dot.needsHelp ? theme.danger : dot.color} initials={dot.initials} ring={dot.onTask || dot.needsHelp} stale={off} />
+        <Dot color={dot.needsHelp ? theme.danger : dot.color} initials={dot.initials} ring={dot.onTask || dot.needsHelp} stale={off} face={v.avatar} />
         <View style={styles.text}>
           <Text variant="rowTitle" tone={off ? 'tertiary' : 'primary'} numberOfLines={1}>{v.name}</Text>
           <StatusLine status={line} />

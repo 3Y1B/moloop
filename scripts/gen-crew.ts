@@ -3,7 +3,8 @@
  * has none, each with a team, certificates (with expiry dates, a few already lapsed), languages, a zone, a short
  * description for the picker to read, whether it's their first festival, and when they're free that weekend: what
  * they said ("Sat only sorry") and the times it means. Mostly students; nearly half first-timers.
- * Same seed, same roster. Then `bun scripts/seed.ts` loads it and `bun scripts/roster.ts` rosters it.
+ * Same seed, same roster. Then `bun scripts/crew-sql.ts` turns it and its roster into the crew migration, or
+ * `bun scripts/seed.ts` loads it and `bun scripts/roster.ts` rosters it through the API.
  *
  *   bun scripts/gen-crew.ts [count=300] [seed=1] [saturday=the coming one, YYYY-MM-DD]
  *

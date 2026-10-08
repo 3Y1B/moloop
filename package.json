@@ -19,6 +19,7 @@
     "db:crew": "bun scripts/gen-crew.ts",
     "db:roster": "bun scripts/roster.ts",
     "db:seed": "bun scripts/seed.ts",
+    "db:crew-sql": "bun scripts/crew-sql.ts",
     "db:check": "bun scripts/check-rls.ts",
     "repo:check": "bun scripts/check-repo.ts",
     "commands:check": "bun scripts/check-commands.ts",
@@ -38,6 +39,8 @@
     "postinstall": "node scripts/sync-maplibre-worker.mjs"
   },
   "dependencies": {
+    "@dicebear/core": "^9.4.3",
+    "@dicebear/notionists": "^9.4.2",
     "@expo/ui": "~57.0.22",
     "@maplibre/maplibre-react-native": "^11.5.0",
     "@supabase/supabase-js": "^2.117.2",
