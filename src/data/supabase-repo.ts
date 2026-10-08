@@ -3,14 +3,15 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload, Session, Supabase
 import type { Database } from '@/lib/database.types';
 import type { Fix } from '@/lib/presence';
 import type { Summary, SummaryScope } from '@/lib/summary';
+import type { ManagedPlaybook, SimulationContext, SimulationRunResult } from '@/lib/mobilization-contracts';
 import { applyHelperReply, applyReply } from '@/lib/lifecycle';
 import type { Duty, GuestRequest, Message, Proposal, ReplyKind, Task, TaskEvent, Volunteer } from '@/lib/schema';
 import type {
   BroadcastScope,
-  CreateMobilizationInput,
   Heard,
   Interpretation,
   MobilizationControls,
+  PlaybookControls,
   Repo,
   Recording,
   RespondInput,
@@ -332,9 +333,6 @@ export class SupabaseRepo implements Repo {
   // ── mobilizations ──
 
   mobilizations: MobilizationControls = {
-    create: async (input: CreateMobilizationInput) => {
-      await this.post('createMobilization', input);
-    },
     approve: async (mobilizationId, review) => {
       await this.post('approveMobilization', { mobilizationId, ...review });
     },
@@ -343,6 +341,22 @@ export class SupabaseRepo implements Repo {
     },
     standDown: async (mobilizationId: string, outcome: 'stood_down' | 'cancelled') => {
       await this.post('standDown', { mobilizationId, outcome });
+    },
+    context: () => this.post<SimulationContext>('mobilizationContext', {}),
+    simulate: (input) => this.post<SimulationRunResult>('simulateMobilization', input),
+    getRun: (runId) => this.post<SimulationRunResult>('getMobilizationRun', { runId }),
+  };
+
+  playbooks: PlaybookControls = {
+    list: async () => (await this.post<{ playbooks: ManagedPlaybook[] }>('playbooks/list', {})).playbooks,
+    saveDraft: async (input) => (await this.post<{ playbook: ManagedPlaybook }>('playbooks/saveDraft', input)).playbook,
+    revise: async (id) => (await this.post<{ playbook: ManagedPlaybook }>('playbooks/revise', { id })).playbook,
+    publish: async (id, expectedUpdatedAt) =>
+      (await this.post<{ playbook: ManagedPlaybook }>('playbooks/publish', { id, expectedUpdatedAt })).playbook,
+    disable: async (id, expectedUpdatedAt) =>
+      (await this.post<{ playbook: ManagedPlaybook }>('playbooks/disable', { id, expectedUpdatedAt })).playbook,
+    deleteDraft: async (id, expectedUpdatedAt) => {
+      await this.post('playbooks/deleteDraft', { id, expectedUpdatedAt });
     },
   };
 

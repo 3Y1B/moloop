@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
@@ -46,7 +47,7 @@ export function DutyChip({ open, onToggle, flat = false }: { open: boolean; onTo
 }
 
 /** Expanded shift details: team, shift end, break toggle. */
-export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
+export function DutyPanel({ style, onNavigate }: { style?: StyleProp<ViewStyle>; onNavigate?: () => void }) {
   const theme = useTheme();
   const repo = useRepo();
   const me = useMe();
@@ -76,6 +77,18 @@ export function DutyPanel({ style }: { style?: StyleProp<ViewStyle> }) {
             md={onDuty ? 'coffee' : 'directions_walk'}
             onPress={() => repo.setDuty(onDuty ? 'on_break' : 'on_duty')}
           />
+          {me.role === 'coordinator' && (
+            <View style={styles.planningActions}>
+              <Button label="Test situation" variant="tinted" size="small" onPress={() => {
+                onNavigate?.();
+                router.push('/mobilize/simulate');
+              }} />
+              <Button label="Manage playbooks" variant="tinted" size="small" onPress={() => {
+                onNavigate?.();
+                router.push('/playbooks');
+              }} />
+            </View>
+          )}
         </View>
     </Animated.View>
   );
@@ -94,5 +107,6 @@ const styles = StyleSheet.create({
   panelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelText: { fontWeight: '600', flexShrink: 1 },
   panelMeta: { marginLeft: 'auto' },
-  actions: { flexDirection: 'row', gap: 8 },
+  actions: { flexDirection: 'row', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 },
+  planningActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, flex: 1, minWidth: 150 },
 });

@@ -15,7 +15,6 @@ import { REPLY_LABEL } from '@/lib/format';
 import {
   applyHelperReply,
   applyReply,
-  availableHelperReplies,
   assignOrQueue,
   handoverArrived,
   HANDOVER_NAME,

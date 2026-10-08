@@ -48,6 +48,11 @@ afterEach(async () => {
 });
 
 describe('SupabaseRepo forwards merged command contracts', () => {
+  it('does not expose the retired immediately-active mobilization creation bypass', () => {
+    const { repo } = repoFor('mo', task());
+    expect('create' in repo.mobilizations).toBe(false);
+  });
+
   it('forwards named helpers to manual assign and ordinary proposal approval', async () => {
     const { repo, send } = repoFor('mo', task());
     await repo.assign('manual-task', 'owner', ['helper']);
@@ -66,6 +71,52 @@ describe('SupabaseRepo forwards merged command contracts', () => {
     await expect(repo.respondByVoice('response-task', 'Call an ambulance')).resolves.toEqual(response);
     expect(JSON.parse(String((send.mock.calls[0][1] as RequestInit).body))).toEqual({
       taskId: 'response-task', text: 'Call an ambulance',
+    });
+  });
+
+  it('forwards the exact reviewed analysis and explicit gap acknowledgement', async () => {
+    const { repo, send } = repoFor('mo', task());
+    await repo.mobilizations.approve('plan', { reviewedRunId: 'reviewed-run', acknowledgeGaps: true });
+    expect(JSON.parse(String((send.mock.calls[0][1] as RequestInit).body))).toEqual({
+      mobilizationId: 'plan', reviewedRunId: 'reviewed-run', acknowledgeGaps: true,
+    });
+  });
+
+  it('keeps manual situation analysis and polling on the shared server', async () => {
+    const result = { runId: 'run', status: 'running', mobilizationIds: [] };
+    const { repo, send } = repoFor('mo', task(), Response.json(result));
+    const input = {
+      requestId: 'scenario-test',
+      weather: { temperatureC: 41, trendCPerHour: null, condition: 'clear' as const,
+        warning: 'heat' as const, warningInMinutes: null },
+      upcomingSets: [], crowdByZone: [], recentIncidents: [], observations: [],
+    };
+    await expect(repo.mobilizations.simulate(input)).resolves.toEqual(result);
+    // Each HTTP response has its own body, as a real transport does.
+    send.mockResolvedValueOnce(Response.json(result));
+    await expect(repo.mobilizations.getRun('run')).resolves.toEqual(result);
+    expect(send.mock.calls.map(([url]) => String(url))).toEqual([
+      'http://127.0.0.1:8787/api/simulateMobilization', 'http://127.0.0.1:8787/api/getMobilizationRun',
+    ]);
+    expect(JSON.parse(String((send.mock.calls[0][1] as RequestInit).body))).toEqual(input);
+    expect(JSON.parse(String((send.mock.calls[1][1] as RequestInit).body))).toEqual({ runId: 'run' });
+    expect(repo.getSnapshot().tasks['response-task'].requiredCount).toBe(2);
+  });
+
+  it('keeps Mo playbook revisions and optimistic publication tokens', async () => {
+    const version = { id: 'draft', version: 4, status: 'draft' };
+    const { repo, send } = repoFor('mo', task(), Response.json({ playbooks: [version] }));
+    await expect(repo.playbooks.list()).resolves.toEqual([version]);
+    send.mockResolvedValueOnce(Response.json({ playbook: version }));
+    await expect(repo.playbooks.revise('published')).resolves.toEqual(version);
+    send.mockResolvedValueOnce(Response.json({ playbook: { ...version, status: 'published' } }));
+    await repo.playbooks.publish('draft', '2026-10-08T00:00:00.123456+00:00');
+    expect(send.mock.calls.map(([url]) => String(url))).toEqual([
+      'http://127.0.0.1:8787/api/playbooks/list', 'http://127.0.0.1:8787/api/playbooks/revise',
+      'http://127.0.0.1:8787/api/playbooks/publish',
+    ]);
+    expect(JSON.parse(String((send.mock.calls[2][1] as RequestInit).body))).toEqual({
+      id: 'draft', expectedUpdatedAt: '2026-10-08T00:00:00.123456+00:00',
     });
   });
 });

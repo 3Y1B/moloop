@@ -1,9 +1,9 @@
 /** Typed observation boundary checks; uses the supplied 10-SOP file, no DB or live model. */
-import { FESTIVAL_PLAYBOOKS } from "../src/server/playbooks/festival";
+import { parseAllDocuments } from "yaml";
 import { inputAvailability } from "../src/lib/mobilization-inputs";
 import { SimulationInputSchema, type PlanningSnapshot, type SimulationContext, type SimulationInput } from "../src/lib/mobilization-contracts";
 import { OBSERVATION_CATALOG, ObservationSchema, observationIsMeaningful, observationReferenceErrors, type MobilizationObservation } from "../src/lib/mobilization-observations";
-import { buildEvidence } from "../src/server/predict/plan";
+import { buildEvidence } from "../src/server/predict/simulation";
 import { validateMobilizationOutput, validateScenario } from "../src/server/predict/validate";
 
 declare const Bun: { file(path: string): { text(): Promise<string> } };
@@ -27,8 +27,10 @@ const snapshot = (observations: MobilizationObservation[]): PlanningSnapshot => 
   evidence: buildEvidence({ ...input, observations }, context, [], evaluatedAt),
 });
 
-check("catalog covers every required input in every playbook", () => {
-  const keys = [...new Set(FESTIVAL_PLAYBOOKS.flatMap((book) => book.requiredInputs))];
+const supplied = parseAllDocuments(await Bun.file("supabase/playbooks/festival-emergency.yaml").text());
+check("catalog covers every required input in all 10 supplied SOPs", () => {
+  equal(supplied.length, 10, "Expected 10 SOP documents");
+  const keys = [...new Set(supplied.flatMap((document) => (document.toJSON() as { requiredInputs: string[] }).requiredInputs))];
   for (const key of keys) ok(OBSERVATION_CATALOG[key], `Missing catalog input ${key}`);
 });
 check("unknown keys, wrong kinds, numeric bounds, future ages and built-in overrides reject", () => {
@@ -91,7 +93,7 @@ check("typed observations become past-timestamped citeable evidence with canonic
   const observation = ObservationSchema.parse(row({ minutesAgo: 5 }));
   const snap = snapshot([observation]);
   const evidence = snap.evidence.find((entry) => entry.ref === "observation-0")!;
-  equal(evidence.source, "database", "A reading was not reported as recorded data");
+  equal(evidence.source, "manual_demo", "Demo was reported as real data");
   equal(evidence.observedAt, "2026-10-07T03:55:00.000Z", "Age timestamp failed");
   equal(evidence.value.unit, "km/h", "Canonical unit lost");
   equal(inputAvailability(snap)["weather.windSpeed"].available, true, "Known wind observation unavailable");

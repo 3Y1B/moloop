@@ -7,9 +7,11 @@ import { DutyPanel } from '@/components/duty-header';
 import { CrewMap } from '@/components/map/crew-map';
 import { MoDuty, MoTopBar } from '@/components/mo/mo-top-bar';
 import { TeamPills } from '@/components/mo/team-pills';
+import { visibleAnalysisJobs } from '@/components/mobilization/analysis-list';
 import { Icon } from '@/components/ui/icon';
 import { useTopBarMetrics } from '@/components/ui/top-bar';
 import { useChosenTeam, useCrew, useNeedsMe, useRole, useSnapshot } from '@/data/hooks';
+import { useMobilizationAnalyses } from '@/data/mobilization-analysis-provider';
 import { useTheme } from '@/hooks/use-theme';
 import { homeFor } from '@/lib/home';
 import { moLayout, type MoTab } from '@/lib/mo-layout';
@@ -40,6 +42,8 @@ export default function MoLayout() {
   const { contentTop } = useTopBarMetrics();
   const crew = useCrew(useChosenTeam());
   const needs = useNeedsMe();
+  const { jobs } = useMobilizationAnalyses();
+  const actionCount = needs.length + visibleAnalysisJobs(jobs, s.mobilizations).length;
   const [open, setOpen] = useState(false);
   const duty = { open, toggle: () => setOpen((o) => !o) };
   useSpokenBriefs();
@@ -66,7 +70,7 @@ export default function MoLayout() {
                 name={t.name}
                 options={{
                   title: t.title,
-                  tabBarBadge: t.name === 'index' && needs.length > 0 ? needs.length : undefined,
+                  tabBarBadge: t.name === 'index' && actionCount > 0 ? actionCount : undefined,
                   // The map draws its own bar, floating over it.
                   headerShown: t.name !== 'map',
                   // On a laptop the map is beside the column, not a tab.
@@ -91,7 +95,7 @@ export default function MoLayout() {
           <>
             {/* Tap anywhere outside the panel to close it. */}
             <Pressable accessibilityLabel="Close shift details" style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
-            <DutyPanel style={[styles.duty, { top: contentTop }, split && { width: COLUMN - 32 }]} />
+            <DutyPanel onNavigate={() => setOpen(false)} style={[styles.duty, { top: contentTop }, split && { width: COLUMN - 32 }]} />
           </>
         )}
       </View>

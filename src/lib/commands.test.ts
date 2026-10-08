@@ -626,6 +626,37 @@ describe('a mobilization step stays staffed (audit D1-D6, S1)', () => {
   }
   const step = (b: Batch) => b.all().find((t) => t.mobilizationId === 'storm')!;
 
+  it('retains a twenty-person demand with only two available rather than capping it to the roster', () => {
+    const b = venue(['ana', 'kai'], 20);
+    C.approveMobilization(b, 'mo', 'storm');
+    expect(step(b).requiredCount).toBe(20);
+    expect(step(b).helpers).toHaveLength(1);
+    expect(b.events).toContainEqual(expect.objectContaining({ text: 'Staffing gap: 18 of 20 people still needed.' }));
+    C.reply(b, 'priya', 'collapsed', 'done');
+    expect(step(b).requiredCount).toBe(20);
+    expect(step(b).helpers).toHaveLength(2);
+  });
+
+  it('recruits more than ten people when the action needs them and enough qualified crew are free', () => {
+    const crew = Array.from({ length: 15 }, (_, index) => `crew-${index}`);
+    const b = venue(crew, 12);
+    C.approveMobilization(b, 'mo', 'storm');
+    expect(step(b).requiredCount).toBe(12);
+    const allocated = [step(b).assigneeId!, ...step(b).helpers.map((helper) => helper.volunteerId)];
+    expect(allocated).toHaveLength(12);
+    expect(new Set(allocated).size).toBe(12);
+    expect(allocated.every((id) => crew.includes(id))).toBe(true);
+  });
+
+  it('never activates an AI mobilization merely because time passes', () => {
+    const b = venue(['ana', 'kai'], 12);
+    let n = 0;
+    const later = new Batch({ ...b, tasks: {} }, { now: NOW + 60_000, id: (kind) => `${kind}-later-${++n}` });
+    C.schedulerStep(later);
+    expect(later.mobilizations.storm.status).toBe('proposed');
+    expect(later.all()).toEqual([]);
+  });
+
   it('approved with 2 free of 4 needed: 2 go, the other 2 join as people free up', () => {
     const b = venue(['ana', 'kai']);
     C.approveMobilization(b, 'mo', 'storm');

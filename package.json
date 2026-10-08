@@ -27,7 +27,11 @@
     "gate:eval": "bun scripts/eval-gate.ts",
     "voice:check": "bun scripts/check-voice.ts",
     "presence:check": "bun scripts/check-presence.ts",
-    "simulate": "bun scripts/simulate.ts",
+    "playbooks:import": "bun scripts/import-playbooks.ts",
+    "playbooks:check": "bun scripts/check-playbooks.ts",
+    "playbooks:scale": "bun scripts/scale-playbook-staffing.ts",
+    "mobilization-api:check": "bun scripts/check-mobilization-api.ts",
+    "mobilization-migrations:check": "bun scripts/check-mobilization-migration-compat.ts",
     "test": "vitest run",
     "test:live": "vitest run --config vitest.live.config.mts",
     "mobilization:check": "bun scripts/check-mobilization-planning.ts",
@@ -87,6 +91,7 @@
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "yaml": "^2.9.1"
   }
 }

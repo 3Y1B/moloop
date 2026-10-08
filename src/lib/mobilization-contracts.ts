@@ -6,7 +6,7 @@ export { ObservationSchema, type MobilizationObservation } from "./mobilization-
 
 const Text = z.string().trim().min(1).max(2000);
 
-/** The festival's playbooks (src/server/playbooks/festival.ts). Intake names one of these, or none. */
+/** Legacy intake labels only. Mobilization uses every currently published, Mo-managed database playbook. */
 export const PLAYBOOK_SLUGS = [
   "severe-weather-main-stage",
   "crowd-crush-main-stage",
@@ -49,10 +49,14 @@ export type ManagedPlaybook = {
   id: string; version: number; status: "draft" | "published" | "disabled";
   content: PlaybookContent; createdAt: string; updatedAt: string; publishedAt: string | null;
 };
+export const SavePlaybookDraftSchema = z.object({
+  id: z.uuid().nullable(), expectedUpdatedAt: z.string().nullable(), content: PlaybookContentSchema,
+});
+export type SavePlaybookDraftInput = z.infer<typeof SavePlaybookDraftSchema>;
 
 export const SimulationInputSchema = z.object({
   requestId: z.string().min(16).max(128),
-  // From the latest readings (src/server/predict/plan.ts). Null when nothing has measured it.
+  // Unknown readings stay null; the AI must not treat them as clear weather or zero temperature.
   weather: z.object({
     temperatureC: z.number().min(-20).max(60).nullable(),
     trendCPerHour: z.number().min(-20).max(20).nullable(),

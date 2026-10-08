@@ -70,18 +70,6 @@ All task keys must be unique ACROSS all plans. No numeric aliases, defaults or i
 Do not drop findings, contextual gaps, uncertainty, operational instructions or completion criteria
 to shorten output. Canonical semantic and full-retrieval checks still run after exact expansion.`;
 
-/**
- * The wire format for a run a trigger started: one SOP, read by the server and put in the prompt. Short, because the
- * plan has to be on Mo's phone in about 20 seconds; the rules it relies on are in TRIGGERED_SYSTEM_PROMPT.
- */
-export const TRIGGERED_SUPPLEMENT = `WIRE FORMAT
-- playbookAssessments: one entry {playbookKey, applicability, reason, evidenceRefs, contextualMissingInputs}.
-- Tasks have no playbookRefs and use singular addressesFindingId. Plans have no unmetRequirements.
-- actionCoverage: one slot per action of the SOP, keyed exactly "slug:version:actionId", each {taskKey, blocker}.
-  For a must action set taskKey to the task that does it (same team, its requiredSkills, at least its peopleNeeded)
-  and blocker null. Only if it truly cannot start: taskKey null and a short blocker. Recommended actions may be null/null.
-- Task keys are unique across plans.`;
-
 const bookKey = (slug: string, version: number) => `${slug}:${version}`;
 const actionKey = (ref: PlaybookActionRef) => `${bookKey(ref.slug, ref.version)}:${ref.actionId}`;
 const unique = (values: readonly string[], where: string) => {
@@ -96,9 +84,6 @@ const unique = (values: readonly string[], where: string) => {
 export function createActionMobilizationOutput(
   snapshot: PlanningSnapshot,
   getSelectedKeys: () => readonly string[],
-  supplement = promptSupplement,
-  /** Triggered runs: a must action left null/null is a gap the planner fills from the playbook, not a failure. */
-  { omittedMustIsGap = false } = {},
 ): ActionMobilizationOutputContract {
   const captured = structuredClone(snapshot);
   const compact = createCompactMobilizationOutput(captured);
@@ -143,7 +128,7 @@ export function createActionMobilizationOutput(
   };
 
   return {
-    schema: resolveSchema, promptSupplement: supplement,
+    schema: resolveSchema, promptSupplement,
     expand(output) {
       const wire = resolveSchema().parse(output);
       const { actionCoverage, ...value } = wire;
@@ -171,10 +156,8 @@ export function createActionMobilizationOutput(
           continue;
         }
         if (!chosenTask && !blocked) {
-          if (wire.decision !== 'propose' || action.requirement !== 'must') continue;
-          if (!omittedMustIsGap) throw new Error(`Missing required action decision ${key}`);
-          if (!expandedPlans[0]) throw new Error(`Action ${key} has no plan for its gap`);
-          expandedPlans[0].unmetRequirements.push({ playbookRef: { ...ref }, reason: 'Not planned' });
+          if (wire.decision === 'propose' && action.requirement === 'must')
+            throw new Error(`Missing required action decision ${key}`);
           continue;
         }
         if (chosenTask) {

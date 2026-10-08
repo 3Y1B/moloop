@@ -203,7 +203,7 @@ export function groundMobilizationPlans(
         },
         eligible,
         tasks,
-        { limit: action.peopleNeeded },
+        { limit: action.peopleNeeded, now: at },
       );
       for (const candidate of candidates) claimed.add(candidate.volunteerId);
       return {

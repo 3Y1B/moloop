@@ -3,12 +3,18 @@ import type { Fix } from '@/lib/presence';
 import type { RespondCommand } from '@/lib/ai';
 import type { Summary, SummaryScope } from '@/lib/summary';
 import type {
+  ManagedPlaybook,
+  SavePlaybookDraftInput,
+  SimulationContext,
+  SimulationInput,
+  SimulationRunResult,
+} from '@/lib/mobilization-contracts';
+import type {
   Duty,
   GuestRequest,
   Message,
   Mobilization,
   Position,
-  Priority,
   Proposal,
   ReplyKind,
   Task,
@@ -142,26 +148,29 @@ export interface Repo {
 
   /** Mobilization is server/Supabase-only: real-model simulation and approval need shared persistence. */
   mobilizations?: MobilizationControls;
+  /** Mo-authored, versioned SOPs. Published revisions are immutable. */
+  playbooks?: PlaybookControls;
 }
 
-export type CreateMobilizationInput = {
-  title: string;
-  rationale: string;
-  urgency: Priority;
-  zoneSlug: string | null;
-  /** Pre-fills steps from a playbook's template; still freely editable. */
-  playbookSlug?: string;
-  steps: { teamSlug: TeamSlug; peopleNeeded: number; reason: string }[];
-};
-
 export interface MobilizationControls {
-  /** Mo-initiated, active immediately (no self-approval step), optionally templated from a playbook. */
-  create(input: CreateMobilizationInput): Promise<void>;
   /** Approve a system-proposed mobilization: re-ranks candidates fresh and creates the real tasks. */
   approve(mobilizationId: string, review?: MobilizationReview): Promise<void>;
   reject(mobilizationId: string): Promise<void>;
   standDown(mobilizationId: string, outcome: 'stood_down' | 'cancelled'): Promise<void>;
+  context(): Promise<SimulationContext>;
+  /** Analyze editable facts with the configured model; never inject canned plans. */
+  simulate(input: SimulationInput): Promise<SimulationRunResult>;
+  getRun(id: string): Promise<SimulationRunResult>;
 }
 
 /** The run Mo reviewed: approval checks the plan still matches it. */
-export type MobilizationReview = { reviewedRunId?: string };
+export type MobilizationReview = { reviewedRunId?: string; acknowledgeGaps?: boolean };
+
+export interface PlaybookControls {
+  list(): Promise<ManagedPlaybook[]>;
+  saveDraft(input: SavePlaybookDraftInput): Promise<ManagedPlaybook>;
+  revise(id: string): Promise<ManagedPlaybook>;
+  publish(id: string, expectedUpdatedAt: string): Promise<ManagedPlaybook>;
+  disable(id: string, expectedUpdatedAt: string): Promise<ManagedPlaybook>;
+  deleteDraft(id: string, expectedUpdatedAt: string): Promise<void>;
+}

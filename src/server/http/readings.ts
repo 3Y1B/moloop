@@ -3,17 +3,16 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 
 import { ObservationSchema, observationDefinition, observationReferenceErrors } from '@/lib/mobilization-observations';
-import { onReading, type Place, type Reading } from '../triggers';
 import { sql } from '../world';
 
 /**
  * POST /api/reading: one measurement, from a sensor or the demo simulator (docs/plans/2026-10-08-mobilization-plan.md,
  * "Readings"). Server key only: the caller sends the Supabase secret key as its bearer token, which the app never has.
- * Stored, then checked against the playbooks' lines (T3, ../triggers.ts) after the response.
+ * Stored for data adapters and audit. Ingestion never analyses, creates, approves or dispatches a mobilization.
  */
 export const readings = new Hono();
 
-/** The built-in weather the planner reads from readings (scenarioFrom in ../predict/plan.ts). */
+/** Weather measurements accepted alongside the extensible observation catalog. */
 const WEATHER = new Set(['weather.temperature', 'weather.warning', 'weatherStatus']);
 /** A little clock skew, not a forecast. */
 const FUTURE_MS = 60_000;
@@ -26,7 +25,13 @@ const Body = z.object({
   source: z.enum(['sensor', 'simulated']),
 });
 
-export type ParsedReading = Omit<Reading, 'id'>;
+export type ParsedReading = {
+  key: string;
+  zoneSlug: string | null;
+  value: unknown;
+  observedAt: number;
+  source: 'sensor' | 'simulated';
+};
 
 /** A reading the catalog knows, at places that exist, or why not. */
 export function parseReading(body: unknown, zoneSlugs: readonly string[], now = Date.now()):
@@ -74,8 +79,5 @@ readings.post('/reading', async (c) => {
     values (${r.key}, ${zoneId}, ${sql().json(r.value as Parameters<ReturnType<typeof sql>['json']>[0])},
       ${new Date(r.observedAt).toISOString()}::timestamptz, ${r.source})
     returning id`;
-  const places: Record<string, Place> = Object.fromEntries(zones.map((z) => [z.slug, { kind: z.kind, capacity: z.capacity }]));
-  // Off the sender's path: the planner can take a while.
-  setTimeout(() => onReading({ ...r, id: row.id }, places).catch((e) => console.error(`reading ${row.id} failed`, e)), 0);
   return c.json({ id: row.id }, 201);
 });

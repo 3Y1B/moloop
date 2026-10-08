@@ -9,23 +9,23 @@ export type MobilizationInputSource = {
 
 /** Explicit aliases only. A stage's expected draw is not a current full-site audience census. */
 const BUILTIN_INPUT_SOURCES: Readonly<Record<string, MobilizationInputSource>> = {
-  "weather.temperatureC": { source: "database", label: "Latest temperature reading, Celsius", canonicalKey: "weather.temperatureC" },
-  "weather.temperature": { source: "database", label: "Latest temperature reading, Celsius", canonicalKey: "weather.temperatureC" },
-  "weather.trendCPerHour": { source: "database", label: "Temperature trend", canonicalKey: "weather.trendCPerHour" },
-  "weather.condition": { source: "database", label: "Latest weather reading", canonicalKey: "weather.condition" },
-  "weather.warning": { source: "database", label: "Latest weather warning reading", canonicalKey: "weather.warning" },
+  "weather.temperatureC": { source: "manual_demo", label: "Scenario temperature, Celsius", canonicalKey: "weather.temperatureC" },
+  "weather.temperature": { source: "manual_demo", label: "Scenario temperature, Celsius", canonicalKey: "weather.temperatureC" },
+  "weather.trendCPerHour": { source: "manual_demo", label: "Scenario temperature trend", canonicalKey: "weather.trendCPerHour" },
+  "weather.condition": { source: "manual_demo", label: "Scenario weather", canonicalKey: "weather.condition" },
+  "weather.warning": { source: "manual_demo", label: "Scenario warning", canonicalKey: "weather.warning" },
   upcomingSets: { source: "scenario_or_database", label: "Scenario stage timing or published timetable", canonicalKey: "upcomingSets" },
-  crowdByZone: { source: "database", label: "Zone crowd samples", canonicalKey: "crowdByZone" },
+  crowdByZone: { source: "manual_demo", label: "Provided zone crowd samples", canonicalKey: "crowdByZone" },
   recentIncidents: { source: "scenario_or_database", label: "Provided or recorded source incidents", canonicalKey: "recentIncidents" },
   roster: { source: "database", label: "Current database roster and workload", canonicalKey: "roster" },
   currentRoster: { source: "database", label: "Current database roster and workload", canonicalKey: "roster" },
   venue: { source: "database", label: "Database venue zones and capacities", canonicalKey: "venue" },
   existingResponses: { source: "database", label: "Current response tasks", canonicalKey: "existingResponses" },
-  weatherStatus: { source: "database", label: "Latest weather reading", canonicalKey: "weather.condition" },
+  weatherStatus: { source: "manual_demo", label: "Scenario weather", canonicalKey: "weather.condition" },
 };
 export const MOBILIZATION_INPUT_SOURCES: Readonly<Record<string, MobilizationInputSource>> = {
   ...Object.fromEntries(Object.values(OBSERVATION_CATALOG).map((definition) => [definition.key, {
-    source: "database" as const, label: definition.label, canonicalKey: definition.key,
+    source: "manual_demo" as const, label: definition.label, canonicalKey: definition.key,
   }])),
   ...BUILTIN_INPUT_SOURCES,
 };

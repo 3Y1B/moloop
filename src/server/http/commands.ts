@@ -15,9 +15,10 @@ import {
   type RespondInput as RespondInputType,
 } from '@/lib/lifecycle';
 import { walkFrom } from '@/lib/presence';
+import { SimulationInputSchema } from '@/lib/mobilization-contracts';
 import type { RespondCommand } from '@/lib/ai';
 import { routeBetween } from '@/lib/route';
-import { Priority, ReplyKind, TeamSlug, type Task, type Volunteer } from '@/lib/schema';
+import { ReplyKind, TeamSlug, type Task, type Volunteer } from '@/lib/schema';
 import { interpreter } from '../models/interpreter';
 import { judgeReport } from '../retriage';
 import { understandLater } from '../understand';
@@ -25,6 +26,7 @@ import { summarize } from '../summarize';
 import { registerToken, unregisterToken } from '../push';
 import { ownClip } from '../voice';
 import { read, sql, transact, type Loaded } from '../world';
+import { simulationContext, simulateMobilization, simulationRun } from '../predict/simulation';
 import type { AuthEnv, Caller } from './auth';
 import { assertMobilizationReview, type ReviewRun } from './mobilization-review';
 
@@ -358,30 +360,7 @@ route('sendDirect', 'lead', z.object({ volunteerId: Id, body: Text }), async (a,
 });
 
 // ── mobilizations ──
-// `proposeMobilization` has no route: only the planner (src/server/predict/plan.ts), started by a trigger, proposes.
-
-const MobilizationStepInput = z.object({
-  teamSlug: TeamSlug,
-  peopleNeeded: z.number().int().positive().max(10),
-  reason: Text,
-});
-
-route(
-  'createMobilization',
-  'mo',
-  z.object({
-    title: Text,
-    rationale: Text,
-    urgency: Priority,
-    zoneSlug: z.string().nullable(),
-    playbookSlug: z.string().optional(),
-    steps: z.array(MobilizationStepInput).min(1),
-  }),
-  async (a, caller) => {
-    const { mobilization } = await transact({}, (b) => C.createMobilization(b, caller.id, a));
-    return { mobilizationId: mobilization.id };
-  },
-);
+// AI proposals only come from the audited, Mo-requested simulation; this is not an automatic dispatch pipeline.
 
 route(
   'approveMobilization',
@@ -389,6 +368,7 @@ route(
   z.object({
     mobilizationId: Id,
     reviewedRunId: Id.optional(),
+    acknowledgeGaps: z.boolean().optional(),
   }),
   async (a, caller) => {
     await transact(
@@ -399,13 +379,13 @@ route(
         return { proposal, ...result };
       },
       {},
-      async (tx, { proposal }, b) => {
+      async (tx, { proposal, taskIds }, b) => {
         const rows = proposal.analysisRunId
           ? await tx<ReviewRun[]>`
       select id, status, result, input_snapshot, validation_errors, mobilization_ids
       from mobilization_runs where id = ${proposal.analysisRunId} for share`
           : [];
-        assertMobilizationReview(proposal, rows[0] ?? null, a);
+        assertMobilizationReview(proposal, rows[0] ?? null, a, taskIds.map((id) => b.tasks[id]));
         if (proposal.analysisRunId)
           await tx`
       update mobilization_runs set raw_responses = raw_responses || ${tx.json([
@@ -413,6 +393,7 @@ route(
           event: 'approval_review',
           mobilizationId: proposal.id,
           reviewedRunId: a.reviewedRunId,
+          acknowledgedGaps: a.acknowledgeGaps === true,
           reviewedBy: caller.id,
           occurredAt: new Date(b.now).toISOString(),
         },
@@ -436,6 +417,19 @@ route(
     );
   },
 );
+
+route('mobilizationContext', 'mo', z.object({}), async () => simulationContext());
+
+route('simulateMobilization', 'mo', SimulationInputSchema, async (input, caller) =>
+  simulateMobilization(input, caller.id),
+);
+
+route('getMobilizationRun', 'mo', z.object({ runId: Id }), async ({ runId }) => {
+  // Mo reviewers share access to the audit behind a proposal, matching mobilization_runs RLS.
+  const run = await simulationRun(runId);
+  if (!run) throw new CommandError('not_found', 'No simulation run');
+  return run;
+});
 
 // ── festival-goers ──
 

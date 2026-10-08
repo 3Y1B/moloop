@@ -1,19 +1,11 @@
--- Moloop migration 3: a task can need more than one person.
--- required_count: how many people total, owner included (1 for almost every task).
--- helper_status: HelperAssignment[] (src/lib/schema/domain.ts), times in epoch ms, mirrors how `escalation` is
--- already stored. tasks.helper_ids stays a flat uuid[] in step with it, for the existing RLS `= any()` checks.
-
-alter table tasks
-  add column required_count integer not null default 1 check (required_count >= 1),
-  add column helper_status  jsonb   not null default '[]';
-
--- Backups sent before this migration only had helper_ids. They were already working the task, so they carry over as
--- accepted; the app reads helper_status alone, and writes helper_ids back from it.
-update tasks set helper_status = (
-  select jsonb_agg(jsonb_build_object(
-    'volunteerId', h,
-    'status', 'accepted',
-    'assignedAt', (extract(epoch from coalesce(assigned_at, created_at)) * 1000)::bigint,
-    'respondedAt', (extract(epoch from coalesce(assigned_at, created_at)) * 1000)::bigint))
-  from unnest(helper_ids) as h)
-where cardinality(helper_ids) > 0;
+-- Compatibility alias: upstream renamed 20261007130000_task_multi_person.sql to this version.
+-- Both histories are retained. The canonical migration owns schema creation; existing rows are untouched.
+-- In particular, never reconstruct helper_status from helper_ids: that could overwrite live replies.
+do $compat$
+begin
+  if not (exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'tasks' and column_name = 'required_count')
+      and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'tasks' and column_name = 'helper_status')) then
+    raise exception 'Missing canonical prerequisite 20261007130000_task_multi_person.sql; apply all pending migrations in version order';
+  end if;
+end;
+$compat$;

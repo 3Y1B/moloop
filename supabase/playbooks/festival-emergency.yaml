@@ -1,0 +1,998 @@
+schemaVersion: 1
+slug: severe-weather-main-stage
+version: 1
+status: published
+title: Severe Thunderstorm at Main Stage
+
+appliesWhen: >
+  A severe thunderstorm warning has been issued and main-stage wind monitoring
+  exceeds structural limits, lightning exposure is present, or site management
+  determines that continued operation creates an immediate weather risk.
+
+requiredInputs:
+  - weather.warning
+  - weather.windSpeed
+  - weather.lightningDistance
+  - stageSafety.windLimitExceeded
+  - audienceByZone
+  - shelters
+  - approvedRoutes
+  - currentRoster
+
+decisionPoints:
+  - id: stage-hold
+    owner: mo
+    question: Should the main stage enter hold or shutdown?
+  - id: shelter-vs-evacuate
+    owner: mo
+    question: Should affected zones shelter in place, move to approved shelters, or begin controlled evacuation?
+  - id: capacity-gap
+    owner: mo
+    question: If designated shelter capacity is insufficient, which approved overflow or dispersal plan should be used?
+
+constraints:
+  - id: no-unknown-assembly-area
+    instruction: Only direct people to shelters, assembly areas, or dispersal zones already approved in site data.
+  - id: no-fabricated-capacity
+    instruction: Do not claim that shelter capacity is sufficient unless confirmed by current capacity data.
+  - id: no-auto-dispatch
+    instruction: All mobilization actions must wait for MO approval.
+  - id: no-conflicting-public-messages
+    instruction: All public instructions must use the latest MO-approved movement plan.
+
+actions:
+  - id: restrict-stage-entry
+    requirement: must
+    teamSlug: crowd
+    title: Stop new entry to the main-stage audience zone
+    instructions: Freeze inflow, preserve emergency lanes, and meter all outward movement using approved crowd routes.
+    peopleNeeded: null
+
+  - id: stage-safe-state
+    requirement: must
+    teamSlug: ops
+    title: Put the main stage and exposed infrastructure into a safe state
+    instructions: Follow approved stage, electrical, rigging, and temporary-structure weather procedures.
+    peopleNeeded: null
+
+  - id: performer-comms
+    requirement: must
+    teamSlug: artist
+    title: Notify performers and backstage teams
+    instructions: Communicate the MO-approved show status, backstage movement restrictions, and restart conditions.
+    peopleNeeded: 2
+
+  - id: medical-readiness
+    requirement: must
+    teamSlug: first-aid
+    title: Pre-position medical resources around the main-stage zone
+    instructions: Prepare for slips, trauma, panic reactions, lightning exposure, and weather-related illness.
+    peopleNeeded: null
+
+  - id: shelter-guidance
+    requirement: must
+    teamSlug: info
+    title: Direct patrons to confirmed safe locations
+    instructions: Communicate only approved shelters, overflow areas, route status, and verified capacity information.
+    peopleNeeded: null
+
+  - id: vulnerable-patron-support
+    requirement: must
+    teamSlug: welfare
+    title: Assist children, disabled patrons, and other vulnerable attendees
+    instructions: Prioritize safe movement, reunification support, and continuity of care during relocation.
+    peopleNeeded: null
+
+  - id: route-security
+    requirement: must
+    teamSlug: security
+    title: Secure evacuation and emergency-service routes
+    instructions: Keep approved routes clear, prevent entry into unsafe zones, and coordinate with external emergency services.
+    peopleNeeded: null
+
+  - id: vendor-weather-shutdown
+    requirement: must
+    teamSlug: vendors
+    title: Secure vendor operations exposed to severe weather
+    instructions: Follow approved procedures for gas, electrical equipment, awnings, loose objects, and temporary structures.
+    peopleNeeded: null
+
+---
+schemaVersion: 1
+slug: crowd-crush-main-stage
+version: 1
+status: published
+title: Crowd Surge and Crushing at Main Stage
+
+appliesWhen: >
+  Crowd density, barrier pressure, repeated falls, distress signals, or medical extractions
+  indicate a developing crush, crowd collapse, or dangerous compression in a performance zone.
+
+requiredInputs:
+  - crowd.densityByZone
+  - crowd.flowDirection
+  - barrierStatus
+  - medicalReports
+  - audienceByZone
+  - approvedReliefRoutes
+  - stageStatus
+  - currentRoster
+
+decisionPoints:
+  - id: performance-hold
+    owner: mo
+    question: Should the performance be paused or stopped to reduce crowd pressure?
+  - id: pressure-release
+    owner: mo
+    question: Which approved crowd-pressure release route or zone should be activated?
+  - id: mass-casualty-escalation
+    owner: mo
+    question: Should the incident be escalated to the mass-casualty response plan?
+
+constraints:
+  - id: no-new-inflow
+    instruction: Do not permit additional inflow into the affected crowd zone until MO clears it.
+  - id: no-conflicting-flow
+    instruction: Crowd teams must not issue opposing movement instructions from different access points.
+  - id: preserve-medical-corridor
+    instruction: At least one approved emergency extraction route must remain clear.
+  - id: no-auto-dispatch
+    instruction: All mobilization actions must wait for MO approval.
+
+actions:
+  - id: freeze-inflow
+    requirement: must
+    teamSlug: crowd
+    title: Freeze inflow and reduce local crowd pressure
+    instructions: Stop new entry, open approved pressure-release paths, and create space around fallen or distressed patrons.
+    peopleNeeded: null
+
+  - id: secure-extraction-corridor
+    requirement: must
+    teamSlug: security
+    title: Establish a protected medical extraction corridor
+    instructions: Keep the route clear, control crossing traffic, and support emergency-service access.
+    peopleNeeded: null
+
+  - id: triage-and-extract
+    requirement: must
+    teamSlug: first-aid
+    title: Begin rapid triage and casualty extraction
+    instructions: Prioritize airway compromise, crush injury, unconscious patients, and those unable to self-evacuate.
+    peopleNeeded: null
+
+  - id: stage-crowd-message
+    requirement: must
+    teamSlug: artist
+    title: Coordinate performer and stage messaging
+    instructions: If approved by MO, have stage personnel deliver concise instructions to stop pushing, create space, or move back.
+    peopleNeeded: 2
+
+  - id: public-direction
+    requirement: must
+    teamSlug: info
+    title: Issue unified crowd-movement instructions
+    instructions: Repeat only MO-approved directions and avoid unverified casualty information.
+    peopleNeeded: null
+
+  - id: vulnerable-and-separated
+    requirement: must
+    teamSlug: welfare
+    title: Support separated families and vulnerable patrons
+    instructions: Receive displaced children, assist distressed attendees, and coordinate reunification away from the pressure zone.
+    peopleNeeded: null
+
+  - id: barrier-and-lighting
+    requirement: must
+    teamSlug: ops
+    title: Inspect barriers, access lanes, and lighting
+    instructions: Stabilize infrastructure and improve visibility without obstructing evacuation or medical movement.
+    peopleNeeded: null
+
+  - id: suspend-nearby-service
+    requirement: must
+    teamSlug: vendors
+    title: Suspend service adjacent to relief routes
+    instructions: Close queues and remove movable obstructions from designated crowd-release and emergency corridors.
+    peopleNeeded: null
+
+---
+schemaVersion: 1
+slug: vendor-fire-gas-hazard
+version: 1
+status: published
+title: Vendor Fire, Gas Leak, or Explosion Risk
+
+appliesWhen: >
+  A vendor, kitchen, generator, fuel source, or temporary structure is involved in fire,
+  suspected gas leakage, explosion, or rapidly spreading smoke that threatens patrons or adjacent operations.
+
+requiredInputs:
+  - incidentLocation
+  - fireOrGasStatus
+  - windAndSmokeDirection
+  - gasIsolationMap
+  - electricalIsolationMap
+  - audienceByZone
+  - approvedExclusionZones
+  - approvedRoutes
+  - currentRoster
+
+decisionPoints:
+  - id: partial-or-full-evacuation
+    owner: mo
+    question: Should the affected area be isolated only, partially evacuated, or included in a wider site evacuation?
+  - id: utility-isolation
+    owner: mo
+    question: Which electrical, gas, or fuel systems must be isolated?
+  - id: adjacent-stage-hold
+    owner: mo
+    question: Should nearby stages or attractions be stopped to prevent crowd convergence?
+
+constraints:
+  - id: no-entry-hot-zone
+    instruction: Non-emergency staff must not enter the fire, gas, or smoke hazard zone.
+  - id: no-unapproved-reignition
+    instruction: Gas, power, cooking, or generator systems must not be restarted until formally cleared.
+  - id: keep-fire-access-clear
+    instruction: Fire-service access routes and hydrant or suppression access points must remain unobstructed.
+  - id: no-auto-dispatch
+    instruction: All mobilization actions must wait for MO approval.
+
+actions:
+  - id: vendor-shutdown
+    requirement: must
+    teamSlug: vendors
+    title: Stop affected vendor operations
+    instructions: Shut down service and follow approved procedures for gas, fuel, cooking equipment, and nearby vendor evacuation.
+    peopleNeeded: null
+
+  - id: utility-isolation
+    requirement: must
+    teamSlug: ops
+    title: Isolate affected utilities and infrastructure
+    instructions: De-energize or isolate systems only through approved technical procedures and maintain safe access for responders.
+    peopleNeeded: null
+
+  - id: clear-public-zone
+    requirement: must
+    teamSlug: crowd
+    title: Clear patrons from the hazard area
+    instructions: Use approved exclusion boundaries and move people upwind or along designated safe routes.
+    peopleNeeded: null
+
+  - id: incident-perimeter
+    requirement: must
+    teamSlug: security
+    title: Establish and hold the incident perimeter
+    instructions: Prevent re-entry, protect emergency-service access, and coordinate with fire and police agencies.
+    peopleNeeded: null
+
+  - id: burns-smoke-care
+    requirement: must
+    teamSlug: first-aid
+    title: Prepare for burns, smoke inhalation, and trauma
+    instructions: Establish triage outside the hazard zone and maintain a clear casualty-transfer route.
+    peopleNeeded: null
+
+  - id: relocation-messaging
+    requirement: must
+    teamSlug: info
+    title: Issue relocation and closure instructions
+    instructions: State which areas are closed, which routes remain open, and where displaced patrons should go.
+    peopleNeeded: null
+
+  - id: vulnerable-relocation
+    requirement: must
+    teamSlug: welfare
+    title: Support displaced and vulnerable patrons
+    instructions: Assist children, disabled attendees, and separated groups relocated from the affected area.
+    peopleNeeded: null
+
+  - id: show-hold
+    requirement: must
+    teamSlug: artist
+    title: Hold nearby performances if directed
+    instructions: Keep performers and backstage staff away from the hazard zone and relay the MO-approved show status.
+    peopleNeeded: 2
+
+---
+schemaVersion: 1
+slug: mass-casualty-unknown-cause
+version: 1
+status: published
+title: Mass Casualty Incident with Unknown Cause
+
+appliesWhen: >
+  Multiple people become seriously ill, collapse, or are injured within a short period and the cause
+  is unknown, potentially environmental, medical, toxic, structural, or crowd-related.
+
+requiredInputs:
+  - casualtyEstimate
+  - symptomsByLocation
+  - medicalReports
+  - airQualityStatus
+  - waterAndFoodReports
+  - hazardSensorStatus
+  - audienceByZone
+  - emergencyAccessRoutes
+  - currentRoster
+
+decisionPoints:
+  - id: mass-casualty-declaration
+    owner: mo
+    question: Should the event activate the mass-casualty incident plan?
+  - id: isolate-zone
+    owner: mo
+    question: Which areas should be isolated while the cause is investigated?
+  - id: shelter-or-evacuate
+    owner: mo
+    question: Should unaffected patrons remain in place, move to another zone, or evacuate?
+
+constraints:
+  - id: no-cause-speculation
+    instruction: Do not publicly attribute a cause until verified by qualified authorities.
+  - id: no-hot-zone-entry
+    instruction: Staff without appropriate clearance must not enter a suspected hazardous zone.
+  - id: preserve-casualty-access
+    instruction: Ambulance, triage, and casualty-transfer routes must remain clear.
+  - id: no-auto-dispatch
+    instruction: All mobilization actions must wait for MO approval.
+
+actions:
+  - id: mass-triage
+    requirement: must
+    teamSlug: first-aid
+    title: Establish mass-casualty triage
+    instructions: Create a casualty collection area outside any suspected hazard zone and prioritize life-threatening cases.
+    peopleNeeded: null
+
+  - id: isolate-area
+    requirement: must
+    teamSlug: security
+    title: Isolate the affected area
+    instructions: Establish controlled boundaries, protect emergency access, and coordinate with ambulance, fire, and police.
+    peopleNeeded: null
+
+  - id: stabilize-crowd
+    requirement: must
+    teamSlug: crowd
+    title: Stabilize surrounding crowd movement
+    instructions: Stop inflow, prevent convergence on the incident, and preserve clear emergency corridors.
+    peopleNeeded: null
+
+  - id: hazard-check
+    requirement: must
+    teamSlug: ops
+    title: Check site systems for environmental or infrastructure hazards
+    instructions: Review power, ventilation, water, temporary structures, generators, and available sensors without entering unsafe areas.
+    peopleNeeded: null
+
+  - id: factual-public-message
+    requirement: must
+    teamSlug: info
+    title: Issue fact-based safety instructions
+    instructions: Communicate only confirmed closures, movement instructions, and health guidance approved by MO.
+    peopleNeeded: null
+
+  - id: reunification-support
+    requirement: must
+    teamSlug: welfare
+    title: Set up welfare and reunification support
+    instructions: Support separated families, distressed patrons, and people displaced by the incident perimeter.
+    peopleNeeded: null
+
+  - id: hold-suspected-products
+    requirement: must
+    teamSlug: vendors
+    title: Suspend potentially related food or water service if directed
+    instructions: Preserve stock and records for investigation and do not dispose of potentially relevant products.
+    peopleNeeded: null
+
+  - id: performance-control
+    requirement: must
+    teamSlug: artist
+    title: Hold or modify nearby performances
+    instructions: Prevent audience convergence and relay only MO-approved incident instructions through stage channels.
+    peopleNeeded: 2
+
+---
+schemaVersion: 1
+slug: site-wide-power-comms-failure
+version: 1
+status: published
+title: Site-Wide Power and Communications Failure
+
+appliesWhen: >
+  Primary power fails and backup systems are unavailable or degraded, or critical communications,
+  lighting, access control, CCTV, ticketing, or public-address systems become unavailable across major site areas.
+
+requiredInputs:
+  - power.primaryStatus
+  - power.backupStatus
+  - lightingStatus
+  - radioNetworkStatus
+  - paStatus
+  - cctvStatus
+  - gateSystemStatus
+  - audienceByZone
+  - timeToDarkness
+  - currentRoster
+
+decisionPoints:
+  - id: event-hold
+    owner: mo
+    question: Should performances, entry, or the entire event be placed on hold?
+  - id: zone-closure
+    owner: mo
+    question: Which areas are unsafe to operate without power, lighting, or communications?
+  - id: manual-comms
+    owner: mo
+    question: Which approved manual communication plan should replace unavailable systems?
+
+constraints:
+  - id: no-dark-route
+    instruction: Do not direct patrons through unlit or unverified routes.
+  - id: no-unsafe-generator-connection
+    instruction: Temporary power must not be connected outside approved electrical procedures.
+  - id: assume-comms-degraded
+    instruction: Do not assume radio, mobile, PA, or digital systems are available unless confirmed.
+  - id: no-auto-dispatch
+    instruction: All mobilization actions must wait for MO approval.
+
+actions:
+  - id: restore-critical-power
+    requirement: must
+    teamSlug: ops
+    title: Restore or isolate critical power systems
+    instructions: Prioritize emergency lighting, medical areas, communications, access control, and other life-safety systems.
+    peopleNeeded: null
+
+  - id: stabilize-gates-and-flows
+    requirement: must
+    teamSlug: crowd
+    title: Stabilize gates, queues, and crowd movement
+    instructions: Suspend inflow where counting or access control is unreliable and maintain manually controlled safe routes.
+    peopleNeeded: null
+
+  - id: manual-security-coverage
+    requirement: must
+    teamSlug: security
+    title: Replace lost electronic security coverage
+    instructions: Increase physical patrols at dark zones, gates, restricted areas, and critical infrastructure.
+    peopleNeeded: null
+
+  - id: manual-public-information
+    requirement: must
+    teamSlug: info
+    title: Activate manual public-information points
+    instructions: Use approved megaphones, runners, signage, and staffed information points if digital systems are unavailable.
+    peopleNeeded: null
+
+  - id: medical-redistribution
+    requirement: must
+    teamSlug: first-aid
+    title: Reposition medical staff to visible and accessible locations
+    instructions: Maintain treatment capability and casualty transfer despite reduced lighting or communications.
+    peopleNeeded: null
+
+  - id: manual-welfare-logging
+    requirement: must
+    teamSlug: welfare
+    title: Switch welfare and lost-person functions to manual logging
+    instructions: Maintain controlled records for lost children, vulnerable patrons, and reunification while digital systems are offline.
+    peopleNeeded: null
+
+  - id: backstage-safe-state
+    requirement: must
+    teamSlug: artist
+    title: Hold performances and secure backstage movement
+    instructions: Keep artists and crew informed and stop stage activity where power loss affects safety systems.
+    peopleNeeded: 2
+
+  - id: vendor-safe-state
+    requirement: must
+    teamSlug: vendors
+    title: Suspend vendor operations affected by power loss
+    instructions: Protect food safety, secure electrical equipment, and prevent unsafe use of ad hoc power sources.
+    peopleNeeded: null
+
+---
+schemaVersion: 1
+slug: extreme-heat-water-shortage
+version: 1
+status: published
+title: Extreme Heat with Water-System Shortage
+
+appliesWhen: >
+  Heat conditions exceed the event heat-response threshold and potable-water availability,
+  refill throughput, shade capacity, or medical demand indicates a rising risk of mass heat illness.
+
+requiredInputs:
+  - weather.temperature
+  - weather.heatIndex
+  - water.tankLevels
+  - water.refillStationStatus
+  - shadeCapacity
+  - queueLengthByWaterPoint
+  - medicalHeatCases
+  - audienceByZone
+  - currentRoster
+
+decisionPoints:
+  - id: program-reduction
+    owner: mo
+    question: Should performances, high-density activities, or operating hours be reduced or paused?
+  - id: water-redistribution
+    owner: mo
+    question: Which approved water stocks or refill assets should be redistributed?
+  - id: cooling-zone-expansion
+    owner: mo
+    question: Which approved spaces should be converted or expanded for cooling and welfare use?
+
+constraints:
+  - id: potable-water-priority
+    instruction: Potable water availability must not be reduced for non-safety operational reasons.
+  - id: no-unverified-water-source
+    instruction: Do not distribute water from a source that is not approved as potable.
+  - id: no-unsafe-queue
+    instruction: Water queues must not block emergency routes or create dangerous crowd compression.
+  - id: no-auto-dispatch
+    instruction: All mobilization actions must wait for MO approval.
+
+actions:
+  - id: heat-triage
+    requirement: must
+    teamSlug: first-aid
+    title: Expand heat-illness triage and treatment
+    instructions: Prioritize altered mental status, collapse, severe dehydration, and suspected heat stroke.
+    peopleNeeded: null
+
+  - id: cooling-welfare
+    requirement: must
+    teamSlug: welfare
+    title: Expand cooling and vulnerable-patron support
+    instructions: Prioritize children, disabled patrons, older attendees, and anyone unable to tolerate heat exposure.
+    peopleNeeded: null
+
+  - id: water-logistics
+    requirement: must
+    teamSlug: ops
+    title: Reallocate potable water and cooling infrastructure
+    instructions: Move approved water assets, refill capacity, shade, misting, or cooling equipment to highest-risk zones.
+    peopleNeeded: null
+
+  - id: water-queue-control
+    requirement: must
+    teamSlug: crowd
+    title: Control queues at water and cooling points
+    instructions: Prevent crowd compression, keep emergency lanes open, and spread demand across approved locations.
+    peopleNeeded: null
+
+  - id: hydration-messaging
+    requirement: must
+    teamSlug: info
+    title: Issue heat and hydration guidance
+    instructions: Publish verified water locations, cooling areas, symptoms requiring medical help, and any program changes.
+    peopleNeeded: null
+
+  - id: protect-water-assets
+    requirement: must
+    teamSlug: security
+    title: Protect water deliveries and critical cooling areas
+    instructions: Keep delivery routes open and prevent conflict or unsafe crowding around limited resources.
+    peopleNeeded: null
+
+  - id: vendor-water-support
+    requirement: must
+    teamSlug: vendors
+    title: Support emergency potable-water distribution
+    instructions: Redirect approved sealed water and cold non-alcoholic beverages where instructed and maintain food cold-chain controls.
+    peopleNeeded: null
+
+  - id: artist-schedule-adjustment
+    requirement: must
+    teamSlug: artist
+    title: Implement heat-related schedule changes
+    instructions: Communicate delayed, shortened, or paused performances and backstage heat precautions approved by MO.
+    peopleNeeded: 2
+
+---
+schemaVersion: 1
+slug: suspected-food-water-contamination
+version: 1
+status: published
+title: Suspected Food or Water Contamination
+
+appliesWhen: >
+  Multiple patrons report similar gastrointestinal, allergic, or toxic symptoms linked by time,
+  location, vendor, product, or water source, or testing indicates possible contamination.
+
+requiredInputs:
+  - illnessCasesByTime
+  - illnessCasesByLocation
+  - symptoms
+  - vendorTransactionOrBatchRecords
+  - waterSourceStatus
+  - testResults
+  - approvedAlternativeWaterSources
+  - audienceByZone
+  - currentRoster
+
+decisionPoints:
+  - id: stop-sale
+    owner: mo
+    question: Which vendor, product, batch, or water source should be suspended immediately?
+  - id: public-health-advisory
+    owner: mo
+    question: What public health instruction should be issued now based on confirmed evidence?
+  - id: zone-closure
+    owner: mo
+    question: Does the affected service area require closure or controlled access?
+
+constraints:
+  - id: no-evidence-destruction
+    instruction: Potentially relevant food, water, packaging, logs, and samples must be preserved for investigation.
+  - id: no-unverified-attribution
+    instruction: Do not publicly name a source as the cause unless confirmed by qualified authorities.
+  - id: no-unapproved-replacement-source
+    instruction: Replacement water or food service must use approved sources only.
+  - id: no-auto-dispatch
+    instruction: All mobilization actions must wait for MO approval.
+
+actions:
+  - id: clinical-case-capture
+    requirement: must
+    teamSlug: first-aid
+    title: Identify, triage, and record symptomatic cases
+    instructions: Capture onset time, symptoms, exposure history, severity, and referral needs using approved medical procedures.
+    peopleNeeded: null
+
+  - id: quarantine-products
+    requirement: must
+    teamSlug: vendors
+    title: Stop sale and quarantine suspected products
+    instructions: Preserve stock, batch information, cleaning logs, and transaction records for investigation.
+    peopleNeeded: null
+
+  - id: isolate-water-system
+    requirement: must
+    teamSlug: ops
+    title: Isolate suspected water infrastructure if directed
+    instructions: Shut or bypass affected sources and activate only approved alternative potable-water systems.
+    peopleNeeded: null
+
+  - id: controlled-area
+    requirement: must
+    teamSlug: security
+    title: Control access to affected service and investigation areas
+    instructions: Prevent interference, preserve evidence, and support public-health or emergency-service access.
+    peopleNeeded: null
+
+  - id: queue-redistribution
+    requirement: must
+    teamSlug: crowd
+    title: Redirect queues away from suspended vendors or water points
+    instructions: Prevent crowding around closed areas and guide patrons to approved alternatives.
+    peopleNeeded: null
+
+  - id: health-advisory
+    requirement: must
+    teamSlug: info
+    title: Issue approved health and service information
+    instructions: Communicate symptoms requiring help, confirmed closures, and approved alternative food or water locations.
+    peopleNeeded: null
+
+  - id: affected-patron-support
+    requirement: must
+    teamSlug: welfare
+    title: Support affected patrons and families
+    instructions: Assist with rest, reunification, transport coordination, and non-clinical support for symptomatic groups.
+    peopleNeeded: null
+
+  - id: stage-message-if-needed
+    requirement: must
+    teamSlug: artist
+    title: Support site-wide health messaging if required
+    instructions: Relay only MO-approved health instructions through stage channels when normal information channels are insufficient.
+    peopleNeeded: 2
+
+---
+schemaVersion: 1
+slug: gate-breach-uncontrolled-ingress
+version: 1
+status: published
+title: Gate Breach and Uncontrolled Ingress
+
+appliesWhen: >
+  An entry barrier, scanning process, or security line fails and a large number of people begin entering
+  without normal control, creating a risk of overcapacity, crushing, or loss of site accountability.
+
+requiredInputs:
+  - gateCounts
+  - ticketScanStatus
+  - barrierStatus
+  - siteCapacity
+  - audienceByZone
+  - alternateGateStatus
+  - approvedHoldingAreas
+  - currentRoster
+
+decisionPoints:
+  - id: gate-closure
+    owner: mo
+    question: Should the affected gate be fully closed, restricted, or converted to controlled exit only?
+  - id: alternate-entry
+    owner: mo
+    question: Which alternate approved gate or holding area should receive diverted arrivals?
+  - id: capacity-response
+    owner: mo
+    question: Is site or zone capacity uncertain enough to require entry suspension or program hold?
+
+constraints:
+  - id: no-compression
+    instruction: Do not create a hard stop that traps a moving crowd against barriers without a pressure-release plan.
+  - id: no-unapproved-holding-area
+    instruction: Divert arrivals only to approved holding or queuing areas.
+  - id: no-hostile-assumption
+    instruction: Do not treat all uncontrolled entrants as hostile; use proportional crowd and security procedures.
+  - id: no-auto-dispatch
+    instruction: All mobilization actions must wait for MO approval.
+
+actions:
+  - id: stop-and-meter-entry
+    requirement: must
+    teamSlug: crowd
+    title: Stop uncontrolled inflow and establish metered entry
+    instructions: Create safe pressure relief, redirect new arrivals, and maintain emergency exits and pedestrian routes.
+    peopleNeeded: null
+
+  - id: secure-breach
+    requirement: must
+    teamSlug: security
+    title: Secure the breached gate and adjacent perimeter
+    instructions: Protect staff, prevent secondary breaches, and coordinate with police if required.
+    peopleNeeded: null
+
+  - id: redirect-arrivals
+    requirement: must
+    teamSlug: info
+    title: Redirect arriving patrons
+    instructions: Publish approved alternate gates, expected delays, and entry suspension information without encouraging convergence.
+    peopleNeeded: null
+
+  - id: restore-entry-systems
+    requirement: must
+    teamSlug: ops
+    title: Repair or replace failed barriers and access systems
+    instructions: Restore scanning, fencing, lighting, power, or temporary infrastructure using approved procedures.
+    peopleNeeded: null
+
+  - id: gate-medical-post
+    requirement: must
+    teamSlug: first-aid
+    title: Position medical support at crowd-pressure points
+    instructions: Prepare for falls, crush injury, heat illness, panic, and access problems near affected gates.
+    peopleNeeded: null
+
+  - id: separated-party-support
+    requirement: must
+    teamSlug: welfare
+    title: Support separated families and vulnerable arrivals
+    instructions: Provide a controlled location for lost children, separated groups, and patrons unable to remain in queues.
+    peopleNeeded: null
+
+  - id: clear-vendor-obstructions
+    requirement: must
+    teamSlug: vendors
+    title: Clear nearby queues and movable vendor obstructions
+    instructions: Reduce competing foot traffic around the breached gate and alternate access routes.
+    peopleNeeded: null
+
+  - id: program-hold-if-needed
+    requirement: must
+    teamSlug: artist
+    title: Prepare for performance holds if capacity is uncertain
+    instructions: Keep stages ready to pause if crowd distribution or total attendance cannot be safely verified.
+    peopleNeeded: 2
+
+---
+schemaVersion: 1
+slug: credible-security-threat
+version: 1
+status: published
+title: Credible Security Threat Requiring Shelter or Evacuation
+
+appliesWhen: >
+  Security or law enforcement identifies a credible threat, suspicious object, violent incident,
+  or other security condition that requires exclusion, shelter-in-place, lockdown, or controlled evacuation.
+
+requiredInputs:
+  - threatLocation
+  - threatCredibilityStatus
+  - lawEnforcementGuidance
+  - cctvStatus
+  - audienceByZone
+  - approvedShelterZones
+  - approvedEvacuationRoutes
+  - stageStatus
+  - currentRoster
+
+decisionPoints:
+  - id: shelter-or-evacuate
+    owner: mo
+    question: Based on law-enforcement guidance, should affected zones shelter, lock down, or evacuate?
+  - id: exclusion-zone
+    owner: mo
+    question: What exclusion area and route closures are required?
+  - id: performance-hold
+    owner: mo
+    question: Which stages or attractions must stop to prevent movement toward the incident?
+
+constraints:
+  - id: no-staff-investigation
+    instruction: Festival staff must not approach or investigate a suspicious object or active threat.
+  - id: follow-law-enforcement
+    instruction: Security movement and public instructions must remain consistent with law-enforcement direction.
+  - id: no-sensitive-public-detail
+    instruction: Do not broadcast tactical, investigative, or unverified threat details.
+  - id: no-auto-dispatch
+    instruction: All mobilization actions must wait for MO approval.
+
+actions:
+  - id: establish-exclusion
+    requirement: must
+    teamSlug: security
+    title: Establish the security exclusion zone
+    instructions: Control access, coordinate with police, and keep emergency-service routes available.
+    peopleNeeded: null
+
+  - id: control-public-movement
+    requirement: must
+    teamSlug: crowd
+    title: Control crowd movement around the incident
+    instructions: Close affected routes, prevent convergence, and implement the MO-approved shelter or evacuation plan.
+    peopleNeeded: null
+
+  - id: approved-safety-message
+    requirement: must
+    teamSlug: info
+    title: Issue approved safety instructions
+    instructions: Communicate only the required action, affected area, safe routes, and where to obtain updates.
+    peopleNeeded: null
+
+  - id: technical-support
+    requirement: must
+    teamSlug: ops
+    title: Support site lockdown, lighting, and access-control changes
+    instructions: Make only MO- or law-enforcement-approved technical changes and avoid creating new hazards.
+    peopleNeeded: null
+
+  - id: casualty-readiness
+    requirement: must
+    teamSlug: first-aid
+    title: Stage medical resources outside the exclusion zone
+    instructions: Prepare to receive casualties without entering areas not cleared for medical access.
+    peopleNeeded: null
+
+  - id: shelter-vulnerable
+    requirement: must
+    teamSlug: welfare
+    title: Support children and vulnerable patrons during shelter or evacuation
+    instructions: Maintain supervised safe spaces, reunification records, and continuity of care.
+    peopleNeeded: null
+
+  - id: artist-lockdown
+    requirement: must
+    teamSlug: artist
+    title: Secure performers and backstage personnel
+    instructions: Stop movement into affected areas and communicate the approved shelter, hold, or evacuation status.
+    peopleNeeded: 2
+
+  - id: vendor-protection
+    requirement: must
+    teamSlug: vendors
+    title: Secure vendor areas and stop operations as directed
+    instructions: Reduce queues, close service where needed, and keep staff within approved safe locations.
+    peopleNeeded: null
+
+---
+schemaVersion: 1
+slug: temporary-structure-failure
+version: 1
+status: published
+title: Temporary Structure Failure or Partial Collapse
+
+appliesWhen: >
+  A stage, scaffold, viewing platform, tent, tower, barrier system, roof element, or other temporary structure
+  shows major instability, partial collapse, falling components, or a credible risk of further failure.
+
+requiredInputs:
+  - structureLocation
+  - structureStatus
+  - engineerAssessment
+  - weatherStatus
+  - casualtyReports
+  - electricalFeeds
+  - audienceByZone
+  - approvedExclusionZones
+  - approvedRoutes
+  - currentRoster
+
+decisionPoints:
+  - id: exclusion-size
+    owner: mo
+    question: How large should the exclusion zone be based on engineering and emergency-service advice?
+  - id: adjacent-operation-hold
+    owner: mo
+    question: Which adjacent stages, vendors, routes, or attractions must stop operating?
+  - id: partial-or-full-evacuation
+    owner: mo
+    question: Is local clearance sufficient or is a broader evacuation required?
+
+constraints:
+  - id: no-entry-unstable-structure
+    instruction: Staff must not enter, climb, pass beneath, or work inside an unstable structure unless specifically cleared.
+  - id: engineer-clearance-required
+    instruction: The structure and affected zone must not reopen without competent engineering clearance.
+  - id: isolate-energy
+    instruction: Electrical, mechanical, or fuel systems feeding the affected structure must be isolated when required.
+  - id: no-auto-dispatch
+    instruction: All mobilization actions must wait for MO approval.
+
+actions:
+  - id: technical-isolation
+    requirement: must
+    teamSlug: ops
+    title: Isolate affected infrastructure and support engineering assessment
+    instructions: Shut down relevant power or systems and maintain safe technical access for qualified engineers and responders.
+    peopleNeeded: null
+
+  - id: collapse-perimeter
+    requirement: must
+    teamSlug: security
+    title: Establish a hard exclusion perimeter
+    instructions: Prevent public and staff access to the collapse zone and protect rescue and engineering access.
+    peopleNeeded: null
+
+  - id: reroute-crowd
+    requirement: must
+    teamSlug: crowd
+    title: Reroute pedestrian flow around the exclusion zone
+    instructions: Use approved alternate routes and prevent queue build-up near blocked paths.
+    peopleNeeded: null
+
+  - id: casualty-triage
+    requirement: must
+    teamSlug: first-aid
+    title: Establish casualty triage outside the collapse zone
+    instructions: Prepare for trauma, crush injury, falls, and secondary medical emergencies.
+    peopleNeeded: null
+
+  - id: closure-message
+    requirement: must
+    teamSlug: info
+    title: Communicate closures and safe alternatives
+    instructions: State which routes or venues are closed and direct patrons only to approved alternatives.
+    peopleNeeded: null
+
+  - id: displaced-patron-support
+    requirement: must
+    teamSlug: welfare
+    title: Support displaced and vulnerable patrons
+    instructions: Assist with safe relocation, lost-person issues, accessibility needs, and family reunification.
+    peopleNeeded: null
+
+  - id: backstage-restriction
+    requirement: must
+    teamSlug: artist
+    title: Stop performer and crew access to affected backstage areas
+    instructions: Hold or relocate affected performances according to MO-approved plans.
+    peopleNeeded: 2
+
+  - id: nearby-vendor-shutdown
+    requirement: must
+    teamSlug: vendors
+    title: Close vendor operations within the exclusion area
+    instructions: Secure gas, power, equipment, and stock without entering unsafe structure zones.
+    peopleNeeded: null

@@ -1,5 +1,46 @@
 # Mobilization: plan
 
+## Current approved workflow (8 October 2026)
+
+This section supersedes the automatic-trigger proposal preserved below. Mobilization uses
+Mo's explicit **Test situation** request; there is no report/reading background planner,
+code-owned emergency SOP catalog, immediate-create HTTP bypass, or fabricated fallback plan.
+
+1. Mo opens **Test situation** beside **Take a break**, selects one of the quick situations,
+   and expands individual controls only when needed. Scenario facts are explicitly hypothetical;
+   unknown weather and missing observations stay unknown. Venue, timetable, roster and existing
+   workload are captured from the database with accurate provenance.
+2. Test opens Mo's **Needs action** tab immediately. A new infinity activity row rotates four
+   descriptive messages every ten seconds. **Estimated 30 seconds** is an estimate, not a live
+   stage measurement or latency guarantee. The account-owned job survives screen navigation.
+3. AI selects relevant published SOPs through one batched read-only `get_playbooks` call,
+   returns structured findings and multi-task plans, and cannot approve or dispatch them.
+4. The server validates exact SOP versions, evidence, locations, teams, skills, required-action
+   coverage, headcounts and relationships. Every mandatory action must be planned or explicitly
+   unmet; nothing silently fills omissions or shrinks demand to the available crew. Failed
+   validation creates no Mobilization and retains the audit for inspection.
+5. Valid output saves pending Mobilizations. Mo sees name, required people and team count,
+   then task rows with expandable operational details, then separate readable Justification.
+   Explicit approval rechecks current eligible people and requires acknowledgement of actual
+   shortages before creating real tasks. No real task or crew message is sent before approval.
+
+**Manage playbooks** remains beside Test. The ten imported SOPs are database-owned and
+versioned; Mo can revise, publish or disable them. Published history is immutable. The current
+local demo has 80 actions at 12 people each, increased through two named revisions; custom Mo
+edits are never multiplied again by re-running the same revision. `playbooks:scale` defaults to
+a dry run; adding `--factor 2 --apply` explicitly publishes the additional staffing revision.
+Actual available staff are always counted from the roster, not inferred from the 300-person
+festival total. `/api/reading` is retained only as a typed measurement-ingestion endpoint;
+those readings do not automatically start analysis and are not yet an input adapter for Test.
+
+The compatibility migrations support both the original October 7 history and the renamed
+October 8 history. They do not reset/seed existing data or overwrite SOP versions, schedules,
+crew replies or tasks. `npm run mobilization-migrations:check` is read-only by default;
+stop the application server before an explicit local-only `-- --apply` upgrade. Model setup
+is documented in `.env.example`; existing private `LLM_*` settings remain supported.
+
+## Historical alternative (not implemented as the current workflow)
+
 ## What it is (Chien)
 
 Mobilization is for the rare, serious situations (a storm, food contamination, a crowd surge) that need several

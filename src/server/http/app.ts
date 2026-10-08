@@ -5,6 +5,7 @@ import { POLICY } from '@/lib/lifecycle';
 import { requireCaller, type AuthEnv } from './auth';
 import { briefsEnabled, speechAvailable } from '../models/speech';
 import { commands } from './commands';
+import { playbookRoutes } from './playbooks';
 import { readings } from './readings';
 import { signIn } from './sign-in';
 import { voice } from './voice';
@@ -32,11 +33,12 @@ app.get('/health', (c) =>
 app.use('/auth/*', cors({ origin: (origin) => origin, allowHeaders: ['content-type'] }));
 app.route('/auth', signIn);
 
-// Sensors and the demo simulator (./readings.ts): the server key, not a session, so before requireCaller.
+// Read-only ingestion into the measurements store: server key, not a session. Never starts mobilizations.
 app.route('/api', readings);
 
 app.use('/api/*', requireCaller);
 
 // One route per Repo command (./commands.ts).
 app.route('/api', commands);
+app.route('/api', playbookRoutes);
 app.route('/api', voice);

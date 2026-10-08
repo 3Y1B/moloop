@@ -725,7 +725,7 @@ try {
   section('multi-person mobilization');
   {
     expect(
-      'duplicate teams are rejected before a mobilization is created',
+      'the legacy immediate-create bypass is retired',
       (
         await mo.call('createMobilization', {
           title: 'invalid duplicate steps',
@@ -737,7 +737,7 @@ try {
             { teamSlug: 'crowd', peopleNeeded: 1, reason: 'duplicate' },
           ],
         })
-      ).status === 400,
+      ).status === 404,
     );
     const mobilizationId = crypto.randomUUID();
     mobilizations.add(mobilizationId);

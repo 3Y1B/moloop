@@ -106,10 +106,10 @@ describe('focused experimental input projection (offline only)', () => {
 
   it('keeps explicit zero, false, scoped partial completeness and canonical aliases', () => {
     const input = snapshot(); const focused = focusedPlanningInput(input);
-    expect(focused.inputAvailability['weather.windSpeed']).toMatchObject({ available: true, completeness: 'complete', source: 'database' });
+    expect(focused.inputAvailability['weather.windSpeed']).toMatchObject({ available: true, completeness: 'complete', source: 'manual_demo' });
     expect(focused.inputAvailability['stageSafety.windLimitExceeded']).toMatchObject({ available: true, completeness: 'partial' });
     expect(focused.inputAvailability.audienceByZone).toMatchObject({ available: true, completeness: 'partial' });
-    expect(focused.inputAvailability['weather.temperature']).toMatchObject({ canonicalKey: 'weather.temperatureC', source: 'database' });
+    expect(focused.inputAvailability['weather.temperature']).toMatchObject({ canonicalKey: 'weather.temperatureC', source: 'manual_demo' });
     expect(focused.inputAvailability.currentRoster).toMatchObject({ canonicalKey: 'roster', source: 'database' });
     expect(focused.evidence.find((row) => row.ref === 'observation-0')?.value.value).toBe(0);
     expect(focused.evidence.find((row) => row.ref === 'observation-1')?.value.value).toBe(false);
