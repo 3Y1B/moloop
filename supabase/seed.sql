@@ -1,5 +1,5 @@
 -- The timetable and the old playbooks. Teams, certificates and zones are in migration 20261008185900_reference_data.sql,
--- the crew and their roster in 20261008190000_crew.sql.
+-- the crew and their roster in 20261008190000_crew.sql, moved to Birrarung Marr by 20261008210000 and 20261008210100.
 
 -- The stage timetable. Migration 20261008110300 adds the Lawn and River rows on databases that already have zones.
 insert into event_timetable(stage_id, act, starts_at, ends_at, expected_people)
@@ -27,5 +27,4 @@ insert into playbooks (slug, title, trigger, steps) values
      {"step":"Prepare shelter routes","team_slug":"crowd","template":"Open the shelter routes to ArtPlay and the Grove Stage marquee."}]'),
   ('lost-child', 'Lost child', 'Any report of a separated child',
    '[{"step":"Welfare lead takes ownership","team_slug":"welfare","template":"Lost child report. Welfare lead has the lead."},
-     {"step":"Check the Kids Playground","team_slug":"welfare","template":"Check the Kids Playground beside ArtPlay for a child matching the description. Found children wait at ArtPlay."},
      {"step":"Gate leads watch exits","team_slug":"crowd","template":"Watch for child matching description. Do not let leave unaccompanied."}]');

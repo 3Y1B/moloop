@@ -4,7 +4,7 @@
  *  - crew accounts from supabase/crew.json (falls back to crew.example.json): auth user, profile, description,
  *    certificates with their expiry dates, first festival or not, and when they're free (what they said, and the times).
  *    `bun scripts/gen-crew.ts` writes a full crew there; `bun scripts/roster.ts` then rosters it.
- * Migration 20261008190000_crew.sql already puts up the same crew and roster (scripts/crew-sql.ts writes it); this is
+ * Migration 20261008210100_birrarung_marr_crew.sql already puts up the same crew and roster (scripts/crew-sql.ts writes it); this is
  * for a crew.json that differs from it. Safe to re-run. Works against local or hosted: reads SUPABASE_URL and SUPABASE_SECRET_KEY.
  *
  *   bun scripts/seed.ts

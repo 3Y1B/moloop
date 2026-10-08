@@ -1,10 +1,10 @@
 /**
- * Writes supabase/migrations/20261008190000_crew.sql: the zones placed on the site plan, every account in
+ * Writes supabase/migrations/20261008210100_birrarung_marr_crew.sql: the zones placed on the site plan, every account in
  * supabase/crew.json (auth user, profile, description, certificates, when they're free) and the weekend's roster, as
  * plain SQL. Then `supabase db reset` (local) or `supabase db push` (the Spark) puts the whole crew up, no keys needed.
  *
  * People are matched by email, so a database that seed.ts already filled keeps its accounts, sign-ins and push tokens;
- * their details are brought in line and the weekend's shifts are replaced, as roster.ts would.
+ * their details and where they stand are brought in line and the weekend's shifts are replaced, as roster.ts would.
  *
  *   bun scripts/gen-crew.ts 300 1 2026-10-10   (the crew the migration was made from)
  *   bun scripts/crew-sql.ts
@@ -25,7 +25,7 @@ type CrewMember = {
   availability?: { said: string; windows: { from: string; to: string }[] };
 };
 
-const OUT = new URL('../supabase/migrations/20261008190000_crew.sql', import.meta.url);
+const OUT = new URL('../supabase/migrations/20261008210100_birrarung_marr_crew.sql', import.meta.url);
 // crew.json is gitignored: it's whatever gen-crew.ts last wrote.
 const people = await import('../supabase/crew.json', { with: { type: 'json' } }).then((m) => m.default as CrewMember[])
   .catch(() => { throw new Error('No supabase/crew.json: run bun scripts/gen-crew.ts 300 1 2026-10-10 first'); });
@@ -135,7 +135,7 @@ join crew_seed_ids i using (email)
 left join teams t on t.slug = c.team
 left join zones z on z.slug = c.zone
 on conflict (id) do update set full_name = excluded.full_name, role = excluded.role, team_id = excluded.team_id,
-  experience = excluded.experience, languages = excluded.languages;
+  experience = excluded.experience, languages = excluded.languages, last_known_zone = excluded.last_known_zone;
 
 insert into profile_private (id, phone, bio)
 select i.id, c.phone, c.bio from crew_seed c join crew_seed_ids i using (email)
