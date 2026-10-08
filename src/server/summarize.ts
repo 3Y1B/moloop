@@ -22,8 +22,8 @@ const Output = z.object({
   headline: z.string().max(160),
   points: z.array(z.object({
     text: z.string().max(200),
-    taskId: z.string().nullish(),
-    teamSlug: z.string().nullish(),
+    taskId: z.string().nullable(),
+    teamSlug: z.string().nullable(),
   })).max(6),
 });
 
