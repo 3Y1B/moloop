@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="880" height="372" viewBox="0 0 880 372" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Volunteer states</title>
+  <desc id="d">Three duty states: off shift, on duty (free or busy) and on break. Go on duty and shift end move between off shift and on duty; Take a break and Back on duty move between on duty and on break.</desc>
+  <defs>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0F172A" flood-opacity="0.07"/>
+    </filter>
+    <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path d="M2 1.5 8.5 5 2 8.5" fill="none" stroke="#94A3B8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <symbol id="i-moon" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></g></symbol>
+    <symbol id="i-coffee" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v2"/><path d="M14 2v2"/><path d="M6 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/></g></symbol>
+    <symbol id="i-walk" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M4 22l4-6 3 2 2 4"/><path d="M7 10l3-3 4 2 2 4 3 1"/><path d="M10 7l-1 6 2 3"/></g></symbol>
+    <symbol id="i-usercheck" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 11 2 2 4-4"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></g></symbol>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="879" height="371" rx="16" fill="#FFFFFF" stroke="#E2E8F0"/>
+
+  <text x="32" y="46" font-size="18" font-weight="600" fill="#0F172A">Volunteer states</text>
+  <text x="32" y="70" font-size="14" fill="#64748B">Three duty states. Only a free volunteer gets a new task.</text>
+
+  <!-- Off shift -->
+  <g filter="url(#sh)"><rect x="32" y="150" width="140" height="112" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/></g>
+  <use xlink:href="#i-moon" x="50" y="168" width="20" height="20" stroke="#64748B"/>
+  <text x="50" y="216" font-size="17" font-weight="600" fill="#0F172A">Off shift</text>
+  <text x="50" y="238" font-size="13" fill="#64748B">No tasks</text>
+
+  <!-- Off <-> On -->
+  <text x="236" y="174" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Go on duty</text>
+  <text x="236" y="190" font-size="12" fill="#64748B" text-anchor="middle">checks into shift</text>
+  <path d="M178 199 H294" fill="none" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah)"/>
+  <path d="M296 215 H180" fill="none" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah)"/>
+  <text x="236" y="236" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Shift ends</text>
+  <text x="236" y="252" font-size="12" fill="#64748B" text-anchor="middle">after the task</text>
+
+  <!-- On duty -->
+  <g filter="url(#sh)"><rect x="300" y="114" width="280" height="184" rx="16" fill="#FFFFFF" stroke="#2F6BF5"/></g>
+  <use xlink:href="#i-usercheck" x="318" y="134" width="20" height="20" stroke="#2F6BF5"/>
+  <text x="348" y="150" font-size="17" font-weight="600" fill="#0F172A">On duty</text>
+
+  <rect x="316" y="168" width="248" height="52" rx="10" fill="#F5F7FB"/>
+  <circle cx="336" cy="194" r="5" fill="#1F8A5B"/>
+  <text x="350" y="199" font-size="15" font-weight="600" fill="#0F172A">Free</text>
+  <text x="548" y="199" font-size="13" fill="#64748B" text-anchor="end">Gets new tasks</text>
+
+  <rect x="316" y="230" width="248" height="52" rx="10" fill="#F5F7FB"/>
+  <circle cx="336" cy="256" r="5" fill="#94A3B8"/>
+  <text x="350" y="261" font-size="15" font-weight="600" fill="#0F172A">Busy</text>
+  <text x="548" y="261" font-size="13" fill="#64748B" text-anchor="end">One task, extras queue</text>
+
+  <!-- On <-> Break: the duty chip's button -->
+  <rect x="588.5" y="164.5" width="111" height="25" rx="12.5" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <use xlink:href="#i-coffee" x="599" y="170" width="14" height="14" stroke="#0F172A"/>
+  <text x="619" y="181.5" font-size="12" font-weight="600" fill="#0F172A">Take a break</text>
+  <path d="M584 199 H702" fill="none" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah)"/>
+  <path d="M704 215 H586" fill="none" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah)"/>
+  <rect x="588.5" y="224.5" width="111" height="25" rx="12.5" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <use xlink:href="#i-walk" x="597" y="230" width="14" height="14" stroke="#0F172A"/>
+  <text x="616" y="241.5" font-size="12" font-weight="600" fill="#0F172A">Back on duty</text>
+
+  <!-- On break -->
+  <g filter="url(#sh)"><rect x="708" y="150" width="140" height="112" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/></g>
+  <use xlink:href="#i-coffee" x="726" y="168" width="20" height="20" stroke="#C26A00"/>
+  <text x="726" y="216" font-size="17" font-weight="600" fill="#0F172A">On break</text>
+  <text x="726" y="238" font-size="13" fill="#64748B">No tasks</text>
+
+  <line x1="32" y1="320" x2="848" y2="320" stroke="#E2E8F0"/>
+  <text x="32" y="346" font-size="13" fill="#64748B">Volunteers start off shift. Leads and Mo start on duty. Both break buttons live under the duty chip.</text>
+</svg>

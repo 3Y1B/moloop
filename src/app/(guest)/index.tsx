@@ -3,11 +3,11 @@ import { useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { DemoButton } from '@/components/demo-panel';
-import { HiVisBar } from '@/components/guest/hivis-bar';
 import { PlaceChip, PlacePicker } from '@/components/guest/place-picker';
 import { RequestFold } from '@/components/guest/request-row';
 import { VenueMap } from '@/components/map/venue-map';
 import { TopBar, useTopBarMetrics } from '@/components/ui/top-bar';
+import { VoiceDock } from '@/components/voice/voice-dock';
 import { useMyPlace, useMyRequests, useRepo } from '@/data/hooks';
 import { registerForPush } from '@/data/push';
 import { nearestZone } from '@/lib/presence';
@@ -45,7 +45,7 @@ export default function AskScreen() {
         right={<DemoButton />}
       />
 
-      <HiVisBar
+      <VoiceDock
         placeholder="Ask or report"
         onHeight={setStack}
         rest={requests.length > 0 && <RequestFold requests={requests} maxHeight={height * 0.4} />}

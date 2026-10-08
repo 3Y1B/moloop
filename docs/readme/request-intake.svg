@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 416" width="880" height="416" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Request intake</title>
+  <desc id="d">Anyone speaks or types. Speech is transcribed and shown back. Crew messages are read as a reply to their task or a new report. The gate sets team, priority and routine; a routine P3 question from a festival-goer is answered by AI, everything else goes on to routing.</desc>
+  <defs>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.6" flood-color="#0F172A" flood-opacity="0.07"/>
+    </filter>
+    <marker id="ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M1.5 1.5 L8.5 5 L1.5 8.5" fill="none" stroke="#94A3B8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <g id="i-mic" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></g>
+    <g id="i-audio" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></g>
+    <g id="i-message" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></g>
+    <g id="i-shield" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></g>
+    <g id="i-check" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></g>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="879" height="415" rx="16" fill="#FFFFFF" stroke="#E2E8F0"/>
+
+  <text x="32" y="44" font-size="17" font-weight="600" fill="#0F172A">Request intake</text>
+  <text x="32" y="66" font-size="13" fill="#64748B">Voice or text in, read and sorted before anyone is sent.</text>
+
+  <!-- connectors -->
+  <g fill="none" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ar)">
+    <path d="M182 179 H208"/>
+    <path d="M360 179 H386"/>
+    <path d="M538 179 H564"/>
+    <path d="M750 179 H846"/>
+    <path d="M600 254 V294"/>
+    <path d="M463 254 V298"/>
+  </g>
+  <path d="M107 298 V256" fill="none" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <!-- step cards -->
+  <g font-size="13">
+    <g>
+      <rect x="32" y="104" width="150" height="150" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+      <rect x="48" y="120" width="32" height="32" rx="9" fill="#EAF0FE"/>
+      <use href="#i-mic" transform="translate(55 127) scale(0.75)" color="#2F6BF5"/>
+      <circle cx="158" cy="136" r="11" fill="#FFFFFF" stroke="#2F6BF5" stroke-width="1.5"/>
+      <text x="158" y="140.5" font-size="12" font-weight="600" fill="#2F6BF5" text-anchor="middle">1</text>
+      <text x="48" y="182" font-size="15" font-weight="600" fill="#0F172A">Speak or type</text>
+      <text fill="#64748B"><tspan x="48" y="204">Hold to talk,</tspan><tspan x="48" y="222">or type</tspan></text>
+    </g>
+    <g>
+      <rect x="210" y="104" width="150" height="150" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+      <rect x="226" y="120" width="32" height="32" rx="9" fill="#EAF0FE"/>
+      <use href="#i-audio" transform="translate(233 127) scale(0.75)" color="#2F6BF5"/>
+      <circle cx="336" cy="136" r="11" fill="#FFFFFF" stroke="#2F6BF5" stroke-width="1.5"/>
+      <text x="336" y="140.5" font-size="12" font-weight="600" fill="#2F6BF5" text-anchor="middle">2</text>
+      <text x="226" y="182" font-size="15" font-weight="600" fill="#0F172A">Transcribe</text>
+      <text fill="#64748B"><tspan x="226" y="204">Shows “Heard: …”</tspan><tspan x="226" y="222">before Send</tspan></text>
+    </g>
+    <g>
+      <rect x="388" y="104" width="150" height="150" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+      <rect x="404" y="120" width="32" height="32" rx="9" fill="#EAF0FE"/>
+      <use href="#i-message" transform="translate(411 127) scale(0.75)" color="#2F6BF5"/>
+      <circle cx="514" cy="136" r="11" fill="#FFFFFF" stroke="#2F6BF5" stroke-width="1.5"/>
+      <text x="514" y="140.5" font-size="12" font-weight="600" fill="#2F6BF5" text-anchor="middle">3</text>
+      <text x="404" y="182" font-size="15" font-weight="600" fill="#0F172A">Interpret</text>
+      <text fill="#64748B"><tspan x="404" y="204">Crew only: a reply,</tspan><tspan x="404" y="222">or a new report?</tspan></text>
+    </g>
+    <g>
+      <rect x="566" y="104" width="184" height="150" rx="14" fill="#FFFFFF" stroke="#2F6BF5" filter="url(#sh)"/>
+      <rect x="582" y="120" width="32" height="32" rx="9" fill="#2F6BF5"/>
+      <use href="#i-shield" transform="translate(589 127) scale(0.75)" color="#FFFFFF"/>
+      <circle cx="726" cy="136" r="11" fill="#2F6BF5"/>
+      <text x="726" y="140.5" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">4</text>
+      <text x="582" y="182" font-size="15" font-weight="600" fill="#0F172A">Gate</text>
+      <g font-size="12">
+        <rect x="582" y="194" width="50" height="22" rx="11" fill="#F5F7FB" stroke="#E2E8F0"/><text x="607" y="209" text-anchor="middle" fill="#0F172A">Team</text>
+        <rect x="638" y="194" width="58" height="22" rx="11" fill="#F5F7FB" stroke="#E2E8F0"/><text x="667" y="209" text-anchor="middle" fill="#0F172A">P1–P3</text>
+        <rect x="582" y="222" width="76" height="22" rx="11" fill="#F5F7FB" stroke="#E2E8F0"/><text x="620" y="237" text-anchor="middle" fill="#0F172A">Routine?</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- exit to routing -->
+  <text x="798" y="168" font-size="13" font-weight="600" fill="#2F6BF5" text-anchor="middle">To routing</text>
+
+  <!-- who -->
+  <g font-size="12">
+    <rect x="32" y="300" width="100" height="24" rx="12" fill="#F5F7FB" stroke="#E2E8F0"/><text x="82" y="316" text-anchor="middle" fill="#0F172A">Festival-goer</text>
+    <rect x="138" y="300" width="80" height="24" rx="12" fill="#F5F7FB" stroke="#E2E8F0"/><text x="178" y="316" text-anchor="middle" fill="#0F172A">Volunteer</text>
+    <rect x="224" y="300" width="80" height="24" rx="12" fill="#F5F7FB" stroke="#E2E8F0"/><text x="264" y="316" text-anchor="middle" fill="#0F172A">Team lead</text>
+    <rect x="310" y="300" width="40" height="24" rx="12" fill="#F5F7FB" stroke="#E2E8F0"/><text x="330" y="316" text-anchor="middle" fill="#0F172A">Mo</text>
+  </g>
+
+  <!-- reply exit -->
+  <rect x="393" y="300" width="140" height="24" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="463" y="316" font-size="12" text-anchor="middle" fill="#0F172A">Reply → their task</text>
+
+  <!-- routine branch -->
+  <text x="612" y="279" font-size="12" fill="#0F172A"><tspan font-weight="600">Routine ≥ 0.95</tspan> and P3</text>
+  <rect x="566" y="296" width="282" height="88" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+  <rect x="582" y="312" width="32" height="32" rx="9" fill="#E8F4EE"/>
+  <use href="#i-check" transform="translate(589 319) scale(0.75)" color="#1F8A5B"/>
+  <text x="628" y="332" font-size="15" font-weight="600" fill="#0F172A">AI answers</text>
+  <text font-size="13" fill="#64748B"><tspan x="628" y="352">Festival-goer questions.</tspan><tspan x="628" y="370">Nobody is sent.</tspan></text>
+  <rect x="756" y="314" width="76" height="22" rx="11" fill="#E8F4EE"/>
+  <text x="794" y="329" font-size="12" font-weight="600" fill="#1F8A5B" text-anchor="middle">Answered</text>
+</svg>

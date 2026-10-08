@@ -38,6 +38,8 @@ export type Volunteer = {
   phone: string | null;
   /** Background and strengths, for the picker ("ICU nurse. Calm under pressure."). Crew-only, so the server's alone. */
   bio?: string | null;
+  /** Their face, as DiceBear options (src/components/ui/avatar.tsx). Initials when none. */
+  avatar?: string | null;
 };
 
 /** Someone's place on a rostered shift (src/lib/roster.ts), as the day runs it (src/lib/shifts.ts). */

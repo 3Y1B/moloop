@@ -3,7 +3,7 @@
  * (bun scripts/gen-crew.ts), a quarter of them busy, for a sample P1. Three ways:
  *
  *   lanes      what server/pick.ts does: the qualified ranking, the two lanes, then the pick (OpenAI)
- *   each       a yes/no per person, all started at once, through the real `decide` (Spark limiter and fallback included)
+ *   each       a yes/no per person, all started at once, through the real `decide`
  *   batch      the same, BATCH people per call
  *   bios       bio scoring alone, a yes/no per person or one call over everyone, three shuffles each (OpenAI)
  *   cases      reports a one-certificate-per-category table gets wrong, through two versions of the shortlist;
@@ -12,8 +12,7 @@
  *              many of each top 6 have everything the case wants
  *
  *   bun scripts/bench-pick.ts [lanes|each|batch|both=each and batch|bios|cases|stability] [task=medical|lost_child|korean] [people=all free at the peak]
- *   BATCH=10 SPARK_CONCURRENCY=3 SPARK_RPM=95 MODEL_PROVIDER=spark|openai
- *   ONLY=spark  the Spark through its limiter with no time limit and no fallback, to see what it does on its own
+ *   BATCH=10
  *
  * Prints the wall time, and the model's top 8 beside the rules'; for each and batch, the per-call times and fallbacks.
  */
@@ -24,8 +23,6 @@ const { laneCandidates, rankCandidates, speakerNeeded } = await import('../src/l
 const { describe, pickCrew, rankQualified } = await import('../src/server/models/picker');
 const { decide, noul, decideModelId } = await import('../src/server/models');
 const { languageName } = await import('../src/lib/format');
-const { Jev } = await import('../src/server/models/jev');
-const { spark, sparkLimiter } = await import('../src/server/models/providers');
 
 let fallbacks = 0;
 const warn = console.warn.bind(console);
@@ -83,14 +80,13 @@ const everyone = rankCandidates(t, volunteers, others, { limit: Infinity })
   .map((candidate) => ({ candidate, volunteer: volunteers.find((v) => v.id === candidate.volunteerId)! }));
 const teams = Object.fromEntries(['first-aid', 'welfare', 'crowd', 'security', 'info', 'ops', 'artist', 'vendors'].map((s) => [s, { name: s }]));
 
-console.log(`${process.env.ONLY === 'spark' ? 'Spark only' : decideModelId()} · ${everyone.length} on duty (${busy.length} busy) · ${t.priority} ${t.category} · batch ${BATCH}\n`);
+console.log(`${decideModelId()} · ${everyone.length} on duty (${busy.length} busy) · ${t.priority} ${t.category} · batch ${BATCH}\n`);
 
 const about = {
   task: `${t.title}. ${t.summary}`, urgency: 'Life-threatening, needs someone now',
   ...(t.reporter.language !== 'en' && { reporter_speaks: languageName(t.reporter.language) }),
 };
-const jev = new Jev(spark());
-const ask: typeof decide = process.env.ONLY === 'spark' ? (state, q) => sparkLimiter().run(true, () => jev.decide(state, q)) : (state, q, o) => decide(state, q, o);
+const ask: typeof decide = (state, q, o) => decide(state, q, o);
 const QUESTION = 'Is this volunteer a good person to send to this task right now?';
 
 async function timed<T>(f: () => Promise<T>) {
@@ -128,7 +124,7 @@ if (mode === 'each' || mode === 'both') {
   const scores = new Map<string, number>();
   const t0 = Date.now();
   const calls = await Promise.all(everyone.map(async (s) => {
-    const r = await timed(() => ask({ ...about, volunteer: describe(s, teams) }, { fit: noul(QUESTION) }, { urgent: true }));
+    const r = await timed(() => ask({ ...about, volunteer: describe(s, teams) }, { fit: noul(QUESTION) }));
     if ('value' in r && r.value) scores.set(s.candidate.volunteerId, r.value.fit.noul);
     return { at: Date.now() - t0, error: 'error' in r ? r.error : undefined };
   }));
@@ -143,7 +139,7 @@ if (mode === 'batch' || mode === 'both') {
   const calls = await Promise.all(chunks.map(async (chunk) => {
     const people = Object.fromEntries(chunk.map((s, n) => [`person_${n + 1}`, describe(s, teams)]));
     const questions = Object.fromEntries(chunk.map((_, n) => [`person_${n + 1}`, noul(`Is person_${n + 1} a good person to send to this task right now?`)]));
-    const r = await timed(() => ask({ ...about, volunteers: people }, questions, { urgent: true }));
+    const r = await timed(() => ask({ ...about, volunteers: people }, questions));
     if ('value' in r && r.value) chunk.forEach((s, n) => scores.set(s.candidate.volunteerId, (r.value as Record<string, { noul: number }>)[`person_${n + 1}`].noul));
     return { at: Date.now() - t0, error: 'error' in r ? r.error : undefined };
   }));
@@ -185,7 +181,7 @@ if (mode === 'bios') {
       calls: free.length,
       read: async (order) => new Map(await Promise.all(order.map(async (v) => {
         const d = await decide({ task: `${t.title}. ${t.summary}`, background: v.bio! },
-          { fit: noul('Does this person\'s background (their job, study or past volunteering) give them skills this task needs?') }, { cloud: true });
+          { fit: noul('Does this person\'s background (their job, study or past volunteering) give them skills this task needs?') });
         return [v.id, d.fit.noul] as const;
       }))),
     },
@@ -195,7 +191,7 @@ if (mode === 'bios') {
         const d = await decide({ task: `${t.title}. ${t.summary}` }, {
           best: choice('Whose background (their job, study or past volunteering) best suits this task?',
             Object.fromEntries(order.map((v, n) => [`person_${n + 1}`, v.bio!]))),
-        }, { cloud: true });
+        });
         const p = d.best.probabilities as Record<string, number>;
         return new Map(order.map((v, n) => [v.id, p[`person_${n + 1}`] ?? 0]));
       },

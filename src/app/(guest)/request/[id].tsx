@@ -4,6 +4,7 @@ import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { DemoButton } from '@/components/demo-panel';
+import { useLiveNow } from '@/components/lead/use-live-now';
 import { RequestMap } from '@/components/guest/request-map';
 import { STEP_TRACKER_HEIGHT, StepTracker } from '@/components/guest/step-tracker';
 import { Thread } from '@/components/guest/thread';
@@ -19,6 +20,7 @@ import { VoiceDock } from '@/components/voice/voice-dock';
 import { Radius, Spacing, Type } from '@/constants/theme';
 import { VENUE_ZONES } from '@/data/venue';
 import { useLookups, useNow, useRepo, useRequest, type RequestView } from '@/data/hooks';
+import { POLICY } from '@/lib/lifecycle';
 import { goBack } from '@/lib/navigation';
 import type { GuestThreadEntry } from '@/lib/schema';
 import { useTheme } from '@/hooks/use-theme';
@@ -136,17 +138,20 @@ export default function RequestScreen() {
   );
 }
 
-/** Minutes left on the walk, once someone's on the way. */
-function minutesLeft(view: RequestView, now: number) {
+/** The boxed number: minutes left on the walk once someone's on the way, or seconds left for a lead to approve. */
+function countdown(view: RequestView, now: number) {
   const { status } = view;
-  return status.stage === 'coming' && status.arriveAt ? Math.max(1, Math.ceil((status.arriveAt - now) / MIN)) : null;
+  if (status.stage === 'coming' && status.arriveAt)
+    return { n: Math.max(1, Math.ceil((status.arriveAt - now) / MIN)), unit: 'min' };
+  const secs = status.approveBy ? Math.ceil((status.approveBy - now) / 1_000) : 0;
+  return secs > 0 ? { n: secs, unit: 'sec' } : null;
 }
 
 /** Rough height of the peek: the hero, who's coming, and the one action when it's over. */
 function peekHeight(view: RequestView, now: number) {
   const { status, volunteer } = view;
   const text = LINE + (status.detail ? DETAIL : 0);
-  const hero = Math.max(minutesLeft(view, now) != null ? MINS : 0, text) + Spacing.four + STEP_TRACKER_HEIGHT;
+  const hero = Math.max(countdown(view, now) ? MINS : 0, text) + Spacing.four + STEP_TRACKER_HEIGHT;
   const who = volunteer && status.stage !== 'sorted' ? Spacing.four + WHO : 0;
   const action = status.stage === 'sorted' || status.stage === 'cancelled' ? Spacing.four + ACTION : 0;
   return GRABBER_HEIGHT + hero + who + action + Spacing.four;
@@ -161,6 +166,7 @@ function liveFraction(view: RequestView, now: number, matched: boolean) {
     return span > 0 ? (now - start) / span : 1;
   }
   if (matched) return 0.15;
+  if (status.approveBy) return Math.min(1, Math.max(0.05, 1 - (status.approveBy - now) / POLICY.autoAssignMs));
   const expect = EXPECT[status.stage];
   if (!expect) return 1;
   const asked = request.thread.findLast((e) => e.from === 'guest')?.at ?? request.createdAt;
@@ -171,13 +177,15 @@ function liveFraction(view: RequestView, now: number, matched: boolean) {
 /** Status, boxed minutes, the steps line, then who. The peek. */
 function Hero({ view }: { view: RequestView }) {
   const theme = useTheme();
-  const now = useNow();
+  // Every second, for the approval countdown; the snapshot's clock only moves every few.
+  const now = useLiveNow();
   const { status, request, volunteer } = view;
   const matched = status.stage === 'finding' && !!status.volunteerId;
-  const waiting = status.stage === 'understanding' || (status.stage === 'finding' && !matched);
-  const mins = minutesLeft(view, now);
+  const approving = !!status.approveBy;
+  const waiting = status.stage === 'understanding' || (status.stage === 'finding' && !matched && !approving);
+  const box = countdown(view, now);
   // lib/status writes "Ben is coming · 3 min"; the minutes move into the box.
-  const title = mins != null ? status.label.split(' · ')[0] : `${status.label}${waiting ? '…' : ''}`;
+  const title = box ? status.label.split(' · ')[0] : `${status.label}${waiting ? '…' : ''}`;
 
   return (
     <View style={styles.hero}>
@@ -191,10 +199,10 @@ function Hero({ view }: { view: RequestView }) {
           </Animated.Text>
           {!!status.detail && <Text tone="secondary">{status.detail}</Text>}
         </View>
-        {mins != null && (
+        {box && (
           <View style={[styles.mins, { backgroundColor: theme.tintSoft }]}>
-            <Text tone="tint" style={styles.minsNumber}>{mins}</Text>
-            <Text variant="label" tone="tint">min</Text>
+            <Text tone="tint" style={styles.minsNumber}>{box.n}</Text>
+            <Text variant="label" tone="tint">{box.unit}</Text>
           </View>
         )}
       </View>
@@ -202,6 +210,7 @@ function Hero({ view }: { view: RequestView }) {
         stage={status.stage}
         reached={request.taskId || request.aiAnswer ? 2 : 1}
         matched={matched}
+        approving={approving}
         live={liveFraction(view, now, matched)}
       />
       {volunteer && status.stage !== 'sorted' && <Who view={view} />}

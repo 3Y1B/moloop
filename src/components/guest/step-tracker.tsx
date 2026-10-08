@@ -39,12 +39,13 @@ function progress(stage: GuestRequestStage, reached: number): { done: number; ac
 /**
  * The steps as one line in three segments. Done segments are full; the live one fills by `live` (0–1: the walk,
  * or the clock against how long the stage usually takes), so progress moves even when nothing new has happened.
- * `matched`: someone's lined up while the stage is still `finding`.
+ * `matched`: someone's lined up while the stage is still `finding`. `approving`: a lead has the AI's pick to approve.
  */
-export function StepTracker({ stage, reached = 1, matched = false, live = 1 }: {
+export function StepTracker({ stage, reached = 1, matched = false, approving = false, live = 1 }: {
   stage: GuestRequestStage;
   reached?: number;
   matched?: boolean;
+  approving?: boolean;
   live?: number;
 }) {
   const theme = useTheme();
@@ -60,7 +61,8 @@ export function StepTracker({ stage, reached = 1, matched = false, live = 1 }: {
       style={styles.row}>
       {STEPS.map((s, i) => {
         const state = i === active ? 'active' : i < done ? 'done' : 'pending';
-        const name = i === STEPS.length - 1 ? (matched && stage === 'finding' ? 'Matched' : LAST[stage] ?? s) : s;
+        const finding = stage === 'finding' && (matched ? 'Matched' : approving ? 'Approval' : null);
+        const name = i === STEPS.length - 1 ? (finding || (LAST[stage] ?? s)) : s;
         return (
           <View key={s} style={styles.step}>
             <ProgressTrack animated fraction={state === 'done' ? 1 : state === 'active' ? live : 0} color={fill} trackColor={track} />

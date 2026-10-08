@@ -868,38 +868,41 @@ export function escalateNew(b: Batch, task: Task, e: EscalateTo): { level: 'lead
 
 // ── shared steps ──
 
-/** P1/P2: a proposal a human can approve (auto-assigns later). P3: straight to the top pick. */
+/**
+ * A proposal the picker (server/pick.ts) ranks by profile, auto-assigned after a while if nobody decides.
+ * P1/P2: a lead approves it (Mo too for a P1). P3: nobody's asked; the picker's top pick goes as soon as it answers.
+ * Nobody on duty at all: the lead hears it's unassigned.
+ */
 export function dispatch(b: Batch, task: Task) {
   const candidates = rankCandidates(task, Object.values(b.volunteers), b.all(), { positions: b.positions, now: b.now });
-  if (needsApproval(task.priority)) {
-    b.task(task);
-    const p: Proposal = {
-      id: b.id('proposal'),
-      taskId: task.id,
-      candidates,
-      helperIds: [],
-      createdAt: b.now,
-      autoAssignAt: b.now + POLICY.autoAssignMs,
-      status: 'pending',
-      volunteerId: null,
-      decidedById: null,
-      decidedAt: null,
-    };
-    b.proposal(p);
-    const top = candidates[0] ? b.volunteers[candidates[0].volunteerId] : undefined;
-    b.ev(task.id, 'proposed', top ? `Suggested ${top.name}, waiting for approval` : 'Nobody suggested yet', AGENT);
-    const lead = b.leadFor(task.teamSlug);
-    const mo = b.coordinator();
-    for (const who of [lead, task.priority === 'P1' || !lead ? mo : undefined]) {
-      if (who) b.send(who.id, 'escalation', `Approve: ${task.title}.`, { taskId: task.id });
-    }
+  const approval = needsApproval(task.priority);
+  b.task(task);
+  if (!approval && !candidates.length) {
+    const lead = b.leadFor(task.teamSlug) ?? b.coordinator();
+    if (lead) b.send(lead.id, 'escalation', `Unassigned: ${task.title}.`, { taskId: task.id });
     return;
   }
-  const top = candidates[0];
-  if (top) return place(b, task, top.volunteerId, AGENT, undefined);
-  b.task(task);
-  const lead = b.leadFor(task.teamSlug) ?? b.coordinator();
-  if (lead) b.send(lead.id, 'escalation', `Unassigned: ${task.title}.`, { taskId: task.id });
+  const p: Proposal = {
+    id: b.id('proposal'),
+    taskId: task.id,
+    candidates,
+    helperIds: [],
+    createdAt: b.now,
+    autoAssignAt: b.now + POLICY.autoAssignMs,
+    status: 'pending',
+    volunteerId: null,
+    decidedById: null,
+    decidedAt: null,
+  };
+  b.proposal(p);
+  if (!approval) return;
+  const top = candidates[0] ? b.volunteers[candidates[0].volunteerId] : undefined;
+  b.ev(task.id, 'proposed', top ? `Suggested ${top.name}, waiting for approval` : 'Nobody suggested yet', AGENT);
+  const lead = b.leadFor(task.teamSlug);
+  const mo = b.coordinator();
+  for (const who of [lead, task.priority === 'P1' || !lead ? mo : undefined]) {
+    if (who) b.send(who.id, 'escalation', `Approve: ${task.title}.`, { taskId: task.id });
+  }
 }
 
 /**
@@ -1039,6 +1042,8 @@ export function rerank(b: Batch, proposalId: string, ranked: ProposalCandidate[]
     .slice(0, Math.max(0, people - 1))
     .map((c) => c.volunteerId);
   b.proposal({ ...p, candidates, helperIds });
+  // A P3 is assigned straight after (autoAssign), which says who went.
+  if (!needsApproval(task.priority)) return;
   const was = { top: p.candidates[0]?.volunteerId, helpers: p.helperIds.join() };
   if (top.volunteerId === was.top && helperIds.join() === was.helpers) return;
   const names = [top.volunteerId, ...helperIds].map((id) => b.volunteers[id].name);
@@ -1048,6 +1053,37 @@ export function rerank(b: Batch, proposalId: string, ranked: ProposalCandidate[]
     `Suggested ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]}, waiting for approval`,
     AGENT,
   );
+}
+
+/**
+ * A pending proposal goes ahead with nobody approving: its top pick if they're still free, and whoever it said should
+ * go with them. Otherwise the best free one by the rules now, alone. Cancelled if the task isn't open or nobody's left.
+ */
+export function autoAssign(b: Batch, proposalId: string, why?: string) {
+  const p = b.proposals[proposalId];
+  if (p?.status !== 'pending') return;
+  const task = b.tasks[p.taskId];
+  const around = (id: string | undefined) => !!id && b.volunteers[id]?.duty === 'on_duty' && !isBusy(b.all(), id);
+  const top = p.candidates[0]?.volunteerId;
+  const pick =
+    task?.status !== 'open'
+      ? undefined
+      : around(top)
+        ? top
+        : (
+            rankCandidates(task, Object.values(b.volunteers), b.all(), { positions: b.positions, now: b.now })[0] ??
+            p.candidates[0]
+          )?.volunteerId;
+  if (!task || !pick) {
+    b.proposal({ ...p, status: 'cancelled', decidedAt: b.now });
+    return;
+  }
+  const helpers = (pick === top ? p.helperIds : [])
+    .filter((id) => id !== pick && around(id) && canHelp(task, b.volunteers[id], b.all(), b.now))
+    .map((id): HelperAssignment => ({ volunteerId: id, status: 'notified', assignedAt: b.now, respondedAt: null }));
+  const sized = task.mobilizationId ? task : { ...task, requiredCount: Math.max(task.requiredCount, 1 + helpers.length) };
+  place(b, sized, pick, AGENT, why, [], helpers);
+  b.proposal({ ...p, status: 'auto_assigned', volunteerId: pick, decidedAt: b.now });
 }
 
 /** Freed up → pull the next queued task, delivered spoken since they're now idle. */
@@ -1128,33 +1164,11 @@ export function schedulerStep(b: Batch, taskIds?: readonly string[]) {
       }
     }
   }
-  // Nobody approved or changed the AI's pick in time: assign its top pick if they're still free, and whoever it
-  // said should go with them. Otherwise the best free one by the rules now, alone.
+  // Nobody approved or changed the AI's pick in time.
   for (const p of Object.values(b.proposals)) {
     if (scope && !scope.has(p.taskId)) continue;
     if (!proposalDue(p, b.now)) continue;
-    const task = b.tasks[p.taskId];
-    const around = (id: string | undefined) => !!id && b.volunteers[id]?.duty === 'on_duty' && !isBusy(b.all(), id);
-    const top = p.candidates[0]?.volunteerId;
-    const pick =
-      task?.status !== 'open'
-        ? undefined
-        : around(top)
-          ? top
-          : (
-              rankCandidates(task, Object.values(b.volunteers), b.all(), { positions: b.positions, now: b.now })[0] ??
-              p.candidates[0]
-            )?.volunteerId;
-    if (!task || !pick) {
-      b.proposal({ ...p, status: 'cancelled', decidedAt: b.now });
-      continue;
-    }
-    const helpers = (pick === top ? p.helperIds : [])
-      .filter((id) => id !== pick && around(id) && canHelp(task, b.volunteers[id], b.all(), b.now))
-      .map((id): HelperAssignment => ({ volunteerId: id, status: 'notified', assignedAt: b.now, respondedAt: null }));
-    const sized = task.mobilizationId ? task : { ...task, requiredCount: Math.max(task.requiredCount, 1 + helpers.length) };
-    place(b, sized, pick, AGENT, `auto-assigned, no approval in ${POLICY.autoAssignMs / 1000} s`, [], helpers);
-    b.proposal({ ...p, status: 'auto_assigned', volunteerId: pick, decidedAt: b.now });
+    autoAssign(b, p.id, `auto-assigned, no approval in ${POLICY.autoAssignMs / 1000} s`);
   }
   staffShort(b, scope);
   if (!scope) finishMobilizations(b);

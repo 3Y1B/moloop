@@ -3,12 +3,12 @@ import { Limiter } from './limiter';
 /**
  * Where the models run. Keys live in the server's env only.
  *
- *  - OpenAI (default): every call, with OPENAI_API_KEY.
- *  - MODEL_PROVIDER=spark: the Spark first (SPARK_API_KEY), then OpenAI when it fails or runs late.
- *    Chat stays on OpenAI either way.
+ *  - OpenAI: every call, with OPENAI_API_KEY.
+ *  - MODEL_PROVIDER=spark: speech goes to the Spark first (SPARK_API_KEY), then OpenAI when it fails or runs late.
+ *    Chat and decisions stay on OpenAI either way.
  *
  *   chat + JSON     gpt-6-luna only (reasoning off)
- *   typed decisions /v1/systemone     -> /v1/decisions, gpt-6-luna
+ *   typed decisions /v1/decisions, gpt-6-luna only
  *   speech to text  qwen3-asr-1.7b    -> gpt-4o-mini-transcribe
  *   text to speech  qwen3-tts         -> gpt-4o-mini-tts, voice "marin" with a described manner
  */
@@ -54,6 +54,6 @@ export function mobilizationProviders(): { providers: ChatProvider[]; missing: s
 }
 
 let limiter: Limiter | undefined;
-/** One queue in front of the Spark, shared by chat, decisions and speech: one key counts them all. */
+/** One queue in front of the Spark's speech models: one key counts them all. */
 export const sparkLimiter = () =>
   (limiter ??= new Limiter(Number(process.env.SPARK_CONCURRENCY ?? 3), Number(process.env.SPARK_RPM ?? 95)));

@@ -39,6 +39,8 @@
     "postinstall": "node scripts/sync-maplibre-worker.mjs"
   },
   "dependencies": {
+    "@dicebear/core": "^9.4.3",
+    "@dicebear/notionists": "^9.4.2",
     "@expo/ui": "~57.0.22",
     "@maplibre/maplibre-react-native": "^11.5.0",
     "@supabase/supabase-js": "^2.117.2",

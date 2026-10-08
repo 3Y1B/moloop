@@ -113,9 +113,9 @@ export const toRole = (role: UserRole): VolunteerRole =>
 
 export type ProfileRow = Pick<
   Row<'profiles'>,
-  'id' | 'full_name' | 'role' | 'team_id' | 'status' | 'languages' | 'last_known_zone'
+  'id' | 'full_name' | 'role' | 'team_id' | 'status' | 'languages' | 'last_known_zone' | 'avatar'
 >;
-export const PROFILE_SELECT = 'id, full_name, role, team_id, status, languages, last_known_zone';
+export const PROFILE_SELECT = 'id, full_name, role, team_id, status, languages, last_known_zone, avatar';
 
 /** `skills` from volunteer_skills, `phone` from profile_private (null when the caller can't read it). */
 export function toVolunteer(
@@ -134,6 +134,7 @@ export function toVolunteer(
     duty: dutyFromStatus(row.status),
     shiftEndsAt: null,
     phone: extra.phone ?? null,
+    avatar: row.avatar,
   };
 }
 

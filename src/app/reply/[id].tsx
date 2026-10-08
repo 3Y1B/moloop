@@ -6,7 +6,7 @@ import { Sheet, SheetTitle } from '@/components/lead/sheet';
 import { Button } from '@/components/ui/button';
 import { Text, textStyle } from '@/components/ui/text';
 import { useHoldToTalk } from '@/components/voice/use-hold-to-talk';
-import { VoicePill } from '@/components/voice/voice-pill';
+import { HoldButton } from '@/components/voice/voice-dock';
 import { Radius } from '@/constants/theme';
 import { useLookups, useRepo, useSnapshot } from '@/data/hooks';
 import { REPLY_SF } from '@/lib/format';
@@ -91,16 +91,17 @@ export default function ReplySheet() {
       {!!problem && <Text variant="footnote" tone="secondary" style={styles.center}>{problem}</Text>}
 
       <View style={styles.pill}>
-        <VoicePill
-          listening={hold.state === 'recording'}
+        <HoldButton
+          quiet
+          live={hold.state === 'recording'}
+          busy={hold.state === 'hearing'}
           level={hold.level}
-          placeholder={note.trim() ? 'Hold to add more' : 'Hold to talk'}
-          disabled={hold.state === 'hearing'}
-          onHoldStart={() => {
+          label={note.trim() ? 'Hold to add more' : 'Hold to talk'}
+          onStart={() => {
             setProblem(null);
             hold.start();
           }}
-          onHoldEnd={async () => {
+          onEnd={async () => {
             // What was heard joins what's already there, and stays editable.
             try {
               const heard = (await hold.stop())?.text.trim();

@@ -38,7 +38,7 @@ export default function PersonSheet() {
   return (
     <Sheet>
       <View style={styles.head}>
-        <Avatar name={volunteer.name} size={52} />
+        <Avatar name={volunteer.name} face={volunteer.avatar} size={52} />
         <View style={styles.flex}>
           <Text variant="hero" style={styles.name} numberOfLines={1}>{volunteer.name}</Text>
           <TeamChip team={team} />

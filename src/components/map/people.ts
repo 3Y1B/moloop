@@ -30,11 +30,11 @@ export function zoneSpreader() {
   };
 }
 
-/** A volunteer's dot on the map, with their initials, at `place`. */
+/** A volunteer's dot on the map, with their face (or initials), at `place`. */
 export function volunteerMarker(
-  v: { id: string; name: string },
+  v: { id: string; name: string; avatar?: string | null },
   place: Place,
   look: { color: string; onTask?: boolean; needsHelp?: boolean },
 ): MapMarker {
-  return { kind: 'volunteer', id: v.id, at: place.at, stale: place.stale, initials: initials(v.name), ...look };
+  return { kind: 'volunteer', id: v.id, at: place.at, stale: place.stale, initials: initials(v.name), face: v.avatar, ...look };
 }

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" width="880" height="400" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Priority levels</title>
+  <desc id="d">P1 life-threatening: team lead and Mo approve, need help moves to Mo after 1 minute. P2 urgent: team lead approves, 2 minutes. P3 routine: nobody approves, 3 minutes. One real example request each.</desc>
+  <defs>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.6" flood-color="#0F172A" flood-opacity="0.07"/>
+    </filter>
+    <g id="i-siren" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18v-6a5 5 0 1 1 10 0v6"/><path d="M5 21a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2z"/><path d="M21 12h1"/><path d="M18.5 4.5 18 5"/><path d="M2 12h1"/><path d="M12 2v1"/><path d="m4.93 4.93.7.7"/><path d="M12 12v6"/></g>
+    <g id="i-clock" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></g>
+    <g id="i-chat" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></g>
+    <g id="i-turn" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 10 5 5-5 5"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/></g>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="879" height="399" rx="16" fill="#FFFFFF" stroke="#E2E8F0"/>
+
+  <text x="32" y="44" font-size="17" font-weight="600" fill="#0F172A">Priority levels</text>
+  <text x="32" y="66" font-size="13" fill="#64748B">Festival-goer reports. Unsure between two, the gate picks the more urgent.</text>
+
+  <!-- P1 -->
+  <g font-size="13">
+    <rect x="32" y="92" width="260" height="262" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+    <rect x="50" y="110" width="36" height="36" rx="10" fill="#FDECEA"/>
+    <use href="#i-siren" transform="translate(58 118) scale(0.8333)" color="#D92D20"/>
+    <text x="98" y="134" font-size="17" font-weight="700" fill="#D92D20">P1 <tspan fill="#0F172A" font-weight="600">Life-threatening</tspan></text>
+    <text x="50" y="172" fill="#64748B">Unconscious, a crush, a weapon</text>
+    <path d="M50 190 H274" stroke="#E2E8F0"/>
+    <text x="50" y="214" font-size="12" fill="#64748B">Approves</text>
+    <text x="172" y="214" font-size="12" fill="#64748B">Need help → Mo</text>
+    <text x="50" y="237" font-size="15" font-weight="600" fill="#0F172A">Lead + Mo</text>
+    <text x="172" y="237" font-size="15" font-weight="600" fill="#0F172A">1 min</text>
+    <text x="50" y="255" font-size="12" fill="#64748B">auto-assigns in 30 s</text>
+    <path d="M50 272 H274" stroke="#E2E8F0"/>
+    <text fill="#0F172A"><tspan x="50" y="296">“A man’s collapsed by Food Alley</tspan><tspan x="50" y="314">and he isn’t responding”</tspan></text>
+    <use href="#i-turn" transform="translate(50 325) scale(0.5833)" color="#D92D20"/>
+    <text x="70" y="336" font-size="12" fill="#64748B">Mo and the First Aid lead approve</text>
+  </g>
+
+  <!-- P2 -->
+  <g font-size="13">
+    <rect x="310" y="92" width="260" height="262" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+    <rect x="328" y="110" width="36" height="36" rx="10" fill="#FCF0E1"/>
+    <use href="#i-clock" transform="translate(336 118) scale(0.8333)" color="#C26A00"/>
+    <text x="376" y="134" font-size="17" font-weight="700" fill="#C26A00">P2 <tspan fill="#0F172A" font-weight="600">Urgent</tspan></text>
+    <text x="328" y="172" fill="#64748B">An injury, heat illness, a fight</text>
+    <path d="M328 190 H552" stroke="#E2E8F0"/>
+    <text x="328" y="214" font-size="12" fill="#64748B">Approves</text>
+    <text x="450" y="214" font-size="12" fill="#64748B">Need help → Mo</text>
+    <text x="328" y="237" font-size="15" font-weight="600" fill="#0F172A">Team lead</text>
+    <text x="450" y="237" font-size="15" font-weight="600" fill="#0F172A">2 min</text>
+    <text x="328" y="255" font-size="12" fill="#64748B">auto-assigns in 30 s</text>
+    <path d="M328 272 H552" stroke="#E2E8F0"/>
+    <text fill="#0F172A"><tspan x="328" y="296">“My friend feels really dizzy</tspan><tspan x="328" y="314">and faint, we’re by Water 2”</tspan></text>
+    <use href="#i-turn" transform="translate(328 325) scale(0.5833)" color="#C26A00"/>
+    <text x="348" y="336" font-size="12" fill="#64748B">First Aid lead approves</text>
+  </g>
+
+  <!-- P3 -->
+  <g font-size="13">
+    <rect x="588" y="92" width="260" height="262" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+    <rect x="606" y="110" width="36" height="36" rx="10" fill="#F1F2F5"/>
+    <use href="#i-chat" transform="translate(614 118) scale(0.8333)" color="#6B6B7B"/>
+    <text x="654" y="134" font-size="17" font-weight="700" fill="#6B6B7B">P3 <tspan fill="#0F172A" font-weight="600">Routine</tspan></text>
+    <text x="606" y="172" fill="#64748B">A question or a facility problem</text>
+    <path d="M606 190 H830" stroke="#E2E8F0"/>
+    <text x="606" y="214" font-size="12" fill="#64748B">Approves</text>
+    <text x="728" y="214" font-size="12" fill="#64748B">Need help → Mo</text>
+    <text x="606" y="237" font-size="15" font-weight="600" fill="#0F172A">Nobody</text>
+    <text x="728" y="237" font-size="15" font-weight="600" fill="#0F172A">3 min</text>
+    <text x="606" y="255" font-size="12" fill="#64748B">sent straight away</text>
+    <path d="M606 272 H830" stroke="#E2E8F0"/>
+    <text fill="#0F172A"><tspan x="606" y="296">“Can someone bring a plaster to</tspan><tspan x="606" y="314">Water 2, I’ve got a blister”</tspan></text>
+    <use href="#i-turn" transform="translate(606 325) scale(0.5833)" color="#6B6B7B"/>
+    <text x="626" y="336" font-size="12" fill="#64748B">Straight to the top pick</text>
+  </g>
+
+  <text x="32" y="380" font-size="12" fill="#64748B">“Need help” goes to the team lead first. Unanswered, it moves up to Mo.</text>
+</svg>

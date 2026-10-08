@@ -56,6 +56,8 @@ export function needsFor(s: World, meId: string | null): NeedsItem[] {
       items.push({ kind: 'quiet', task: t, since: quietSince(t) });
     } else if (t.status === 'open') {
       const p = pending.get(t.id);
+      // A P3's proposal is the picker at work, assigned in seconds: nobody approves it.
+      if (p && t.priority === 'P3') continue;
       if (p && (lead ? mine(t) : t.priority === 'P1' || mine(t))) items.push({ kind: 'approval', task: t, proposal: p, since: p.createdAt });
       else if (!p && (lead ? mine(t) : t.priority !== 'P3')) items.push({ kind: 'unassigned', task: t, since: t.createdAt });
     }

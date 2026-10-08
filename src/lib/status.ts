@@ -6,7 +6,9 @@ import {
   isActive,
   isHeld,
   isQuiet,
+  needsApproval,
   needsResponse,
+  POLICY,
   quietSince,
 } from '@/lib/lifecycle';
 import { meetingPoint, walkFrom } from '@/lib/presence';
@@ -18,6 +20,7 @@ import type {
   Mobilization,
   Position,
   Task,
+  Team,
   TeamSlug,
   Volunteer,
   Zone,
@@ -42,6 +45,8 @@ export type Status = { label: string; detail?: string; tone: Tone; action?: Stat
 export type StatusLookups = {
   volunteers: Record<string, Volunteer>;
   zones?: Record<string, Zone>;
+  /** For naming whose lead approves a festival-goer's P1/P2 ("First Aid lead"). */
+  teams?: Record<string, Team>;
   /** Live GPS, and the festival-goer on this device: "coming" counts down from where the volunteer really is. */
   positions?: Record<string, Position>;
   guestId?: string | null;
@@ -60,6 +65,17 @@ const zoneLabel = (slug: string | null, zones?: Record<string, Zone>) =>
   slug ? (VENUE_ZONES[slug]?.label ?? zones?.[slug]?.name ?? null) : null;
 const stay = (task: Task) => (isAboutPerson(task) ? STAY : undefined);
 const joinDetail = (a: string | undefined, b: string | undefined) => (a && b ? `${a} · ${b}` : (a ?? b));
+
+/**
+ * When a P1/P2 goes to the AI's top pick if nobody approves it first (commands.ts dispatch, POLICY.autoAssignMs).
+ * Null for a P3, a report held for a lead's call, or once the window has passed (auto-assign is under way, or nobody
+ * was free). Read from the task alone: festival-goers can't read proposals.
+ */
+export function approvalDeadline(task: Task, now: number): number | null {
+  if (task.status !== 'open' || !needsApproval(task.priority) || isHeld(task)) return null;
+  const at = task.createdAt + POLICY.autoAssignMs;
+  return now < at ? at : null;
+}
 
 /** "2 of 3 confirmed" while a multi-person task hasn't filled every slot. Undefined for an ordinary 1-person task. */
 export function staffingNote(task: Task): string | undefined {
@@ -114,6 +130,12 @@ function computeTaskStatus(viewerId: string | null, task: Task, { volunteers }: 
           detail: e.reason ?? undefined,
           tone: 'warning',
         };
+      if (approvalDeadline(task, now)) {
+        const lead = leadOf(task, volunteers);
+        const mo = task.priority === 'P1' || !lead ? coordinatorOf(volunteers) : undefined;
+        const who = [first(lead), first(mo)].filter(Boolean).join(' and ');
+        return { label: 'Awaiting approval', detail: who || undefined, tone: 'warning' };
+      }
       return { label: 'Unassigned', tone: 'warning' };
     case 'queued':
       return { label: mine ? 'Up next' : `Up next for ${first(owner)}`, tone: 'neutral' };
@@ -233,13 +255,15 @@ export type GuestStatus = Status & {
   arriveAt?: number;
   /** `arriveAt` comes from where they really are, not from the clock. */
   live?: boolean;
+  /** A P1/P2 waiting on a lead: the AI's pick goes at this time if nobody approves first. */
+  approveBy?: number;
 };
 
 /** What the festival-goer sees. Derived from the task once there is one; the stored stage covers the steps before. */
 export function guestStage(
   request: GuestRequest,
   task: Task | undefined,
-  { volunteers, positions, guestId }: StatusLookups,
+  { volunteers, positions, guestId, teams }: StatusLookups,
   now: number,
 ): GuestStatus {
   if (request.stage === 'cancelled') return { stage: 'cancelled', label: 'Cancelled', tone: 'neutral' };
@@ -262,6 +286,18 @@ export function guestStage(
       detail: task.status === 'queued' ? 'Finishing a task' : undefined,
       tone: 'tint',
       volunteerId: v.id,
+    };
+  }
+  const approveBy = approvalDeadline(task, now);
+  if (approveBy) {
+    const team = task.teamSlug ? teams?.[task.teamSlug]?.short : undefined;
+    const lead = team ? `the ${team} lead` : 'a team lead';
+    return {
+      stage: 'finding',
+      label: 'Awaiting approval',
+      detail: `Sent to ${lead}${task.priority === 'P1' ? ' and safety lead' : ''}`,
+      tone: 'tint',
+      approveBy,
     };
   }
   if (task.status === 'open' || task.status === 'queued' || task.status === 'assigned') {

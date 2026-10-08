@@ -171,7 +171,7 @@ rehearsal's storm plan left open would take the stage run's readings as its own.
 
 ## Things to know on the day
 
-- Simulated crew never answer. Storm tasks they get go quiet after 2 minutes, and their leads get "went quiet". Stand
+- Simulated crew never answer. Storm tasks they get go quiet after a few minutes, and their leads get "went quiet". Stand
   down before taking questions, or ignore the inbox.
 - A plan Mo dismisses keeps the same playbook and place quiet for 15 minutes. Don't dismiss the storm plan before the
   run.

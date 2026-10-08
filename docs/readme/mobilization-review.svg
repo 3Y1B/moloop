@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="880" height="460" viewBox="0 0 880 460" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Mobilization review</title>
+  <desc id="d">A trigger fires and the planner drafts one plan in one model call, about 19 to 24 seconds; if the model is late or invalid Mo gets the playbook's must-do actions. Mo reviews the plan and approves or dismisses it. Approve sends one task per step to at most ten free, qualified crew, each with a done line. Dismiss keeps that playbook and zone quiet for 15 minutes unless a P1 report or Mo names it. Once active, stand down cancels open tasks and frees crew.</desc>
+  <defs>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0F172A" flood-opacity="0.07"/>
+    </filter>
+    <filter id="sh2" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+    <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path d="M2 1.5 8.5 5 2 8.5" fill="none" stroke="#94A3B8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <symbol id="i-zap" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></g></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></g></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></g></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></g></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><g fill="none" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></g></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></g></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></g></symbol>
+    <symbol id="i-done" viewBox="0 0 24 24"><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></g></symbol>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="879" height="459" rx="16" fill="#FFFFFF" stroke="#E2E8F0"/>
+
+  <!-- Header -->
+  <text x="32" y="44" font-size="18" font-weight="600" fill="#0F172A">Mobilization review</text>
+  <text x="32" y="66" font-size="13" fill="#64748B">Every plan waits for Mo. Nothing goes to crew before Approve.</text>
+
+  <!-- Section labels -->
+  <g font-size="12" font-weight="600" fill="#64748B" letter-spacing="0.08em">
+    <text x="32" y="100">PLAN</text>
+    <text x="268" y="100">MO REVIEWS</text>
+    <text x="564" y="100">RESULT</text>
+  </g>
+
+  <!-- ===== Col A: trigger + planner ===== -->
+  <g filter="url(#sh)"><rect x="32" y="116" width="200" height="64" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/></g>
+  <rect x="46" y="132" width="32" height="32" rx="9" fill="#EAF0FE"/>
+  <use xlink:href="#i-zap" x="52" y="138" width="20" height="20" stroke="#2F6BF5"/>
+  <text x="90" y="145" font-size="14" font-weight="600" fill="#0F172A">Trigger fires</text>
+  <text x="90" y="163" font-size="12" fill="#64748B">T1–T4, one zone</text>
+
+  <path d="M132 180 V202" fill="none" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <g filter="url(#sh)"><rect x="32" y="204" width="200" height="224" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/></g>
+  <rect x="46" y="220" width="32" height="32" rx="9" fill="#EAF0FE"/>
+  <use xlink:href="#i-spark" x="52" y="226" width="20" height="20" stroke="#2F6BF5"/>
+  <text x="90" y="241" font-size="14" font-weight="600" fill="#0F172A">Planner</text>
+  <text font-size="12" fill="#64748B"><tspan x="48" y="278">One model call with the</tspan><tspan x="48" y="294">playbook and a live</tspan><tspan x="48" y="310">snapshot of the event</tspan></text>
+  <rect x="48" y="324" width="122" height="24" rx="12" fill="#EAF0FE"/>
+  <use xlink:href="#i-clock" x="58" y="329" width="14" height="14" stroke="#2F6BF5"/>
+  <text x="78" y="340" font-size="12" font-weight="600" fill="#2F6BF5">19–24 s to Mo</text>
+  <path d="M48 366 H216" stroke="#E2E8F0"/>
+  <text x="48" y="390" font-size="12" font-weight="600" fill="#0F172A">Model late or invalid:</text>
+  <text x="48" y="408" font-size="12" fill="#64748B">Mo gets the must-dos</text>
+
+  <path d="M232 272 H266" fill="none" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <!-- ===== Col B: Mo's screen ===== -->
+  <g filter="url(#sh2)"><rect x="268" y="116" width="256" height="312" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/></g>
+  <rect x="284" y="134" width="104" height="22" rx="11" fill="#EAF0FE"/>
+  <text x="336" y="149" font-size="12" font-weight="600" fill="#2F6BF5" text-anchor="middle">Needs approval</text>
+  <text x="284" y="184" font-size="15" font-weight="600" fill="#0F172A">Severe storm, Oval Stage</text>
+  <use xlink:href="#i-gauge" x="284" y="194" width="14" height="14" stroke="#64748B"/>
+  <text font-size="12" fill="#64748B"><tspan x="304" y="205">Wind 72 km/h at Oval Stage</tspan><tspan x="304" y="221">(limit 60 km/h), just now</tspan></text>
+
+  <rect x="284" y="236" width="224" height="104" rx="10" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <g font-size="12">
+    <text x="298" y="254" font-weight="600" fill="#0F172A">Crowd</text><text x="494" y="254" fill="#64748B" text-anchor="end">4 people</text>
+    <path d="M284 262 H508" stroke="#E2E8F0"/>
+    <text x="298" y="280" font-weight="600" fill="#0F172A">Tech</text><text x="494" y="280" fill="#64748B" text-anchor="end">2 people</text>
+    <path d="M284 288 H508" stroke="#E2E8F0"/>
+    <text x="298" y="306" font-weight="600" fill="#0F172A">First Aid</text><text x="494" y="306" fill="#64748B" text-anchor="end">3 people</text>
+    <path d="M284 314 H508" stroke="#E2E8F0"/>
+    <text x="298" y="332" fill="#64748B">+5 more teams</text>
+  </g>
+  <text x="284" y="366" font-size="12" font-weight="500" fill="#C26A00">1 short. Will keep trying.</text>
+
+  <rect x="284.5" y="381.5" width="105" height="33" rx="10" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="337" y="403" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Dismiss</text>
+  <rect x="398" y="381" width="110" height="34" rx="10" fill="#2F6BF5"/>
+  <use xlink:href="#i-check" x="418" y="391" width="14" height="14" stroke="#FFFFFF"/>
+  <text x="438" y="403" font-size="13" font-weight="600" fill="#FFFFFF">Approve</text>
+
+  <!-- connectors to results -->
+  <g fill="none" stroke="#94A3B8" stroke-width="1.5">
+    <path d="M524 398 H534 Q544 398 544 388 V200 Q544 190 554 190 H562" marker-end="url(#ah)"/>
+    <path d="M544 316 H562" marker-end="url(#ah)"/>
+    <path d="M524 398 H562" marker-end="url(#ah)"/>
+  </g>
+
+  <!-- ===== Col C: results ===== -->
+  <!-- Approve -->
+  <g filter="url(#sh)"><rect x="564" y="116" width="284" height="148" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/></g>
+  <rect x="578" y="130" width="32" height="32" rx="9" fill="#EAF0FE"/>
+  <use xlink:href="#i-check" x="584" y="136" width="20" height="20" stroke="#2F6BF5"/>
+  <text x="622" y="151" font-size="14" font-weight="600" fill="#0F172A">Approve</text>
+  <text font-size="12" fill="#64748B"><tspan x="622" y="172">One task per step, spoken and</tspan><tspan x="622" y="188">pushed to crew. Up to 10 people</tspan><tspan x="622" y="204">a step, free and qualified only.</tspan></text>
+  <rect x="622" y="216" width="212" height="38" rx="8" fill="#F5F7FB"/>
+  <use xlink:href="#i-done" x="632" y="221" width="14" height="14" stroke="#1F8A5B"/>
+  <text font-size="12" fill="#0F172A"><tspan x="652" y="232"><tspan font-weight="600">Done when:</tspan> entry stopped,</tspan><tspan x="652" y="247">emergency lanes clear</tspan></text>
+
+  <!-- Dismiss -->
+  <g filter="url(#sh)"><rect x="564" y="276" width="284" height="80" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/></g>
+  <rect x="578" y="290" width="32" height="32" rx="9" fill="#F1F2F5"/>
+  <use xlink:href="#i-x" x="584" y="296" width="20" height="20" stroke="#64748B"/>
+  <text x="622" y="311" font-size="14" font-weight="600" fill="#0F172A">Dismiss</text>
+  <text font-size="12" fill="#64748B"><tspan x="622" y="330">This playbook and zone stay quiet</tspan><tspan x="622" y="346">15 min, unless a P1 report or Mo</tspan></text>
+
+  <!-- Stand down -->
+  <g filter="url(#sh)"><rect x="564" y="368" width="284" height="60" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/></g>
+  <rect x="578" y="382" width="32" height="32" rx="9" fill="#F1F2F5"/>
+  <use xlink:href="#i-stop" x="584" y="388" width="20" height="20" stroke="#64748B"/>
+  <text x="622" y="395" font-size="14" font-weight="600" fill="#0F172A">Stand down</text>
+  <rect x="712" y="381" width="80" height="20" rx="10" fill="#F5F7FB" stroke="#E2E8F0"/>
+  <text x="752" y="395" font-size="12" fill="#64748B" text-anchor="middle">once active</text>
+  <text x="622" y="414" font-size="12" fill="#64748B">Open tasks cancelled, crew freed</text>
+</svg>

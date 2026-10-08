@@ -37,7 +37,7 @@ export function CandidateRow({ candidate, volunteer, team, busy, suggested, sele
       }}
       style={({ pressed }) => pressed && { backgroundColor: theme.backgroundSelected }}>
       <ListRow
-        leading={<Avatar name={volunteer.name} size={32} style={dim} />}
+        leading={<Avatar name={volunteer.name} face={volunteer.avatar} size={32} style={dim} />}
         trailing={
           <>
             {suggested ? <Chip size="small" tone="tint" label="Suggested" /> : busy ? <Chip size="small" label="Busy" /> : null}

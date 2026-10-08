@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 456" width="880" height="456" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Request routing</title>
+  <desc id="d">After the gate, the intake agent calls one tool, re-triage checks for a matching open task, and the picker ranks free crew. Crew reports go straight to a free teammate. P1 needs the team lead and Mo to approve, P2 the team lead, both auto-assign after 30 seconds; P3 is assigned straight away. The assignee hears it read aloud or gets a ping, plus a push.</desc>
+  <defs>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.6" flood-color="#0F172A" flood-opacity="0.07"/>
+    </filter>
+    <marker id="ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M1.5 1.5 L8.5 5 L1.5 8.5" fill="none" stroke="#94A3B8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <g id="i-bot" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></g>
+    <g id="i-merge" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></g>
+    <g id="i-sparkles" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></g>
+    <g id="i-message" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></g>
+    <g id="i-users" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></g>
+    <g id="i-usercheck" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/></g>
+    <g id="i-zap" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></g>
+    <g id="i-volume" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></g>
+    <g id="i-bell" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g>
+    <g id="i-send" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></g>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="879" height="455" rx="16" fill="#FFFFFF" stroke="#E2E8F0"/>
+
+  <text x="32" y="44" font-size="17" font-weight="600" fill="#0F172A">Request routing</text>
+  <text x="32" y="66" font-size="13" fill="#64748B">After the gate: one tool call, a match check, then a person by priority.</text>
+
+  <!-- connectors -->
+  <g fill="none" stroke="#94A3B8" stroke-width="1.5">
+    <path d="M332 146 H354" marker-end="url(#ar)"/>
+    <path d="M590 146 H612" marker-end="url(#ar)"/>
+    <!-- crew: from re-triage -->
+    <path d="M400 196 V208 Q400 216 392 216 H136 Q128 216 128 224 V254" marker-end="url(#ar)"/>
+    <!-- picker bus -->
+    <path d="M731 196 V240"/>
+    <path d="M336 254 V248 Q336 240 344 240 H744 Q752 240 752 248 V254" marker-end="url(#ar)"/>
+    <path d="M336 246 V254" marker-end="url(#ar)"/>
+    <path d="M544 240 V254" marker-end="url(#ar)"/>
+    <!-- to delivery -->
+    <path d="M128 348 V374" marker-end="url(#ar)"/>
+    <path d="M336 348 V374" marker-end="url(#ar)"/>
+    <path d="M544 348 V374" marker-end="url(#ar)"/>
+    <path d="M752 348 V374" marker-end="url(#ar)"/>
+  </g>
+
+  <text x="723" y="230" font-size="12" fill="#64748B" text-anchor="end">Festival-goer tasks</text>
+
+  <!-- row 1 -->
+  <g font-size="13">
+    <rect x="32" y="96" width="300" height="100" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+    <rect x="48" y="112" width="32" height="32" rx="9" fill="#EAF0FE"/>
+    <use href="#i-bot" transform="translate(55 119) scale(0.75)" color="#2F6BF5"/>
+    <text x="92" y="126" font-size="15" font-weight="600" fill="#0F172A">Intake agent</text>
+    <text x="92" y="144" fill="#64748B">Calls exactly one tool</text>
+    <g font-size="12">
+      <rect x="48" y="160" width="82" height="22" rx="11" fill="#EAF0FE"/><text x="89" y="175" text-anchor="middle" font-weight="600" fill="#2F6BF5">create_task</text>
+      <rect x="136" y="160" width="62" height="22" rx="11" fill="#F5F7FB" stroke="#E2E8F0"/><text x="167" y="175" text-anchor="middle" fill="#0F172A">escalate</text>
+      <rect x="204" y="160" width="112" height="22" rx="11" fill="#F5F7FB" stroke="#E2E8F0"/><text x="260" y="175" text-anchor="middle" fill="#0F172A">answer_question</text>
+    </g>
+
+    <rect x="356" y="96" width="234" height="100" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+    <rect x="372" y="112" width="32" height="32" rx="9" fill="#EAF0FE"/>
+    <use href="#i-merge" transform="translate(379 119) scale(0.75)" color="#2F6BF5"/>
+    <text x="416" y="126" font-size="15" font-weight="600" fill="#0F172A">Re-triage</text>
+    <text fill="#64748B"><tspan x="416" y="146">Same as an open task</tspan><tspan x="416" y="164">nearby? Joins it.</tspan></text>
+
+    <rect x="614" y="96" width="234" height="100" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+    <rect x="630" y="112" width="32" height="32" rx="9" fill="#EAF0FE"/>
+    <use href="#i-sparkles" transform="translate(637 119) scale(0.75)" color="#2F6BF5"/>
+    <text x="674" y="126" font-size="15" font-weight="600" fill="#0F172A">Picker</text>
+    <text fill="#64748B"><tspan x="674" y="146">Ranks free crew,</tspan><tspan x="674" y="164">picks 1 to 3 people</tspan></text>
+  </g>
+
+  <!-- row 2: paths -->
+  <g font-size="13">
+    <rect x="32" y="256" width="192" height="92" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+    <rect x="48" y="270" width="92" height="22" rx="11" fill="#EAF0FE"/>
+    <text x="94" y="285" font-size="12" text-anchor="middle" font-weight="600" fill="#2F6BF5">Crew report</text>
+    <use href="#i-message" transform="translate(190 272) scale(0.6667)" color="#94A3B8"/>
+    <text x="48" y="316" font-size="15" font-weight="600" fill="#0F172A">Free teammate</text>
+    <text x="48" y="335" fill="#64748B">No approval, any P</text>
+
+    <rect x="240" y="256" width="192" height="92" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+    <rect x="256" y="270" width="32" height="22" rx="11" fill="#FDECEA"/>
+    <text x="272" y="285" font-size="12" text-anchor="middle" font-weight="700" fill="#D92D20">P1</text>
+    <use href="#i-users" transform="translate(398 272) scale(0.6667)" color="#94A3B8"/>
+    <text x="256" y="316" font-size="15" font-weight="600" fill="#0F172A">Lead + Mo approve</text>
+    <text x="256" y="335" fill="#64748B">Auto-assigns in 30 s</text>
+
+    <rect x="448" y="256" width="192" height="92" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+    <rect x="464" y="270" width="32" height="22" rx="11" fill="#FCF0E1"/>
+    <text x="480" y="285" font-size="12" text-anchor="middle" font-weight="700" fill="#C26A00">P2</text>
+    <use href="#i-usercheck" transform="translate(606 272) scale(0.6667)" color="#94A3B8"/>
+    <text x="464" y="316" font-size="15" font-weight="600" fill="#0F172A">Team lead approves</text>
+    <text x="464" y="335" fill="#64748B">Auto-assigns in 30 s</text>
+
+    <rect x="656" y="256" width="192" height="92" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#sh)"/>
+    <rect x="672" y="270" width="32" height="22" rx="11" fill="#F1F2F5"/>
+    <text x="688" y="285" font-size="12" text-anchor="middle" font-weight="700" fill="#6B6B7B">P3</text>
+    <use href="#i-zap" transform="translate(814 272) scale(0.6667)" color="#94A3B8"/>
+    <text x="672" y="316" font-size="15" font-weight="600" fill="#0F172A">Assigned now</text>
+    <text x="672" y="335" fill="#64748B">No approval</text>
+  </g>
+
+  <!-- delivery -->
+  <rect x="32" y="376" width="816" height="56" rx="14" fill="#F5F7FB" stroke="#E2E8F0"/>
+  <rect x="48" y="388" width="32" height="32" rx="9" fill="#2F6BF5"/>
+  <use href="#i-send" transform="translate(55 395) scale(0.75)" color="#FFFFFF"/>
+  <text x="92" y="402" font-size="15" font-weight="600" fill="#0F172A">To the assignee</text>
+  <text x="92" y="420" font-size="13" fill="#64748B">Push to a locked phone</text>
+  <use href="#i-volume" transform="translate(340 393) scale(0.75)" color="#2F6BF5"/>
+  <text x="368" y="402" font-size="13" font-weight="600" fill="#0F172A">Free</text>
+  <text x="368" y="420" font-size="13" fill="#64748B">Task read aloud</text>
+  <use href="#i-bell" transform="translate(580 393) scale(0.75)" color="#2F6BF5"/>
+  <text x="608" y="402" font-size="13" font-weight="600" fill="#0F172A">Busy</text>
+  <text x="608" y="420" font-size="13" fill="#64748B">Queued, short ping</text>
+</svg>
